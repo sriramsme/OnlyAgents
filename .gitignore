@@ -24,9 +24,39 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
-.env
+# Test coverage
+coverage.txt
+coverage.html
+*.coverprofile
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# Build artifacts
+dist/
+build/
+release/
+
+# CI artifacts
+.artifacts/
+
+# Editor directories
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Credentials and secrets
+*.key
+*.pem
+credentials.json
+secrets/
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/

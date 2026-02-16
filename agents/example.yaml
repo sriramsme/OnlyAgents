@@ -1,0 +1,12 @@
+agent:
+  id: "user.assistant.test"
+  name: "TestAgent"
+  role: "Testing Assistant"
+
+logging:
+  level: "debug"
+  format: "text"
+
+llm:
+  provider: "mock"
+  model: "claude-sonnet-4-20250514"

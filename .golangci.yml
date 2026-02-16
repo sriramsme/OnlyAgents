@@ -1,0 +1,31 @@
+version: 2
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosec
+    - gocyclo
+    - misspell
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+
+  errcheck:
+    check-blank: true
+
+  govet:
+    check-shadowing: true
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  timeout: 5m
+  go: '1.25'
