@@ -1257,5 +1257,3 @@ OnlyAgents is open-source and community-driven. We welcome contributions of all 
 ---
 
 **Built with ❤️ by developers who believe the agent era should be open, secure, and user-controlled.**
-
-
