@@ -15,47 +15,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
-func loadConfig(path string) (*config.Config, vault.Vault, error) {
-	cfg, v, err := config.Load(path)
-	if err != nil {
-		return nil, nil, fmt.Errorf("load config: %w", err)
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("validate config: %w", err)
-	}
-
-	// Initialize logging after config is validated
-	logger.Initialize(cfg.Logging.Level, cfg.Logging.Format)
-	logger.Log.Info("configuration loaded",
-		"agent_id", cfg.Agent.ID,
-		"agent_name", cfg.Agent.Name,
-		"provider", cfg.LLM.Provider,
-		"model", cfg.LLM.Model)
-
-	return cfg, v, nil
-}
-
-// createLLMClient creates an LLM client using the factory pattern
-func createLLMClient(cfg *config.Config, vault vault.Vault) (llm.Client, error) {
-	if cfg.LLM.Provider == "" {
-		return nil, fmt.Errorf("llm provider must be configured")
-	}
-
-	// Use factory to create client from config
-	factory := llm.NewFactory(cfg, vault)
-	client, err := factory.Create()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create LLM client: %w", err)
-	}
-
-	logger.Log.Info("llm client initialized",
-		"provider", client.Provider(),
-		"model", client.Model())
-
-	return client, nil
-}
-
 func main() {
 	fmt.Println("OnlyAgents v0.1.0")
 	fmt.Println("==================")
@@ -66,26 +25,35 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Warning: Error loading .env file: %v\n", err)
 	}
 
-	// Load config
-	configPath := "agent.yaml"
+	vaultPath := "configs/vault.yaml"
 	if len(os.Args) > 1 {
-		configPath = os.Args[1]
+		vaultPath = os.Args[1]
+	}
+	vault, err := config.LoadVault(vaultPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "load vault config: %v\n", err)
+		os.Exit(1)
 	}
 
-	cfg, v, err := loadConfig(configPath)
+	defer func() {
+		if err := vault.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error closing vault: %v\n", err)
+		}
+	}()
+	// Load config
+	configPath := "configs/agents/executive.yaml"
+	if len(os.Args) > 2 {
+		configPath = os.Args[2]
+	}
+
+	cfg, err := loadConfig(configPath, vault)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
 		os.Exit(1)
 	}
 
-	defer func() {
-		if err := v.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error closing vault: %v\n", err)
-		}
-	}()
-
 	// Create LLM client using factory
-	llmClient, err := createLLMClient(cfg, v)
+	llmClient, err := createLLMClient(cfg, cfg.GetVault())
 	if err != nil {
 		logger.Log.Error("failed to create LLM client", "error", err)
 		os.Exit(1)
@@ -151,4 +119,45 @@ func main() {
 	}
 
 	logger.Log.Info("shutdown complete")
+}
+
+func loadConfig(path string, vault vault.Vault) (*config.Config, error) {
+	cfg, err := config.LoadAgentConfig(path, vault)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
+	// Initialize logging after config is validated
+	logger.Initialize(cfg.Logging.Level, cfg.Logging.Format)
+	logger.Log.Info("configuration loaded",
+		"agent_id", cfg.Agent.ID,
+		"agent_name", cfg.Agent.Name,
+		"provider", cfg.LLM.Provider,
+		"model", cfg.LLM.Model)
+
+	return cfg, nil
+}
+
+// createLLMClient creates an LLM client using the factory pattern
+func createLLMClient(cfg *config.Config, vault vault.Vault) (llm.Client, error) {
+	if cfg.LLM.Provider == "" {
+		return nil, fmt.Errorf("llm provider must be configured")
+	}
+
+	// Use factory to create client from config
+	factory := llm.NewFactory(cfg, vault)
+	client, err := factory.Create()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create LLM client: %w", err)
+	}
+
+	logger.Log.Info("llm client initialized",
+		"provider", client.Provider(),
+		"model", client.Model())
+
+	return client, nil
 }

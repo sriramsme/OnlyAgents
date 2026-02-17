@@ -1,3 +1,12 @@
+// Agent has two interaction modes:
+//
+//  1. User↔Agent (synchronous): Execute() — called by HTTP handlers.
+//     Returns a string response. Manages LLM loop internally.
+//
+//  2. Agent↔Agent (asynchronous): handleMessage() — driven by processMessages().
+//     Messages are signed A2A protocol messages routed via incoming channel.
+//     Never call handleMessage directly; send to incoming channel instead.
+
 package kernel
 
 import (
@@ -5,42 +14,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/a2a"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 )
-
-type Agent struct {
-	id         string
-	skills     *SkillRegistry
-	connectors *ConnectorRegistry
-	security   *SecurityManager
-	state      *StateManager
-	llmClient  llm.Client
-
-	// Message handling
-	incoming chan Message
-	outgoing chan Message
-
-	// Lifecycle
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-
-	// Config
-	config Config
-	logger *slog.Logger
-}
-
-// Config holds agent configuration
-type Config struct {
-	ID             string
-	MaxConcurrency int
-	BufferSize     int
-	LLMClient      llm.Client
-}
 
 // NewAgent creates a new agent instance
 func NewAgent(config Config) (*Agent, error) {
@@ -55,11 +34,10 @@ func NewAgent(config Config) (*Agent, error) {
 		id:         config.ID,
 		skills:     NewSkillRegistry(),
 		connectors: NewConnectorRegistry(),
-		security:   NewSecurityManager(),
 		state:      NewStateManager(),
 		llmClient:  config.LLMClient,
-		incoming:   make(chan Message, config.BufferSize),
-		outgoing:   make(chan Message, config.BufferSize),
+		incoming:   make(chan a2a.Message, config.BufferSize),
+		outgoing:   make(chan a2a.Message, config.BufferSize),
 		ctx:        ctx,
 		cancel:     cancel,
 		config:     config,
@@ -124,8 +102,10 @@ func (a *Agent) processMessages() {
 	}
 }
 
-// handleMessage processes a message
-func (a *Agent) handleMessage(msg Message) {
+// handleMessage is the agent-to-agent entry point.
+// Called by processMessages for async A2A communication.
+// Messages arrive signed, are verified, then dispatched to skills.
+func (a *Agent) handleMessage(msg a2a.Message) {
 	a.logger.Info("received message",
 		"message_id", msg.ID,
 		"from", msg.FromAgent,
@@ -156,7 +136,9 @@ func (a *Agent) healthCheck() {
 	}
 }
 
-// Execute processes a user message with tool calling support
+// Execute is the user-facing entry point.
+// Called by HTTP handlers for synchronous request/response.
+// Manages the full LLM loop: prompt → tool calls → final response.
 func (a *Agent) Execute(ctx context.Context, userMessage string) (string, error) {
 	a.logger.Debug("executing user request",
 		"message_length", len(userMessage))
@@ -361,7 +343,7 @@ func (a *Agent) RegisterSkill(skill skills.Skill) error {
 }
 
 // SendMessage sends a message to another agent (for A2A communication)
-func (a *Agent) SendMessage(msg Message) error {
+func (a *Agent) SendMessage(msg a2a.Message) error {
 	select {
 	case a.outgoing <- msg:
 		return nil
@@ -371,7 +353,7 @@ func (a *Agent) SendMessage(msg Message) error {
 }
 
 // ReceiveMessage returns the incoming message channel (for A2A communication)
-func (a *Agent) ReceiveMessage() <-chan Message {
+func (a *Agent) ReceiveMessage() <-chan a2a.Message {
 	return a.incoming
 }
 
