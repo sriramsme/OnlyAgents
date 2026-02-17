@@ -66,11 +66,6 @@ func NewOpenAIClient(cfg llm.ProviderConfig) (*OpenAIClient, error) {
 		temperature = 0.7 // OpenAI default
 	}
 
-	logger.Log.Debug("initialized openai client",
-		"model", cfg.Model,
-		"max_tokens", maxTokens,
-		"temperature", temperature)
-
 	return &OpenAIClient{
 		client:      client,
 		model:       cfg.Model,

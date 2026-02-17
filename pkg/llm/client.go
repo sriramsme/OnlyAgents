@@ -30,6 +30,7 @@ var registry = make(map[Provider]*ProviderRegistration)
 
 // RegisterProvider registers a new provider
 func RegisterProvider(provider Provider, reg ProviderRegistration) {
+	fmt.Printf("registering provider %s\n", provider)
 	registry[provider] = &reg
 }
 

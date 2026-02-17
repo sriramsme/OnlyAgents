@@ -79,11 +79,6 @@ func NewAnthropicClient(cfg llm.ProviderConfig) (*AnthropicClient, error) {
 		temperature = 1.0
 	}
 
-	logger.Log.Debug("initialized anthropic client",
-		"model", cfg.Model,
-		"max_tokens", maxTokens,
-		"temperature", temperature)
-
 	return &AnthropicClient{
 		client:      &client,
 		model:       cfg.Model,

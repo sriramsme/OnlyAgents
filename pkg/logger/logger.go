@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-var Log *slog.Logger
+var Log = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 // Initialize sets up the global logger
 func Initialize(level string, format string) {
