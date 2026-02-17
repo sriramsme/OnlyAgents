@@ -94,110 +94,6 @@ func (c *OpenAIStreamingClient) Chat(ctx context.Context, req *llm.Request) (*ll
 	return resp, nil
 }
 
-// accumulateStream reads all chunks from the stream and assembles the response
-func (c *OpenAIStreamingClient) accumulateStream(stream *openai.ChatCompletionStream) (*llm.Response, error) {
-	var contentBuilder strings.Builder
-	toolCallsMap := make(map[int]*llm.ToolCall) // Index -> ToolCall
-	var finishReason string
-	var usage llm.Usage
-
-	for {
-		chunk, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			logger.Log.Error("stream recv error", "error", err)
-			return nil, fmt.Errorf("stream recv error: %w", err)
-		}
-
-		if len(chunk.Choices) == 0 {
-			continue
-		}
-
-		choice := chunk.Choices[0]
-
-		// Accumulate content
-		if choice.Delta.Content != "" {
-			contentBuilder.WriteString(choice.Delta.Content)
-		}
-
-		// Accumulate tool calls
-		if len(choice.Delta.ToolCalls) > 0 {
-			for _, tc := range choice.Delta.ToolCalls {
-
-				if tc.Index == nil {
-					continue
-				}
-				index := *tc.Index
-
-				// Initialize tool call if not exists
-				if _, exists := toolCallsMap[index]; !exists {
-					toolCallsMap[index] = &llm.ToolCall{
-						Type: "function",
-						Function: llm.FunctionCall{
-							Name:      "",
-							Arguments: "",
-						},
-					}
-				}
-
-				// Update tool call
-				if tc.ID != "" {
-					toolCallsMap[index].ID = tc.ID
-				}
-				if tc.Function.Name != "" {
-					toolCallsMap[index].Function.Name = tc.Function.Name
-				}
-				if tc.Function.Arguments != "" {
-					toolCallsMap[index].Function.Arguments += tc.Function.Arguments
-				}
-			}
-		}
-
-		// Capture finish reason
-		if choice.FinishReason != "" {
-			finishReason = string(choice.FinishReason)
-		}
-
-		// Usage info (typically in last chunk)
-		if chunk.Usage != nil {
-			usage = llm.Usage{
-				InputTokens:  chunk.Usage.PromptTokens,
-				OutputTokens: chunk.Usage.CompletionTokens,
-				TotalTokens:  chunk.Usage.TotalTokens,
-			}
-		}
-	}
-
-	// Convert toolCallsMap to slice
-	var toolCalls []llm.ToolCall
-	if len(toolCallsMap) > 0 {
-		// Sort by index and extract
-		maxIndex := 0
-		for idx := range toolCallsMap {
-			if idx > maxIndex {
-				maxIndex = idx
-			}
-		}
-
-		toolCalls = make([]llm.ToolCall, 0, len(toolCallsMap))
-		for i := 0; i <= maxIndex; i++ {
-			if tc, exists := toolCallsMap[i]; exists {
-				toolCalls = append(toolCalls, *tc)
-			}
-		}
-	}
-
-	return &llm.Response{
-		Content:    contentBuilder.String(),
-		ToolCalls:  toolCalls,
-		StopReason: finishReason,
-		Usage:      usage,
-		Model:      c.model,
-	}, nil
-}
-
 // getMaxTokens returns the appropriate max tokens value
 func (c *OpenAIClient) getMaxTokens(req *llm.Request) int {
 	if req.MaxTokens > 0 {
@@ -228,111 +124,159 @@ type StreamChunk struct {
 	Error     error
 }
 
-// ChatStream streams responses (future API extension)
 func (c *OpenAIStreamingClient) ChatStream(ctx context.Context, req *llm.Request) <-chan StreamChunk {
 	ch := make(chan StreamChunk)
-
 	go func() {
 		defer close(ch)
 
-		// Convert messages and tools
-		messages := c.toOpenAIMessages(req.Messages)
-		tools := c.toOpenAITools(req.Tools)
-
-		chatReq := openai.ChatCompletionRequest{
-			Model:       c.model,
-			Messages:    messages,
-			Stream:      true,
-			MaxTokens:   c.getMaxTokens(req),
-			Temperature: float32(c.getTemperature(req)),
-		}
-
-		if len(tools) > 0 {
-			chatReq.Tools = tools
-			chatReq.ToolChoice = "auto"
-		}
-
-		stream, err := c.client.CreateChatCompletionStream(ctx, chatReq)
+		stream, err := c.createStream(ctx, req)
 		if err != nil {
 			ch <- StreamChunk{Error: err, Done: true}
 			return
 		}
 		defer func() {
 			if cerr := stream.Close(); cerr != nil {
-				logger.Log.Error("openai streaming close error",
-					"model", c.model,
-					"error", cerr)
+				logger.Log.Error("openai streaming close error", "model", c.model, "error", cerr)
 			}
 		}()
 
-		toolCallsMap := make(map[int]*llm.ToolCall)
-
-		for {
-			chunk, err := stream.Recv()
-			if err == io.EOF {
-				ch <- StreamChunk{Done: true}
-				break
-			}
-			if err != nil {
-				ch <- StreamChunk{Error: err, Done: true}
-				break
-			}
-
-			if len(chunk.Choices) == 0 {
-				continue
-			}
-
-			choice := chunk.Choices[0]
-
-			// Send content chunks
-			if choice.Delta.Content != "" {
-				ch <- StreamChunk{
-					Content: choice.Delta.Content,
-					Done:    false,
-				}
-			}
-
-			// Accumulate tool calls
-			if len(choice.Delta.ToolCalls) > 0 {
-				for _, tc := range choice.Delta.ToolCalls {
-					if tc.Index == nil {
-						continue
-					}
-					index := *tc.Index
-					if _, exists := toolCallsMap[index]; !exists {
-						toolCallsMap[index] = &llm.ToolCall{
-							Type:     "function",
-							Function: llm.FunctionCall{},
-						}
-					}
-
-					if tc.ID != "" {
-						toolCallsMap[index].ID = tc.ID
-					}
-					if tc.Function.Name != "" {
-						toolCallsMap[index].Function.Name = tc.Function.Name
-					}
-					if tc.Function.Arguments != "" {
-						toolCallsMap[index].Function.Arguments += tc.Function.Arguments
-					}
-				}
-			}
-
-			// Send complete tool calls when done
-			if choice.FinishReason == openai.FinishReasonToolCalls {
-				var toolCalls []llm.ToolCall
-				for i := 0; i < len(toolCallsMap); i++ {
-					if tc, exists := toolCallsMap[i]; exists {
-						toolCalls = append(toolCalls, *tc)
-					}
-				}
-				ch <- StreamChunk{
-					ToolCalls: toolCalls,
-					Done:      true,
-				}
-			}
-		}
+		c.processStream(stream, ch)
 	}()
-
 	return ch
+}
+
+// createStream builds the request and opens the stream
+func (c *OpenAIStreamingClient) createStream(ctx context.Context, req *llm.Request) (*openai.ChatCompletionStream, error) {
+	messages := c.toOpenAIMessages(req.Messages)
+	tools := c.toOpenAITools(req.Tools)
+
+	chatReq := openai.ChatCompletionRequest{
+		Model:       c.model,
+		Messages:    messages,
+		Stream:      true,
+		MaxTokens:   c.getMaxTokens(req),
+		Temperature: float32(c.getTemperature(req)),
+	}
+	if len(tools) > 0 {
+		chatReq.Tools = tools
+		chatReq.ToolChoice = "auto"
+	}
+
+	return c.client.CreateChatCompletionStream(ctx, chatReq)
+}
+
+// processStream reads chunks from the stream and sends them to the channel
+func (c *OpenAIStreamingClient) processStream(stream *openai.ChatCompletionStream, ch chan<- StreamChunk) {
+	toolCallsMap := make(map[int]*llm.ToolCall)
+
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			ch <- StreamChunk{Done: true}
+			return
+		}
+		if err != nil {
+			ch <- StreamChunk{Error: err, Done: true}
+			return
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+
+		choice := chunk.Choices[0]
+
+		if choice.Delta.Content != "" {
+			ch <- StreamChunk{Content: choice.Delta.Content}
+		}
+
+		accumulateToolCalls(toolCallsMap, choice.Delta.ToolCalls)
+
+		if choice.FinishReason == openai.FinishReasonToolCalls {
+			ch <- StreamChunk{ToolCalls: collectToolCalls(toolCallsMap), Done: true}
+			return
+		}
+	}
+}
+
+// accumulateToolCalls merges streaming tool call deltas into the map
+func accumulateToolCalls(toolCallsMap map[int]*llm.ToolCall, deltas []openai.ToolCall) {
+	for _, tc := range deltas {
+		if tc.Index == nil {
+			continue
+		}
+		index := *tc.Index
+		if _, exists := toolCallsMap[index]; !exists {
+			toolCallsMap[index] = &llm.ToolCall{Type: "function"}
+		}
+		entry := toolCallsMap[index]
+		if tc.ID != "" {
+			entry.ID = tc.ID
+		}
+		if tc.Function.Name != "" {
+			entry.Function.Name = tc.Function.Name
+		}
+		if tc.Function.Arguments != "" {
+			entry.Function.Arguments += tc.Function.Arguments
+		}
+	}
+}
+
+// collectToolCalls converts the map into an ordered slice
+func collectToolCalls(toolCallsMap map[int]*llm.ToolCall) []llm.ToolCall {
+	toolCalls := make([]llm.ToolCall, 0, len(toolCallsMap))
+	for i := 0; i < len(toolCallsMap); i++ {
+		if tc, exists := toolCallsMap[i]; exists {
+			toolCalls = append(toolCalls, *tc)
+		}
+	}
+	return toolCalls
+}
+
+func (c *OpenAIStreamingClient) accumulateStream(stream *openai.ChatCompletionStream) (*llm.Response, error) {
+	var contentBuilder strings.Builder
+	toolCallsMap := make(map[int]*llm.ToolCall)
+	var finishReason string
+	var usage llm.Usage
+
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			logger.Log.Error("stream recv error", "error", err)
+			return nil, fmt.Errorf("stream recv error: %w", err)
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+
+		choice := chunk.Choices[0]
+		contentBuilder.WriteString(choice.Delta.Content)
+		accumulateToolCalls(toolCallsMap, choice.Delta.ToolCalls)
+
+		if choice.FinishReason != "" {
+			finishReason = string(choice.FinishReason)
+		}
+		if chunk.Usage != nil {
+			usage = extractUsage(chunk.Usage)
+		}
+	}
+
+	return &llm.Response{
+		Content:    contentBuilder.String(),
+		ToolCalls:  collectToolCalls(toolCallsMap),
+		StopReason: finishReason,
+		Usage:      usage,
+		Model:      c.model,
+	}, nil
+}
+
+// extractUsage converts openai usage to llm.Usage
+func extractUsage(u *openai.Usage) llm.Usage {
+	return llm.Usage{
+		InputTokens:  u.PromptTokens,
+		OutputTokens: u.CompletionTokens,
+		TotalTokens:  u.TotalTokens,
+	}
 }

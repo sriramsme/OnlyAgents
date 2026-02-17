@@ -214,10 +214,14 @@ func (a *Agent) handleToolCalls(ctx context.Context, messages []llm.Message, res
 		}
 
 		// Find and execute skill
-		skill, _ := a.skills.Get(tc.Function.Name)
+		skill, err := a.skills.Get(tc.Function.Name)
 		if skill == nil {
 			err := fmt.Errorf("skill not found: %s", tc.Function.Name)
 			a.logger.Error("skill not found", "skill", tc.Function.Name)
+			return "", err
+		}
+		if err != nil {
+			a.logger.Error("skill issue", "skill", tc.Function.Name, "error", err)
 			return "", err
 		}
 
