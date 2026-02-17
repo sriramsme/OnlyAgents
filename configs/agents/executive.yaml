@@ -1,5 +1,6 @@
 agent:
-  id: "user.assistant.test"
+  id: "user.assistant.test" # must be unique per agent
+  is_executive: true   # only one agent can be an executive
   name: "TestAgent"
   role: "Testing Assistant"
   max_concurrency: 10

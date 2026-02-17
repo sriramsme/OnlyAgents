@@ -194,6 +194,20 @@ OnlyAgents/
 │   │   ├── lifecycle.go
 │   │   ├── state.go
 │   │   └── router.go
+│   ├── llm/               # LLM integration
+│   │   ├── client.go
+│   │   ├── factory.go
+│   │   ├── types.go
+│   │   └── providers/
+│   │       ├── anthropic/
+│   │           ├── anthropic.go
+│   │       ├── openai/
+│   │           ├── openai.go
+│   │           ├── streaming.go
+│   │   └── bootstrap/
+│   │       ├── providers_all.go
+│   │       ├── providers_anthropic.go
+│   │       ├── providers_openai.go
 │   ├── asec/               # Security protocol
 │   │   ├── identity.go
 │   │   ├── signing.go

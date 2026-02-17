@@ -1,0 +1,3 @@
+host: 0.0.0.0
+port: 8080
+api_key_vault: "server/" # or "${vault:llm/openai/api_key}"

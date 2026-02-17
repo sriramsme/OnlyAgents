@@ -1,0 +1,49 @@
+# ── Build stage ──────────────────────────────────────────────────────────────
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /app
+
+# Cache dependencies first (only re-runs when go.mod/go.sum change)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source and build
+COPY . .
+
+# Inject version at build time
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILT=unknown
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s \
+      -X github.com/sriramsme/OnlyAgents/pkg/version.Version=${VERSION} \
+      -X github.com/sriramsme/OnlyAgents/pkg/version.Commit=${COMMIT} \
+      -X github.com/sriramsme/OnlyAgents/pkg/version.Built=${BUILT}" \
+    -o onlyagents \
+    ./cmd/server
+
+# ── Final stage ───────────────────────────────────────────────────────────────
+FROM alpine:latest
+
+# Install ca-certificates for HTTPS calls to LLM APIs
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/onlyagents .
+
+# Data directory for SQLite memory DB
+RUN mkdir -p /app/data
+
+# Port the server listens on
+EXPOSE 8080
+
+# Non-root user for security
+RUN addgroup -S onlyagents && adduser -S onlyagents -G onlyagents
+RUN chown -R onlyagents:onlyagents /app
+USER onlyagents
+
+ENTRYPOINT ["./onlyagents"]
+CMD ["agent.yaml"]

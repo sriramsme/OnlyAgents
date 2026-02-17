@@ -1,7 +1,7 @@
 agent:
-  id: "user.assistant.main"
+  id: "user.assistant.messenger"
   name: "PersonalAssistant"
-  role: "general-purpose assistant"
+  role: "Messenger. Assistant to manage communication, schedule, and tasks."
   max_concurrency: 10
   buffer_size: 100
 
@@ -14,9 +14,9 @@ security:
   credentials_path: "./credentials"
 
 llm:
-  provider: "anthropic"  # anthropic, openai, gemini
-  model: "claude-sonnet-4-20250514"
-  api_key: ""  # Leave empty to use ANTHROPIC_API_KEY env var
+  provider: "openai"  # anthropic, openai, gemini
+  model: "gpt-5-nano"
+  api_key_vault: "llm/openai/api_key"  # or "${vault:llm/openai/api_key}"
   base_url: ""  # Optional, for custom endpoints
   options:
     max_tokens: "4096"
@@ -33,10 +33,7 @@ skills:
     config:
       provider: "gmail"
 
-  - name: "research"
-    enabled: true
-    config:
-      search_engine: "google"
+connectors: []
 
 platforms:
   - name: "google"

@@ -1,0 +1,20 @@
+type: env
+prefix: ONLYAGENTS_
+enable_cache: true
+audit_log: false
+
+
+# type: hashicorp
+# address: https://vault.internal:8200
+# # token is read from the VAULT_TOKEN env var by the vault package
+# mount: secret
+# path_prefix: onlyagents
+# enable_cache: true
+# audit_log: true
+#
+#
+# type: aws
+# region: us-east-1
+# path_prefix: /onlyagents/prod
+# enable_cache: true
+# audit_log: true

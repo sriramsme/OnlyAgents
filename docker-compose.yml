@@ -1,0 +1,23 @@
+services:
+  onlyagents:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount config file
+      - ./agent.yaml:/app/agent.yaml:ro
+      # Persist memory database
+      - ./data:/app/data
+    environment:
+      # LLM API keys (from your .env or shell environment)
+      - ONLYAGENTS_LLM_ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ONLYAGENTS_LLM_OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Connector credentials (add as needed)
+      # - ONLYAGENTS_CONNECTORS_DISCORD_TOKEN=${DISCORD_TOKEN}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
