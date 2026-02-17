@@ -1,0 +1,47 @@
+agent:
+  id: "user.assistant.main"
+  name: "PersonalAssistant"
+  role: "general-purpose assistant"
+  max_concurrency: 10
+  buffer_size: 100
+
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "text"  # text, json
+
+security:
+  key_path: "./keys/agent.key"
+  credentials_path: "./credentials"
+
+llm:
+  provider: "anthropic"  # anthropic, openai, gemini
+  model: "claude-sonnet-4-20250514"
+  api_key: ""  # Leave empty to use ANTHROPIC_API_KEY env var
+  base_url: ""  # Optional, for custom endpoints
+  options:
+    max_tokens: "4096"
+    temperature: "0.7"
+
+skills:
+  - name: "calendar"
+    enabled: true
+    config:
+      provider: "google"
+
+  - name: "email"
+    enabled: true
+    config:
+      provider: "gmail"
+
+  - name: "research"
+    enabled: true
+    config:
+      search_engine: "google"
+
+platforms:
+  - name: "google"
+    type: "oauth2"
+    enabled: true
+    credentials:
+      client_id: "${GOOGLE_CLIENT_ID}"
+      client_secret: "${GOOGLE_CLIENT_SECRET}"

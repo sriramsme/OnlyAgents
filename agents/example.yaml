@@ -2,11 +2,36 @@ agent:
   id: "user.assistant.test"
   name: "TestAgent"
   role: "Testing Assistant"
+  max_concurrency: 10
+  buffer_size: 100
 
 logging:
-  level: "debug"
-  format: "text"
+  level: "debug"  # debug, info, warn, error
+  format: "text"  # text, json
+
+security:
+  key_path: "./keys/agent.key"
+  credentials_path: "./credentials"
+
+# Vault configuration - defaults to env if not specified
+vault:
+  type: "env"              # "env", "hashicorp", "aws", "gcp"
+  prefix: "ONLYAGENTS_"    # Prefix for env vars
+  enable_cache: true
+  audit_log: false
 
 llm:
-  provider: "mock"
-  model: "claude-sonnet-4-20250514"
+  provider: "openai"  # anthropic, openai, gemini
+  model: "gpt-5-nano"  # model name
+# Vault key path - will lookup from vault
+  api_key_vault: "llm/openai/api_key"  # or "${vault:llm/openai/api_key}"
+  base_url: ""  # Optional, for custom endpoints
+  options:
+    max_tokens: "4096"
+    temperature: "0.7"
+
+skills: []
+
+platforms: []
+
+connectors: []
