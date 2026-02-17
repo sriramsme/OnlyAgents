@@ -7,105 +7,148 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/config"
 	"github.com/sriramsme/OnlyAgents/pkg/kernel"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
-func loadConfig(path string) (*config.Config, error) {
-	cfg, err := config.Load(path)
+func loadConfig(path string) (*config.Config, vault.Vault, error) {
+	cfg, v, err := config.Load(path)
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return nil, nil, fmt.Errorf("load config: %w", err)
 	}
 
 	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("validate config: %w", err)
+		return nil, nil, fmt.Errorf("validate config: %w", err)
 	}
 
 	// Initialize logging after config is validated
 	logger.Initialize(cfg.Logging.Level, cfg.Logging.Format)
-
-	logger.Log.Info("Configuration loaded",
+	logger.Log.Info("configuration loaded",
 		"agent_id", cfg.Agent.ID,
 		"agent_name", cfg.Agent.Name,
-	)
+		"provider", cfg.LLM.Provider,
+		"model", cfg.LLM.Model)
 
-	return cfg, nil
+	return cfg, v, nil
 }
 
-// create llm client
-func createLLMClient(cfg *config.Config) (llm.Client, error) {
+// createLLMClient creates an LLM client using the factory pattern
+func createLLMClient(cfg *config.Config, vault vault.Vault) (llm.Client, error) {
 	if cfg.LLM.Provider == "" {
 		return nil, fmt.Errorf("llm provider must be configured")
 	}
 
-	llmClient, err := llm.NewClient(llm.Config{
-		Provider:    llm.Provider(cfg.LLM.Provider),
-		Model:       cfg.LLM.Model,
-		APIKey:      cfg.LLM.APIKey,
-		BaseURL:     cfg.LLM.BaseURL,
-		MaxTokens:   4096,
-		Temperature: 1.0,
-	})
+	// Use factory to create client from config
+	factory := llm.NewFactory(cfg, vault)
+	client, err := factory.Create()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create LLM client: %w", err)
 	}
 
-	logger.Log.Info("LLM client initialized",
-		"provider", llmClient.Provider(),
-		"model", llmClient.Model())
+	logger.Log.Info("llm client initialized",
+		"provider", client.Provider(),
+		"model", client.Model())
 
-	return llmClient, nil
+	return client, nil
 }
 
 func main() {
-	fmt.Println("OpenAgent v0.1.0")
-	fmt.Println("================")
+	fmt.Println("OnlyAgents v0.1.0")
+	fmt.Println("==================")
+	fmt.Println()
+
+	// Load .env file first (if it exists)
+	if err := vault.LoadDotEnv(".env"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Error loading .env file: %v\n", err)
+	}
 
 	// Load config
-	cfg, err := loadConfig("agent.yaml")
+	configPath := "agent.yaml"
+	if len(os.Args) > 1 {
+		configPath = os.Args[1]
+	}
+
+	cfg, v, err := loadConfig(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Create LLM client
-	llmClient, err := createLLMClient(cfg)
+	defer func() {
+		if err := v.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error closing vault: %v\n", err)
+		}
+	}()
+
+	// Create LLM client using factory
+	llmClient, err := createLLMClient(cfg, v)
 	if err != nil {
-		logger.Log.Error("Failed to create LLM client", "err", err)
+		logger.Log.Error("failed to create LLM client", "error", err)
 		os.Exit(1)
 	}
+
 	// Create agent config
 	agentConfig := kernel.Config{
-		ID:             "user.assistant.main",
-		MaxConcurrency: 10,
-		BufferSize:     100,
+		ID:             cfg.Agent.ID,
+		MaxConcurrency: cfg.Agent.MaxConcurrency,
+		BufferSize:     cfg.Agent.BufferSize,
 		LLMClient:      llmClient,
 	}
 
 	// Create agent
 	agent, err := kernel.NewAgent(agentConfig)
 	if err != nil {
-		logger.Log.Error("Failed to create agent", "err", err)
+		logger.Log.Error("failed to create agent", "error", err)
 		os.Exit(1)
 	}
+
+	// Register skills (TODO: Load from config)
+	// Example:
+	// agent.RegisterSkill(skills.NewCalendarSkill())
+	// agent.RegisterSkill(skills.NewEmailSkill())
 
 	// Start agent
 	if err := agent.Start(); err != nil {
-		logger.Log.Error("Failed to start agent", "err", err)
+		logger.Log.Error("failed to start agent", "error", err)
 		os.Exit(1)
 	}
 
-	// Wait for SIGINT or SIGTERM
+	// Example: Execute a simple task (for testing)
+	if true { // Set to true to test
+		ctx := context.Background()
+		response, err := agent.Execute(ctx, "What's 2+2?")
+		if err != nil {
+			logger.Log.Error("execution failed", "error", err)
+		} else {
+			fmt.Println("\n=== Test Execution ===")
+			fmt.Println("Response:", response)
+			fmt.Println("======================")
+		}
+	}
+
+	// Wait for interrupt signal
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	fmt.Println("Agent started. Press Ctrl+C to stop the agent")
+
+	logger.Log.Info("agent running",
+		"agent_id", cfg.Agent.ID,
+		"press", "Ctrl+C to stop")
+	fmt.Println("Agent running. Press Ctrl+C to stop...")
+
 	<-ctx.Done()
 
 	// Graceful shutdown
 	fmt.Println("\nShutting down...")
+	logger.Log.Info("shutdown initiated")
+
 	if err := agent.Stop(); err != nil {
-		logger.Log.Error("Error during shutdown", "err", err)
+		logger.Log.Error("error during shutdown", "error", err)
+		os.Exit(1)
 	}
+
+	logger.Log.Info("shutdown complete")
 }

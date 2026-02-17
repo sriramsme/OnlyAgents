@@ -2,12 +2,14 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/skills"
 )
 
 type Agent struct {
@@ -16,7 +18,7 @@ type Agent struct {
 	connectors *ConnectorRegistry
 	security   *SecurityManager
 	state      *StateManager
-	llm        llm.Client
+	llmClient  llm.Client
 
 	// Message handling
 	incoming chan Message
@@ -42,8 +44,11 @@ type Config struct {
 
 // NewAgent creates a new agent instance
 func NewAgent(config Config) (*Agent, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	if config.LLMClient == nil {
+		return nil, fmt.Errorf("LLM client is required")
+	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	logger := slog.With("agent_id", config.ID)
 
 	agent := &Agent{
@@ -52,7 +57,7 @@ func NewAgent(config Config) (*Agent, error) {
 		connectors: NewConnectorRegistry(),
 		security:   NewSecurityManager(),
 		state:      NewStateManager(),
-		llm:        config.LLMClient,
+		llmClient:  config.LLMClient,
 		incoming:   make(chan Message, config.BufferSize),
 		outgoing:   make(chan Message, config.BufferSize),
 		ctx:        ctx,
@@ -66,43 +71,43 @@ func NewAgent(config Config) (*Agent, error) {
 
 // Start starts the agent
 func (a *Agent) Start() error {
-	a.logger.Info("Starting agent...")
+	a.logger.Info("starting agent",
+		"provider", a.llmClient.Provider(),
+		"model", a.llmClient.Model())
 
-	// start message processing
+	// Start message processing
 	a.wg.Add(1)
 	go a.processMessages()
 
-	// start health check
+	// Start health check
 	a.wg.Add(1)
 	go a.healthCheck()
 
-	a.logger.Info("Agent started successfully")
+	a.logger.Info("agent started successfully")
 	return nil
 }
 
 // Stop gracefully shuts down the agent
 func (a *Agent) Stop() error {
-	a.logger.Info("Stopping agent...")
+	a.logger.Info("stopping agent")
 	a.cancel()
 
-	// wait fo goroutines to finish
+	// Wait for goroutines to finish
 	done := make(chan struct{})
 	go func() {
 		a.wg.Wait()
 		close(done)
 	}()
 
-	// wait with timeout
+	// Wait with timeout
 	select {
 	case <-done:
-		a.logger.Info("Agent stopped successfully")
+		a.logger.Info("agent stopped successfully")
 		return nil
-
 	case <-time.After(time.Second * 5):
-		a.logger.Error("Agent stop timeout, forcefully shutting down...")
+		a.logger.Error("agent stop timeout, forcefully shutting down")
+		return fmt.Errorf("shutdown timeout")
 	}
-
-	return nil
 }
 
 // processMessages is the main event loop of the agent
@@ -121,7 +126,7 @@ func (a *Agent) processMessages() {
 
 // handleMessage processes a message
 func (a *Agent) handleMessage(msg Message) {
-	a.logger.Info("Received message",
+	a.logger.Info("received message",
 		"message_id", msg.ID,
 		"from", msg.FromAgent,
 		"action", msg.Action)
@@ -129,9 +134,8 @@ func (a *Agent) handleMessage(msg Message) {
 	// TODO: Full message handling pipeline
 	// 1. Security verification
 	// 2. Intent classification
-	// 3. Skill selection
-	// 4. Execution
-	// 5. Response signing
+	// 3. Skill selection and execution
+	// 4. Response signing
 }
 
 // healthCheck periodically checks the agent's health
@@ -144,46 +148,219 @@ func (a *Agent) healthCheck() {
 	for {
 		select {
 		case <-ticker.C:
-			// TODO: Health check
-
-			a.logger.Info("Health check successful")
+			// TODO: Proper health checks
+			a.logger.Debug("health check successful")
 		case <-a.ctx.Done():
 			return
 		}
 	}
 }
 
-// AskLLM is a helper method for skills to use
-func (a *Agent) AskLLM(ctx context.Context, system, prompt string) (string, error) {
-	if a.llm == nil {
-		return "", fmt.Errorf("LLM client not configured")
+// Execute processes a user message with tool calling support
+func (a *Agent) Execute(ctx context.Context, userMessage string) (string, error) {
+	a.logger.Debug("executing user request",
+		"message_length", len(userMessage))
+
+	// Build conversation with system prompt
+	messages := []llm.Message{
+		llm.SystemMessage(a.getSystemPrompt()),
+		llm.UserMessage(userMessage),
 	}
 
-	resp, err := a.llm.Complete(ctx, llm.CompletionRequest{
-		System: system,
-		Messages: []llm.Message{
-			{Role: llm.RoleUser, Content: prompt},
+	// Get available skills as tools
+	tools := a.skillsAsTools()
+
+	// Call LLM with tool support
+	resp, err := a.llmClient.Chat(ctx, &llm.Request{
+		Messages: messages,
+		Tools:    tools,
+		Metadata: map[string]string{
+			"agent_id": a.id,
 		},
 	})
+	if err != nil {
+		a.logger.Error("llm request failed", "error", err)
+		return "", fmt.Errorf("llm request failed: %w", err)
+	}
 
+	// Log reasoning if available (extended thinking)
+	if resp.ReasoningContent != "" {
+		a.logger.Debug("agent reasoning available",
+			"reasoning_length", len(resp.ReasoningContent))
+		// Could store reasoning in state/memory for analysis
+	}
+
+	// Log token usage
+	a.logger.Debug("llm response received",
+		"input_tokens", resp.Usage.InputTokens,
+		"output_tokens", resp.Usage.OutputTokens,
+		"total_tokens", resp.Usage.TotalTokens,
+		"stop_reason", resp.StopReason)
+
+	// Handle tool calls if present
+	if resp.HasToolCalls() {
+		a.logger.Debug("executing tools",
+			"tool_count", len(resp.ToolCalls))
+		return a.handleToolCalls(ctx, messages, resp)
+	}
+
+	return resp.Content, nil
+}
+
+// handleToolCalls executes tools and continues the conversation
+func (a *Agent) handleToolCalls(ctx context.Context, messages []llm.Message, resp *llm.Response) (string, error) {
+	// Add assistant's response with tool calls
+	messages = append(messages, llm.AssistantMessageWithTools(
+		resp.Content,
+		resp.ReasoningContent,
+		resp.ToolCalls,
+	))
+
+	// Execute each tool
+	for _, tc := range resp.ToolCalls {
+		a.logger.Debug("executing tool",
+			"tool", tc.Function.Name,
+			"args", tc.Function.Arguments)
+
+		// Parse arguments
+		args, err := llm.ParseToolArguments(tc.Function.Arguments)
+		if err != nil {
+			a.logger.Error("failed to parse tool arguments",
+				"tool", tc.Function.Name,
+				"error", err)
+			return "", fmt.Errorf("invalid tool arguments: %w", err)
+		}
+
+		// Find and execute skill
+		skill, _ := a.skills.Get(tc.Function.Name)
+		if skill == nil {
+			err := fmt.Errorf("skill not found: %s", tc.Function.Name)
+			a.logger.Error("skill not found", "skill", tc.Function.Name)
+			return "", err
+		}
+
+		// Execute skill
+		result, err := skill.Execute(ctx, args)
+		if err != nil {
+			a.logger.Error("skill execution failed",
+				"skill", tc.Function.Name,
+				"error", err)
+			return "", fmt.Errorf("skill execution failed: %w", err)
+		}
+
+		// Convert result to JSON string
+		resultJSON, err := json.Marshal(result)
+		if err != nil {
+			a.logger.Error("failed to marshal skill result",
+				"skill", tc.Function.Name,
+				"error", err)
+			return "", err
+		}
+
+		// Add tool result to conversation
+		messages = append(messages, llm.ToolResultMessage(
+			tc.ID,
+			tc.Function.Name,
+			string(resultJSON),
+		))
+	}
+
+	// Continue conversation with tool results
+	finalResp, err := a.llmClient.Chat(ctx, &llm.Request{
+		Messages: messages,
+		Tools:    a.skillsAsTools(),
+		Metadata: map[string]string{
+			"agent_id": a.id,
+		},
+	})
 	if err != nil {
 		return "", err
 	}
 
-	a.logger.Debug("LLM completion",
-		"input_tokens", resp.InputTokens,
-		"output_tokens", resp.OutputTokens,
+	a.logger.Debug("final response after tools",
+		"response_length", len(finalResp.Content),
+		"tokens_used", finalResp.Usage.TotalTokens)
+
+	return finalResp.Content, nil
+}
+
+// AskLLM is a helper method for skills to interact with LLM
+// This provides a simple interface for skills that need LLM assistance
+func (a *Agent) AskLLM(ctx context.Context, system, prompt string) (string, error) {
+	if a.llmClient == nil {
+		return "", fmt.Errorf("LLM client not configured")
+	}
+
+	messages := []llm.Message{
+		llm.SystemMessage(system),
+		llm.UserMessage(prompt),
+	}
+
+	resp, err := a.llmClient.Chat(ctx, &llm.Request{
+		Messages: messages,
+		Metadata: map[string]string{
+			"agent_id": a.id,
+			"context":  "skill_helper",
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	a.logger.Debug("llm helper response",
+		"input_tokens", resp.Usage.InputTokens,
+		"output_tokens", resp.Usage.OutputTokens,
 		"model", resp.Model)
 
 	return resp.Content, nil
 }
 
-// RegisterSkill registers a new skill to the agent
-func (a *Agent) RegisterSkill(skill Skill) error {
+// getSystemPrompt generates the system prompt for the agent
+func (a *Agent) getSystemPrompt() string {
+	// TODO: Integrate with Soul package for personality-aware prompts
+	skillNames := a.skills.List()
+
+	if len(skillNames) == 0 {
+		return fmt.Sprintf(`You are agent %s, a helpful AI assistant.
+
+Be helpful, accurate, and concise in your responses.`, a.id)
+	}
+
+	return fmt.Sprintf(`You are agent %s, a helpful AI assistant.
+
+You have access to the following skills: %v
+
+Use these skills when appropriate to accomplish tasks. Be helpful, accurate, and efficient.`,
+		a.id, skillNames)
+}
+
+// skillsAsTools converts registered skills to LLM tool definitions
+func (a *Agent) skillsAsTools() []llm.ToolDef {
+	skills := a.skills.GetAll()
+	tools := make([]llm.ToolDef, 0, len(skills))
+
+	for _, skill := range skills {
+		tools = append(tools, llm.ToolDef{
+			Type: "function",
+			Function: llm.FunctionDef{
+				Name:        skill.Name(),
+				Description: skill.Description(),
+				Parameters:  skill.Parameters(),
+			},
+		})
+	}
+
+	return tools
+}
+
+// RegisterSkill registers a new skill with the agent
+func (a *Agent) RegisterSkill(skill skills.Skill) error {
+	a.logger.Info("registering skill",
+		"skill", skill.Name())
 	return a.skills.Register(skill)
 }
 
-// SendMessage sends a message to another agent
+// SendMessage sends a message to another agent (for A2A communication)
 func (a *Agent) SendMessage(msg Message) error {
 	select {
 	case a.outgoing <- msg:
@@ -191,4 +368,19 @@ func (a *Agent) SendMessage(msg Message) error {
 	case <-time.After(time.Second * 1):
 		return fmt.Errorf("send message timeout")
 	}
+}
+
+// ReceiveMessage returns the incoming message channel (for A2A communication)
+func (a *Agent) ReceiveMessage() <-chan Message {
+	return a.incoming
+}
+
+// ID returns the agent's ID
+func (a *Agent) ID() string {
+	return a.id
+}
+
+// LLMClient returns the agent's LLM client (for advanced use cases)
+func (a *Agent) LLMClient() llm.Client {
+	return a.llmClient
 }

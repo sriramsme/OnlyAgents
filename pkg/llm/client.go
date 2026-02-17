@@ -1,91 +1,117 @@
+// Package llm provides LLM client abstractions for OnlyAgents
 package llm
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 )
-
-// Provider represents different LLM providers
-type Provider string
 
 const (
 	ProviderAnthropic Provider = "anthropic"
 	ProviderOpenAI    Provider = "openai"
-	ProviderGemini    Provider = "google"
-	ProviderLocal     Provider = "local"
+	ProviderGemini    Provider = "gemini"
 )
-
-// Client is the interface for LLM interactions
-type Client interface {
-	// Generate completion
-	Complete(ctx context.Context, req CompletionRequest) (*CompletionResponse, error)
-
-	// Stream completion (for future)
-	// Stream(ctx context.Context, req CompletionRequest) (<-chan string, error)
-
-	// Provider info
-	Provider() Provider
-	Model() string
-}
-
-// CompletionRequest represents a request to the LLM
-type CompletionRequest struct {
-	// System prompt
-	System string
-
-	// Messages (conversation history)
-	Messages []Message
-
-	// Model parameters
-	MaxTokens   int
-	Temperature float64
-
-	// Metadata
-	Metadata map[string]string
-}
-
-// Message represents a single message in the conversation
-type Message struct {
-	Role    Role   `json:"role"`
-	Content string `json:"content"`
-}
-
-// Role represents the message sender
-type Role string
 
 const (
 	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
 	RoleSystem    Role = "system"
+	RoleTool      Role = "tool"
 )
 
-// CompletionResponse represents the LLM's response
-type CompletionResponse struct {
-	Content      string
-	StopReason   string
-	InputTokens  int
-	OutputTokens int
-	Model        string
+// HasToolCalls returns true if the response contains tool calls
+func (r *Response) HasToolCalls() bool {
+	return len(r.ToolCalls) > 0
 }
 
-// Config holds LLM client configuration
-type Config struct {
-	Provider    Provider
-	Model       string
-	APIKey      string
-	BaseURL     string
-	MaxTokens   int
-	Temperature float64
+// registry holds all registered providers
+var registry = make(map[Provider]*ProviderRegistration)
+
+// RegisterProvider registers a new provider
+func RegisterProvider(provider Provider, reg ProviderRegistration) {
+	registry[provider] = &reg
 }
 
-// NewClient creates a new LLM client based on provider
-func NewClient(config Config) (Client, error) {
-	switch config.Provider {
-	case ProviderAnthropic:
-		return NewAnthropicClient(config)
-	case ProviderOpenAI:
-		return nil, fmt.Errorf("OpenAI provider not yet implemented")
-	default:
-		return nil, fmt.Errorf("unsupported provider: %s", config.Provider)
+// SupportedProviders returns all registered provider names
+func SupportedProviders() []Provider {
+	providers := make([]Provider, 0, len(registry))
+	for p := range registry {
+		providers = append(providers, p)
 	}
+	return providers
+}
+
+// SupportedModels returns models supported by a provider
+func SupportedModels(provider Provider) []string {
+	if reg, ok := registry[provider]; ok {
+		return reg.Models
+	}
+	return nil
+}
+
+// ValidateProviderModel checks if a model is valid for a provider
+func ValidateProviderModel(provider Provider, model string) error {
+	reg, ok := registry[provider]
+	if !ok {
+		return fmt.Errorf("unsupported provider: %s", provider)
+	}
+
+	if len(reg.Models) == 0 {
+		return nil // No validation if models list is empty
+	}
+
+	for _, m := range reg.Models {
+		if m == model {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("model %s not supported by provider %s", model, provider)
+}
+
+// Helper functions for creating messages
+
+func UserMessage(content string) Message {
+	return Message{Role: RoleUser, Content: content}
+}
+
+func SystemMessage(content string) Message {
+	return Message{Role: RoleSystem, Content: content}
+}
+
+func AssistantMessage(content string) Message {
+	return Message{Role: RoleAssistant, Content: content}
+}
+
+func AssistantMessageWithTools(content, reasoningContent string, toolCalls []ToolCall) Message {
+	return Message{
+		Role:             RoleAssistant,
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		ToolCalls:        toolCalls,
+	}
+}
+
+func ToolResultMessage(toolCallID, name, content string) Message {
+	return Message{
+		Role:       RoleTool,
+		ToolCallID: toolCallID,
+		Name:       name,
+		Content:    content,
+	}
+}
+
+// ParseToolArguments safely parses tool arguments JSON
+func ParseToolArguments(arguments string) (map[string]any, error) {
+	trimmed := strings.TrimSpace(arguments)
+	if trimmed == "" {
+		return map[string]any{}, nil
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(arguments), &parsed); err != nil {
+		return nil, fmt.Errorf("invalid tool arguments JSON: %w", err)
+	}
+	return parsed, nil
 }

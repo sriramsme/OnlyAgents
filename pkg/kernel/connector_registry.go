@@ -3,33 +3,23 @@ package kernel
 import (
 	"fmt"
 	"sync"
+
+	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
-
-// Connector interface for platform integrations
-type Connector interface {
-	PlatformName() string
-	Version() string
-
-	Connect(credentials map[string]string) error
-	Disconnect() error
-	HealthCheck() (bool, error)
-
-	Capabilities() []string
-}
 
 // ConnectorRegistry manages platform connectors
 type ConnectorRegistry struct {
-	connectors map[string]Connector
+	connectors map[string]connectors.Connector
 	mu         sync.RWMutex
 }
 
 func NewConnectorRegistry() *ConnectorRegistry {
 	return &ConnectorRegistry{
-		connectors: make(map[string]Connector),
+		connectors: make(map[string]connectors.Connector),
 	}
 }
 
-func (r *ConnectorRegistry) Register(connector Connector) error {
+func (r *ConnectorRegistry) Register(connector connectors.Connector) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -43,7 +33,7 @@ func (r *ConnectorRegistry) Register(connector Connector) error {
 	return nil
 }
 
-func (r *ConnectorRegistry) Get(name string) (Connector, error) {
+func (r *ConnectorRegistry) Get(name string) (connectors.Connector, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

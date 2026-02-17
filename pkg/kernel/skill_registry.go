@@ -1,43 +1,25 @@
 package kernel
 
 import (
-	"context"
 	"fmt"
 	"sync"
+
+	"github.com/sriramsme/OnlyAgents/pkg/skills"
 )
-
-// Skill interface that all skills must implement
-type Skill interface {
-	// Metadata
-	Name() string
-	Description() string
-	Version() string
-	RequiredCapabilities() []string
-
-	// Execution
-	Execute(ctx context.Context, intent string, params map[string]interface{}) (interface{}, error)
-
-	// LLM Integration
-	GetSystemPrompt() string
-
-	// Lifecycle
-	Initialize() error
-	Shutdown() error
-}
 
 // SkillRegistry manages available skills
 type SkillRegistry struct {
-	skills map[string]Skill
+	skills map[string]skills.Skill
 	mu     sync.RWMutex
 }
 
 func NewSkillRegistry() *SkillRegistry {
 	return &SkillRegistry{
-		skills: make(map[string]Skill),
+		skills: make(map[string]skills.Skill),
 	}
 }
 
-func (r *SkillRegistry) Register(skill Skill) error {
+func (r *SkillRegistry) Register(skill skills.Skill) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -55,7 +37,7 @@ func (r *SkillRegistry) Register(skill Skill) error {
 	return nil
 }
 
-func (r *SkillRegistry) Get(name string) (Skill, error) {
+func (r *SkillRegistry) Get(name string) (skills.Skill, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -76,4 +58,14 @@ func (r *SkillRegistry) List() []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+func (r *SkillRegistry) GetAll() []skills.Skill {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	skills := make([]skills.Skill, 0, len(r.skills))
+	for _, skill := range r.skills {
+		skills = append(skills, skill)
+	}
+	return skills
 }
