@@ -19,7 +19,7 @@ linters:
       check-blank: true
 
     govet:
-      check-shadowing: true
+      # check-shadowing: true
 
 issues:
   max-issues-per-linter: 0
