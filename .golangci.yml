@@ -1,4 +1,4 @@
-version: 2
+version: '2'
 
 linters:
   enable:
@@ -11,18 +11,17 @@ linters:
     - gocyclo
     - misspell
 
-linters-settings:
-  gocyclo:
-    min-complexity: 15
+  settings:
+    gocyclo:
+      min-complexity: 15
 
-  errcheck:
-    check-blank: true
+    errcheck:
+      check-blank: true
 
-  govet:
-    check-shadowing: true
+    govet:
+      check-shadowing: true
 
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
 
