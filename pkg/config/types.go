@@ -9,14 +9,14 @@ import (
 
 // Config represents the complete agent configuration.
 type Config struct {
-	Agent      AgentConfig       `mapstructure:"agent"`
-	Logging    LoggingConfig     `mapstructure:"logging"`
-	Security   SecurityConfig    `mapstructure:"security"`
-	LLM        LLMConfig         `mapstructure:"llm"`
-	Vault      vault.Config      `mapstructure:"vault"`
-	Skills     []SkillConfig     `mapstructure:"skills"`
-	Platforms  []PlatformConfig  `mapstructure:"platforms"`
-	Connectors []ConnectorConfig `mapstructure:"connectors"`
+	Agent      AgentConfig      `mapstructure:"agent"`
+	Logging    LoggingConfig    `mapstructure:"logging"`
+	Security   SecurityConfig   `mapstructure:"security"`
+	LLM        LLMConfig        `mapstructure:"llm"`
+	Vault      vault.Config     `mapstructure:"vault"`
+	Skills     []SkillConfig    `mapstructure:"skills"`
+	Platforms  []PlatformConfig `mapstructure:"platforms"`
+	Connectors []string         `mapstructure:"connectors"`
 
 	// unexported — injected after load, never in yaml
 	v vault.Vault

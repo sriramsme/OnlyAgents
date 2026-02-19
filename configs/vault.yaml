@@ -1,4 +1,5 @@
 type: env
+dotenv_path: '.env'
 prefix: ONLYAGENTS_
 enable_cache: true
 audit_log: false

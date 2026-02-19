@@ -1,5 +1,5 @@
 agent:
-  id: "user.assistant.messenger"
+  id: "messenger"
   name: "PersonalAssistant"
   role: "Messenger. Assistant to manage communication, schedule, and tasks."
   max_concurrency: 10
@@ -14,9 +14,9 @@ security:
   credentials_path: "./credentials"
 
 llm:
-  provider: "openai"  # anthropic, openai, gemini
-  model: "gpt-5-nano"
-  api_key_vault: "llm/openai/api_key"  # or "${vault:llm/openai/api_key}"
+  provider: "gemini"  # anthropic, openai, gemini
+  model: "gemini-2.5-flash"
+  api_key_vault: "gemini/api_key"  # or "${vault:openai/api_key}"
   base_url: ""  # Optional, for custom endpoints
   options:
     max_tokens: "4096"

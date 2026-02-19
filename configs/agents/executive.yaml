@@ -1,8 +1,10 @@
 agent:
-  id: "user.assistant.test" # must be unique per agent
+  id: "executive" # must be unique per agent
   is_executive: true   # only one agent can be an executive
-  name: "TestAgent"
-  role: "Testing Assistant"
+  name: "Dragon"
+  role: "You are my main assistant. You are here to help with anything.
+You have access to sub agents that can help you with specific tasks.
+You can also use your own sub agents to accomplish tasks."
   max_concurrency: 10
   buffer_size: 100
 
@@ -14,18 +16,11 @@ security:
   key_path: "./keys/agent.key"
   credentials_path: "./credentials"
 
-# Vault configuration - defaults to env if not specified
-vault:
-  type: "env"              # "env", "hashicorp", "aws", "gcp"
-  prefix: "ONLYAGENTS_"    # Prefix for env vars
-  enable_cache: true
-  audit_log: false
-
 llm:
   provider: "openai"  # anthropic, openai, gemini
   model: "gpt-5-nano"  # model name
 # Vault key path - will lookup from vault
-  api_key_vault: "llm/openai/api_key"  # or "${vault:llm/openai/api_key}"
+  api_key_vault: "openai/api_key"  # or "${vault:openai/api_key}"
   base_url: ""  # Optional, for custom endpoints
   options:
     max_tokens: "4096"
@@ -35,4 +30,5 @@ skills: []
 
 platforms: []
 
-connectors: []
+connectors:
+  - telegram

@@ -55,15 +55,14 @@ func main() {
 	}
 
 	// Create agent config
-	agentConfig := kernel.Config{
+	agentConfig := config.AgentConfig{
 		ID:             cfg.Agent.ID,
 		MaxConcurrency: cfg.Agent.MaxConcurrency,
 		BufferSize:     cfg.Agent.BufferSize,
-		LLMClient:      llmClient,
 	}
 
 	// Create agent
-	agent, err := kernel.NewAgent(agentConfig)
+	agent, err := kernel.NewAgent(agentConfig, llmClient)
 	if err != nil {
 		logger.Log.Error("failed to create agent", "error", err)
 		os.Exit(1)

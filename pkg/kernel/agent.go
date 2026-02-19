@@ -17,13 +17,14 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/a2a"
+	"github.com/sriramsme/OnlyAgents/pkg/config"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 )
 
 // NewAgent creates a new agent instance
-func NewAgent(config Config) (*Agent, error) {
-	if config.LLMClient == nil {
+func NewAgent(config config.AgentConfig, llmClient llm.Client) (*Agent, error) {
+	if llmClient == nil {
 		return nil, fmt.Errorf("LLM client is required")
 	}
 
@@ -31,17 +32,19 @@ func NewAgent(config Config) (*Agent, error) {
 	logger := slog.With("agent_id", config.ID)
 
 	agent := &Agent{
-		id:         config.ID,
-		skills:     NewSkillRegistry(),
-		connectors: NewConnectorRegistry(),
-		state:      NewStateManager(),
-		llmClient:  config.LLMClient,
-		incoming:   make(chan a2a.Message, config.BufferSize),
-		outgoing:   make(chan a2a.Message, config.BufferSize),
-		ctx:        ctx,
-		cancel:     cancel,
-		config:     config,
-		logger:     logger,
+		id:        config.ID,
+		skills:    NewSkillRegistry(),
+		state:     NewStateManager(),
+		llmClient: llmClient,
+		incoming:  make(chan a2a.Message, config.BufferSize),
+		outgoing:  make(chan a2a.Message, config.BufferSize),
+		ctx:       ctx,
+		cancel:    cancel,
+		config:    config,
+		logger:    logger,
+		connectors: &ConnectorRegistry{ // Create empty registry
+			connectors: make(map[string]Connector),
+		},
 	}
 
 	return agent, nil
@@ -369,4 +372,48 @@ func (a *Agent) ID() string {
 // LLMClient returns the agent's LLM client (for advanced use cases)
 func (a *Agent) LLMClient() llm.Client {
 	return a.llmClient
+}
+
+// RegisterConnectors populates agent's connector registry
+func (a *Agent) RegisterConnectors(connectorNames []string, globalRegistry *ConnectorRegistry) error {
+	if len(connectorNames) == 0 {
+		a.logger.Debug("no connectors configured for agent")
+		return nil
+	}
+
+	var errs []error
+	for _, name := range connectorNames {
+		connector, err := globalRegistry.Get(name)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("connector %s: %w", name, err))
+			continue
+		}
+
+		// Add to agent's local registry
+		a.connectors.mu.Lock()
+		a.connectors.connectors[name] = connector
+		a.connectors.mu.Unlock()
+
+		a.logger.Info("connector registered", "connector", name)
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to register connectors for agent %s: %v", a.id, errs)
+	}
+
+	return nil
+}
+
+// Delegate connector access methods to the registry
+func (a *Agent) GetConnector(name string) (Connector, error) {
+	return a.connectors.Get(name)
+}
+
+func (a *Agent) ListConnectors() []string {
+	return a.connectors.List()
+}
+
+func (a *Agent) HasConnector(name string) bool {
+	_, err := a.connectors.Get(name)
+	return err == nil
 }

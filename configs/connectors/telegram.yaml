@@ -1,0 +1,31 @@
+# Telegram Bot Connector
+# To enable: Set enabled: true and configure bot token in vault
+
+platform: telegram
+enabled: true  # Set to true when ready
+
+# Vault credentials (required)
+credentials:
+  bot_token: "telegram/bot_token"  # Add this to your .env as TELEGRAM_BOT_TOKEN or your vault
+
+# Operation mode
+mode: polling  # or "webhook" for production
+
+# Routing
+default_agent: executive
+
+# Optional: Whitelist users
+# allow_from:
+#   - "123456789"
+
+# Polling settings (mode: polling)
+polling:
+  timeout: 30
+  limit: 100
+  retry_delay: 5
+  max_retries: 3
+
+# Webhook settings (mode: webhook)
+# webhook:
+#   url: "https://yourdomain.com/webhook/telegram"
+#   port: 8443
