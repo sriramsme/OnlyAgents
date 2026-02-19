@@ -231,7 +231,6 @@ func collectToolCalls(toolCallsMap map[int]*llm.ToolCall) []llm.ToolCall {
 	}
 	return toolCalls
 }
-
 func (c *OpenAIStreamingClient) accumulateStream(stream *openai.ChatCompletionStream) (*llm.Response, error) {
 	var contentBuilder strings.Builder
 	toolCallsMap := make(map[int]*llm.ToolCall)

@@ -20,11 +20,6 @@ func main() {
 	fmt.Println("==================")
 	fmt.Println()
 
-	// Load .env file first (if it exists)
-	if err := vault.LoadDotEnv(".env"); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: Error loading .env file: %v\n", err)
-	}
-
 	vaultPath := "configs/vault.yaml"
 	if len(os.Args) > 1 {
 		vaultPath = os.Args[1]
@@ -41,7 +36,7 @@ func main() {
 		}
 	}()
 	// Load config
-	configPath := "configs/agents/executive.yaml"
+	configPath := "configs/agents/messenger.yaml"
 	if len(os.Args) > 2 {
 		configPath = os.Args[2]
 	}

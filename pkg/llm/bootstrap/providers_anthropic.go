@@ -1,4 +1,4 @@
-//go:build minimal && anthropic
+//go:build llm_anthropic
 
 package bootstrap
 

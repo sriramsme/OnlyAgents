@@ -10,7 +10,6 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/internal/api"
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/config"
 	"github.com/sriramsme/OnlyAgents/pkg/kernel"
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap" // auto-registers all providers
@@ -24,11 +23,6 @@ func main() {
 	fmt.Println("OnlyAgents Server v0.1.0")
 	fmt.Println("=========================")
 	fmt.Println()
-
-	// Load .env file first (same as cmd/agent/main.go)
-	if err := vault.LoadDotEnv(".env"); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: could not load .env file: %v\n", err)
-	}
 
 	// load vault
 	vaultConfigPath := "configs/vault.yaml"

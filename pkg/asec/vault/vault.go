@@ -8,29 +8,28 @@ import (
 	"time"
 )
 
-// NewVault creates a vault based on configuration
-func NewVault(cfg Config) (Vault, error) {
-	var vault Vault
-	var err error
+var providers = map[ProviderType]func(Config) (Vault, error){}
 
-	switch cfg.Type {
-	case "env", "environment":
-		vault, err = NewEnvVault(cfg)
-	// case "hashicorp", "vault":
-	// 	vault, err = NewHashiCorpVault(cfg)
-	// case "aws", "aws-secrets-manager":
-	// 	vault, err = NewAWSVault(cfg)
-	// case "gcp", "gcp-secret-manager":
-	// 	vault, err = NewGCPVault(cfg)
-	default:
+func registerProvider(t ProviderType, fn func(Config) (Vault, error)) {
+	providers[t] = fn
+}
+
+func NewVault(cfg Config) (Vault, error) {
+	// Default to env if not specified
+	if cfg.Type == "" {
+		cfg.Type = string(ProviderEnv)
+	}
+
+	fn, ok := providers[ProviderType(cfg.Type)]
+	if !ok {
 		return nil, fmt.Errorf("unsupported vault type: %s", cfg.Type)
 	}
 
+	v, err := fn(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	// Wrap with caching if enabled
 	if cfg.EnableCache {
 		ttl := cfg.CacheTTL
 		if ttl == 0 {
@@ -40,9 +39,8 @@ func NewVault(cfg Config) (Vault, error) {
 		if maxSize == 0 {
 			maxSize = 1000
 		}
-
-		vault = &CachedVault{
-			vault:    vault,
+		v = &CachedVault{
+			vault:    v,
 			cache:    make(map[string]cacheEntry),
 			ttl:      ttl,
 			maxSize:  maxSize,
@@ -50,7 +48,7 @@ func NewVault(cfg Config) (Vault, error) {
 		}
 	}
 
-	return vault, nil
+	return v, nil
 }
 
 // GetSecret retrieves a secret with caching

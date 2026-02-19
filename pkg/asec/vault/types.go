@@ -7,6 +7,15 @@ import (
 	"time"
 )
 
+type ProviderType string
+
+const (
+	ProviderEnv       ProviderType = "env"
+	ProviderHashiCorp ProviderType = "hashicorp"
+	ProviderAWS       ProviderType = "aws"
+	ProviderGCP       ProviderType = "gcp"
+)
+
 // Vault is the interface for secrets management
 type Vault interface {
 	// GetSecret retrieves a secret by key
@@ -36,7 +45,8 @@ type Config struct {
 	Type string `mapstructure:"type"` // env, hashicorp, aws, gcp
 
 	// EnvVault config
-	Prefix string `mapstructure:"prefix"` // Environment variable prefix
+	Prefix     string `mapstructure:"prefix"`      // Environment variable prefix
+	DotEnvPath string `mapstructure:"dotenv_path"` // optional, defaults to ".env"
 
 	// HashiCorp Vault config
 	Address   string `mapstructure:"address"`

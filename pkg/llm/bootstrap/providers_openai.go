@@ -1,4 +1,4 @@
-//go:build minimal && openai
+//go:build llm_openai
 
 package bootstrap
 
