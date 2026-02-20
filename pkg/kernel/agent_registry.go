@@ -108,3 +108,26 @@ func (r *AgentRegistry) RegisterConnectors(cfgs []*config.Config, connectorRegis
 
 	return nil
 }
+
+// RegisterConnectors wires connectors to all agents based on their config
+func (r *AgentRegistry) RegisterChannels(cfgs []*config.Config, channelRegistry *ChannelRegistry) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var errs []error
+	for id, agent := range r.agents {
+		for _, cfg := range cfgs {
+			if cfg.ID == id {
+				if err := agent.RegisterChannels(cfg.Channels, channelRegistry); err != nil {
+					errs = append(errs, fmt.Errorf("agent %s: %w", id, err))
+				}
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("channel registration errors: %v", errs)
+	}
+
+	return nil
+}

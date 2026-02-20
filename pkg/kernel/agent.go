@@ -18,7 +18,9 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/a2a"
+	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/config"
+	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/soul"
@@ -59,7 +61,10 @@ func NewAgent(cfg config.Config, llmClient llm.Client) (*Agent, error) {
 		soul:           agentSoul,
 		user:           userCfg,
 		connectors: &ConnectorRegistry{ // Create empty registry
-			connectors: make(map[string]Connector),
+			connectors: make(map[string]connectors.Connector),
+		},
+		channels: &ChannelRegistry{ // Create empty registry
+			channels: make(map[string]channels.Channel),
 		},
 	}
 
@@ -402,8 +407,38 @@ func (a *Agent) RegisterConnectors(connectorNames []string, globalRegistry *Conn
 	return nil
 }
 
+// RegisterConnectors populates agent's connector registry
+func (a *Agent) RegisterChannels(channelNames []string, globalRegistry *ChannelRegistry) error {
+	if len(channelNames) == 0 {
+		a.logger.Debug("no channelss configured for agent")
+		return nil
+	}
+
+	var errs []error
+	for _, name := range channelNames {
+		channel, err := globalRegistry.Get(name)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("channel %s: %w", name, err))
+			continue
+		}
+
+		// Add to agent's local registry
+		a.channels.mu.Lock()
+		a.channels.channels[name] = channel
+		a.channels.mu.Unlock()
+
+		a.logger.Info("channel registered", "channel", name)
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to register channel for agent %s: %v", a.id, errs)
+	}
+
+	return nil
+}
+
 // Delegate connector access methods to the registry
-func (a *Agent) GetConnector(name string) (Connector, error) {
+func (a *Agent) GetConnector(name string) (connectors.Connector, error) {
 	return a.connectors.Get(name)
 }
 

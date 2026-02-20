@@ -1,7 +1,6 @@
 package telegram
 
 // Config holds Telegram-specific configuration
-// Lives in telegram package, not base connectors package
 type Config struct {
 	// Base fields (every connector has these)
 	Platform string `yaml:"platform"` // "telegram"

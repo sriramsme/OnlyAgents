@@ -14,6 +14,7 @@ import (
 	th "github.com/mymmrac/telego/telegohandler"
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
+	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/kernel"
 )
 
@@ -22,11 +23,11 @@ const (
 )
 
 func init() {
-	kernel.RegisterConnector("telegram", NewConnector)
+	kernel.RegisterChannel("telegram", NewChannel)
 }
 
 // Connector implements the Connector interface for Telegram
-type TelegramConnector struct {
+type TelegramChannel struct {
 	config        *Config // telegram.Config, not connectors.TelegramConfig
 	vault         vault.Vault
 	agentRegistry *kernel.AgentRegistry
@@ -50,8 +51,8 @@ type TelegramConnector struct {
 	thinkingCtx  sync.Map // chatID -> cancelFunc
 }
 
-// NewConnector creates a new Telegram connector
-func NewConnector(rawConfig map[string]interface{}, vault vault.Vault, agentRegistry *kernel.AgentRegistry) (kernel.Connector, error) {
+// NewChannel creates a new Telegram channel
+func NewChannel(rawConfig map[string]interface{}, vault vault.Vault, agentRegistry *kernel.AgentRegistry) (channels.Channel, error) {
 
 	var cfg Config
 
@@ -78,7 +79,7 @@ func NewConnector(rawConfig map[string]interface{}, vault vault.Vault, agentRegi
 		"connector", "telegram",
 	)
 
-	return &TelegramConnector{
+	return &TelegramChannel{
 		config:        &cfg,
 		vault:         vault,
 		agentRegistry: agentRegistry,
@@ -91,22 +92,22 @@ func NewConnector(rawConfig map[string]interface{}, vault vault.Vault, agentRegi
 }
 
 // PlatformName returns the platform name
-func (c *TelegramConnector) PlatformName() string {
+func (c *TelegramChannel) PlatformName() string {
 	return "telegram"
 }
 
 // Version returns the connector version
-func (c *TelegramConnector) Version() string {
+func (c *TelegramChannel) Version() string {
 	return version
 }
 
 // HealthCheck returns true if the connector is healthy
-func (c *TelegramConnector) HealthCheck() (bool, error) {
+func (c *TelegramChannel) HealthCheck() (bool, error) {
 	return true, nil
 }
 
 // Connect initializes the Telegram bot connection
-func (c *TelegramConnector) Connect(ctx context.Context) error {
+func (c *TelegramChannel) Connect(ctx context.Context) error {
 	c.logger.Info("connecting to telegram")
 
 	// Get bot token from vault (always required)
@@ -154,7 +155,7 @@ func (c *TelegramConnector) Connect(ctx context.Context) error {
 }
 
 // Disconnect closes the Telegram bot connection
-func (c *TelegramConnector) Disconnect(ctx context.Context) error {
+func (c *TelegramChannel) Disconnect(ctx context.Context) error {
 	c.logger.Info("disconnecting from telegram")
 
 	// Stop any running handlers
@@ -181,7 +182,7 @@ func (c *TelegramConnector) Disconnect(ctx context.Context) error {
 }
 
 // Start starts receiving messages
-func (c *TelegramConnector) Start(ctx context.Context) error {
+func (c *TelegramChannel) Start(ctx context.Context) error {
 	c.mu.Lock()
 	if c.running {
 		c.mu.Unlock()
@@ -211,7 +212,7 @@ func (c *TelegramConnector) Start(ctx context.Context) error {
 }
 
 // Stop stops the connector
-func (c *TelegramConnector) Stop(ctx context.Context) error {
+func (c *TelegramChannel) Stop(ctx context.Context) error {
 	c.mu.Lock()
 	if !c.running {
 		c.mu.Unlock()

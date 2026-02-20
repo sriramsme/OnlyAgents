@@ -11,7 +11,7 @@ import (
 	tu "github.com/mymmrac/telego/telegoutil"
 )
 
-func (c *TelegramConnector) registerHandlers() {
+func (c *TelegramChannel) registerHandlers() {
 	// Command: /start
 	c.handler.HandleMessage(func(ctx *th.Context, message telego.Message) error {
 		return c.handleStart(ctx, &message)
@@ -29,7 +29,7 @@ func (c *TelegramConnector) registerHandlers() {
 }
 
 // handleStart handles /start command
-func (c *TelegramConnector) handleStart(ctx *th.Context, message *telego.Message) error {
+func (c *TelegramChannel) handleStart(ctx *th.Context, message *telego.Message) error {
 	if message == nil {
 		return fmt.Errorf("message is nil")
 	}
@@ -51,7 +51,7 @@ func (c *TelegramConnector) handleStart(ctx *th.Context, message *telego.Message
 }
 
 // handleHelp handles /help command
-func (c *TelegramConnector) handleHelp(ctx *th.Context, message *telego.Message) error {
+func (c *TelegramChannel) handleHelp(ctx *th.Context, message *telego.Message) error {
 	if message == nil {
 		return fmt.Errorf("message is nil")
 	}
@@ -77,7 +77,7 @@ Just send me a message and I'll help you with your request!`
 }
 
 // handleMessage handles incoming messages
-func (c *TelegramConnector) handleMessage(ctx *th.Context, message *telego.Message) error {
+func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message) error {
 	if message == nil || message.From == nil {
 		return fmt.Errorf("invalid message")
 	}
@@ -154,7 +154,7 @@ func (c *TelegramConnector) handleMessage(ctx *th.Context, message *telego.Messa
 }
 
 // routeMessage determines which agent should handle the message
-func (c *TelegramConnector) routeMessage(userID, content string) string {
+func (c *TelegramChannel) routeMessage(userID, content string) string {
 	// Executive-driven routing: always route to default agent (usually executive)
 	// Executive agent handles delegation to specialized sub-agents
 
@@ -177,7 +177,7 @@ func (c *TelegramConnector) routeMessage(userID, content string) string {
 }
 
 // extractContent extracts text content from a message
-func (c *TelegramConnector) extractContent(message *telego.Message) string {
+func (c *TelegramChannel) extractContent(message *telego.Message) string {
 	var content strings.Builder
 
 	if message.Text != "" {
@@ -217,7 +217,7 @@ func (c *TelegramConnector) extractContent(message *telego.Message) string {
 }
 
 // sendThinkingIndicator sends typing action
-func (c *TelegramConnector) sendThinkingIndicator(ctx *th.Context, chatIDStr string, chatID int64) {
+func (c *TelegramChannel) sendThinkingIndicator(ctx *th.Context, chatIDStr string, chatID int64) {
 	// Create a context for the thinking indicator lifecycle
 	thinkingCtx, cancel := context.WithTimeout(c.ctx, 5*time.Minute)
 	c.thinkingCtx.Store(chatIDStr, cancel)
@@ -251,7 +251,7 @@ func (c *TelegramConnector) sendThinkingIndicator(ctx *th.Context, chatIDStr str
 }
 
 // stopThinkingIndicator stops the typing animation
-func (c *TelegramConnector) stopThinkingIndicator(chatIDStr string) {
+func (c *TelegramChannel) stopThinkingIndicator(chatIDStr string) {
 	if cancel, ok := c.thinkingCtx.LoadAndDelete(chatIDStr); ok {
 		if cancelFunc, ok := cancel.(context.CancelFunc); ok {
 			cancelFunc()
@@ -260,7 +260,7 @@ func (c *TelegramConnector) stopThinkingIndicator(chatIDStr string) {
 }
 
 // createPlaceholder creates a "thinking" placeholder message
-func (c *TelegramConnector) createPlaceholder(ctx *th.Context, chatIDStr string, chatID int64) {
+func (c *TelegramChannel) createPlaceholder(ctx *th.Context, chatIDStr string, chatID int64) {
 	msg, err := c.bot.SendMessage(ctx, tu.Message(tu.ID(chatID), "💭 Thinking..."))
 	if err == nil {
 		c.placeholders.Store(chatIDStr, msg.MessageID)
@@ -268,7 +268,7 @@ func (c *TelegramConnector) createPlaceholder(ctx *th.Context, chatIDStr string,
 }
 
 // sendResponse sends the agent's response
-func (c *TelegramConnector) sendResponse(ctx *th.Context, chatIDStr string, chatID int64, content string) error {
+func (c *TelegramChannel) sendResponse(ctx *th.Context, chatIDStr string, chatID int64, content string) error {
 	// Convert markdown to Telegram HTML
 	htmlContent := markdownToTelegramHTML(content)
 
@@ -304,7 +304,7 @@ func (c *TelegramConnector) sendResponse(ctx *th.Context, chatIDStr string, chat
 }
 
 // sendErrorResponse sends an error message (without placeholder editing)
-func (c *TelegramConnector) sendErrorResponse(ctx *th.Context, chatIDStr string, chatID int64, errorMsg string) {
+func (c *TelegramChannel) sendErrorResponse(ctx *th.Context, chatIDStr string, chatID int64, errorMsg string) {
 	// Clean up placeholder
 	c.placeholders.Delete(chatIDStr)
 	c.stopThinkingIndicator(chatIDStr)
@@ -316,7 +316,7 @@ func (c *TelegramConnector) sendErrorResponse(ctx *th.Context, chatIDStr string,
 }
 
 // isAllowed checks if a user is allowed to use the bot
-func (c *TelegramConnector) isAllowed(user *telego.User) bool {
+func (c *TelegramChannel) isAllowed(user *telego.User) bool {
 	if len(c.config.AllowFrom) == 0 {
 		return true // No whitelist = everyone allowed
 	}

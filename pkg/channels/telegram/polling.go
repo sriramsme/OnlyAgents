@@ -9,7 +9,7 @@ import (
 )
 
 // startPolling starts long polling mode
-func (c *TelegramConnector) startPolling(ctx context.Context) error {
+func (c *TelegramChannel) startPolling(ctx context.Context) error {
 	timeout := 30
 	if c.config.Polling != nil && c.config.Polling.Timeout > 0 {
 		timeout = c.config.Polling.Timeout

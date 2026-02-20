@@ -5,24 +5,24 @@ import (
 	"fmt"
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
+	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/config"
-	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
 
 // NewConnectorRegistry creates a registry and loads all connector configs
-func NewConnectorRegistry(
+func NewChannelRegistry(
 	configDir string,
 	vault vault.Vault,
 	agentRegistry *AgentRegistry,
-) (*ConnectorRegistry, error) {
+) (*ChannelRegistry, error) {
 	// Load all connector configs
-	configs, err := config.LoadAllConnectorConfigs(configDir)
+	configs, err := config.LoadAllChannelConfigs(configDir)
 	if err != nil {
 		return nil, fmt.Errorf("load connector configs: %w", err)
 	}
 
-	registry := &ConnectorRegistry{
-		connectors: make(map[string]connectors.Connector),
+	registry := &ChannelRegistry{
+		channels: make(map[string]channels.Channel),
 	}
 
 	// Create each connector
@@ -31,56 +31,56 @@ func NewConnectorRegistry(
 			continue
 		}
 
-		factory, err := GetConnectorFactory(cfg.Platform)
+		factory, err := GetChannelFactory(cfg.Platform)
 		if err != nil {
 			return nil, fmt.Errorf("connector %s: %w", name, err)
 		}
 
-		connector, err := factory(cfg.RawConfig, vault, agentRegistry)
+		channel, err := factory(cfg.RawConfig, vault, agentRegistry)
 		if err != nil {
-			return nil, fmt.Errorf("connector %s: create: %w", name, err)
+			return nil, fmt.Errorf("channel %s: create: %w", name, err)
 		}
 
-		registry.connectors[name] = connector
+		registry.channels[name] = channel
 	}
 
 	return registry, nil
 }
 
 // Get returns a connector by name
-func (r *ConnectorRegistry) Get(name string) (connectors.Connector, error) {
+func (r *ChannelRegistry) Get(name string) (channels.Channel, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	connector, ok := r.connectors[name]
+	channel, ok := r.channels[name]
 	if !ok {
 		return nil, fmt.Errorf("connector not found: %s", name)
 	}
 
-	return connector, nil
+	return channel, nil
 }
 
 // List returns all connector names
-func (r *ConnectorRegistry) List() []string {
+func (r *ChannelRegistry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	names := make([]string, 0, len(r.connectors))
-	for name := range r.connectors {
+	names := make([]string, 0, len(r.channels))
+	for name := range r.channels {
 		names = append(names, name)
 	}
 	return names
 }
 
 // ConnectAll connects all connectors
-func (r *ConnectorRegistry) ConnectAll(ctx context.Context) error {
+func (r *ChannelRegistry) ConnectAll(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	var errs []error
-	for name, connector := range r.connectors {
-		if err := connector.Connect(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("connector %s: %w", name, err))
+	for name, channel := range r.channels {
+		if err := channel.Connect(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("channel %s: %w", name, err))
 		}
 	}
 
@@ -92,14 +92,14 @@ func (r *ConnectorRegistry) ConnectAll(ctx context.Context) error {
 }
 
 // StartAll starts all connectors
-func (r *ConnectorRegistry) StartAll(ctx context.Context) error {
+func (r *ChannelRegistry) StartAll(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	var errs []error
-	for name, connector := range r.connectors {
-		if err := connector.Start(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("connector %s: %w", name, err))
+	for name, channel := range r.channels {
+		if err := channel.Start(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("channel %s: %w", name, err))
 		}
 	}
 
@@ -111,14 +111,14 @@ func (r *ConnectorRegistry) StartAll(ctx context.Context) error {
 }
 
 // StopAll stops all connectors
-func (r *ConnectorRegistry) StopAll(ctx context.Context) error {
+func (r *ChannelRegistry) StopAll(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	var errs []error
-	for name, connector := range r.connectors {
-		if err := connector.Stop(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("connector %s: %w", name, err))
+	for name, channel := range r.channels {
+		if err := channel.Stop(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("channel %s: %w", name, err))
 		}
 	}
 
@@ -130,14 +130,14 @@ func (r *ConnectorRegistry) StopAll(ctx context.Context) error {
 }
 
 // DisconnectAll disconnects all connectors
-func (r *ConnectorRegistry) DisconnectAll(ctx context.Context) error {
+func (r *ChannelRegistry) DisconnectAll(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	var errs []error
-	for name, connector := range r.connectors {
-		if err := connector.Disconnect(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("connector %s: %w", name, err))
+	for name, channel := range r.channels {
+		if err := channel.Disconnect(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("channel %s: %w", name, err))
 		}
 	}
 

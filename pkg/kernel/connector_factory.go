@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
+	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
 
 // Factory creates a connector from raw config
@@ -12,34 +13,34 @@ type ConnectorFactory func(
 	rawConfig map[string]interface{},
 	vault vault.Vault,
 	agentRegistry *AgentRegistry,
-) (Connector, error)
+) (connectors.Connector, error)
 
 var (
-	factoryMu sync.RWMutex
-	factories = make(map[string]ConnectorFactory)
+	connectorFactoryMu sync.RWMutex
+	connectorFactories = make(map[string]ConnectorFactory)
 )
 
 // Register registers a connector factory for a platform
 func RegisterConnector(platform string, factory ConnectorFactory) {
-	factoryMu.Lock()
-	defer factoryMu.Unlock()
+	connectorFactoryMu.Lock()
+	defer connectorFactoryMu.Unlock()
 
 	if factory == nil {
 		panic("connectors: Register factory is nil for platform " + platform)
 	}
-	if _, exists := factories[platform]; exists {
+	if _, exists := connectorFactories[platform]; exists {
 		panic("connectors: Register called twice for platform " + platform)
 	}
 
-	factories[platform] = factory
+	connectorFactories[platform] = factory
 }
 
 // GetFactory returns the factory for a platform
-func GetFactory(platform string) (ConnectorFactory, error) {
-	factoryMu.RLock()
-	defer factoryMu.RUnlock()
+func GetConnectorFactory(platform string) (ConnectorFactory, error) {
+	connectorFactoryMu.RLock()
+	defer connectorFactoryMu.RUnlock()
 
-	factory, ok := factories[platform]
+	factory, ok := connectorFactories[platform]
 	if !ok {
 		return nil, fmt.Errorf("no factory registered for platform: %s", platform)
 	}
@@ -48,12 +49,12 @@ func GetFactory(platform string) (ConnectorFactory, error) {
 }
 
 // ListRegistered returns all registered platform names
-func ListRegistered() []string {
-	factoryMu.RLock()
-	defer factoryMu.RUnlock()
+func ListRegisteredConnectors() []string {
+	connectorFactoryMu.RLock()
+	defer connectorFactoryMu.RUnlock()
 
-	platforms := make([]string, 0, len(factories))
-	for platform := range factories {
+	platforms := make([]string, 0, len(connectorFactories))
+	for platform := range connectorFactories {
 		platforms = append(platforms, platform)
 	}
 	return platforms

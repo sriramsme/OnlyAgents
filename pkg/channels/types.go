@@ -1,66 +1,36 @@
-package kernel
+package channels
 
 import (
 	"context"
-	"log/slog"
-	"sync"
-
-	"github.com/sriramsme/OnlyAgents/pkg/a2a"
-	"github.com/sriramsme/OnlyAgents/pkg/channels"
-	"github.com/sriramsme/OnlyAgents/pkg/config"
-	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/llm"
-	"github.com/sriramsme/OnlyAgents/pkg/soul"
 )
 
-type AgentRegistry struct {
-	agents map[string]*Agent
-	mu     sync.RWMutex
-}
-
-type Agent struct {
-	id             string
-	name           string
-	isExecutive    bool
-	maxConcurrency int
-	bufferSize     int
-	skills         *SkillRegistry
-	connectors     *ConnectorRegistry
-	channels       *ChannelRegistry
-	state          *StateManager
-	llmClient      llm.Client
-	soul           *soul.Soul
-	user           *config.UserConfig
-
-	// Message handling
-	incoming chan a2a.Message
-	outgoing chan a2a.Message
+// Connector defines the interface for platform integrations
+type Channel interface {
+	// Metadata
+	PlatformName() string
+	Version() string
 
 	// Lifecycle
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	Connect(ctx context.Context) error
+	Disconnect(ctx context.Context) error
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
 
-	// Config
-	logger *slog.Logger
-}
-
-// ConnectorRegistry manages all active connectors
-type ConnectorRegistry struct {
-	mu         sync.RWMutex
-	connectors map[string]connectors.Connector
-}
-
-type ChannelRegistry struct {
-	mu       sync.RWMutex
-	channels map[string]channels.Channel
+	// Health
+	HealthCheck() (bool, error)
 }
 
 // BaseConfig is the minimal config all connectors must have
 // Platform-specific fields live in their own packages
-type BaseConnectorConfig struct {
+type Config struct {
 	Platform string `yaml:"platform"` // "telegram", "discord", etc.
 	Enabled  bool   `yaml:"enabled"`  // Only load if true
+
+	// Routing
+	DefaultAgent string `yaml:"default_agent"` // Usually "executive"
+
+	// Security
+	AllowFrom []string `yaml:"allow_from,omitempty"`
 }
 
 // IncomingMessage represents a message from a platform

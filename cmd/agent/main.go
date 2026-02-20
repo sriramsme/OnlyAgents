@@ -8,7 +8,9 @@ import (
 	"syscall"
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
+	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/config"
+	_ "github.com/sriramsme/OnlyAgents/pkg/connectors/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/kernel"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"

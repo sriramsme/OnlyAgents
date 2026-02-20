@@ -23,6 +23,7 @@ type Config struct {
 	Skills         []SkillConfig    `mapstructure:"skills"`
 	Platforms      []PlatformConfig `mapstructure:"platforms"`
 	Connectors     []string         `mapstructure:"connectors"`
+	Channels       []string         `mapstructure:"channels"`
 	Soul           SoulConfig       `mapstructure:"soul"`
 	User           UserConfig       `mapstructure:"user"`
 

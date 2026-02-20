@@ -11,6 +11,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/internal/api"
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
+	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/config"
 	_ "github.com/sriramsme/OnlyAgents/pkg/connectors/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/kernel"
@@ -43,8 +44,11 @@ func main() {
 		}
 	}()
 
-	connectorRegistry := mustSetupConnectors(vault, agentRegistry, agentConfigs)
+	connectorRegistry := setupConnectors(vault, agentRegistry, agentConfigs)
 	defer shutdownConnectors(connectorRegistry)
+
+	channelRegistry := setupChannels(vault, agentRegistry, agentConfigs)
+	defer shutdownChannels(channelRegistry)
 
 	// Start API server
 	server := createServer(serverConfig, agentRegistry)
@@ -95,7 +99,7 @@ func mustSetupAgents(configs []*config.Config, v vault.Vault) *kernel.AgentRegis
 }
 
 // mustSetupConnectors creates, registers, connects and starts connectors or exits
-func mustSetupConnectors(
+func setupConnectors(
 	v vault.Vault,
 	agentRegistry *kernel.AgentRegistry,
 	agentConfigs []*config.Config,
@@ -132,6 +136,43 @@ func mustSetupConnectors(
 	return registry
 }
 
+func setupChannels(
+	v vault.Vault,
+	agentRegistry *kernel.AgentRegistry,
+	agentConfigs []*config.Config,
+) *kernel.ChannelRegistry {
+	path := getConfigPath(3, "configs/channels/")
+
+	// Create connector registry
+	registry, err := kernel.NewChannelRegistry(path, v, agentRegistry)
+	if err != nil {
+		logger.Log.Error("failed to create channel registry", "error", err)
+		os.Exit(1)
+	}
+
+	// Wire connectors to agents
+	if err := agentRegistry.RegisterChannels(agentConfigs, registry); err != nil {
+		logger.Log.Error("failed to register channels", "error", err)
+		os.Exit(1)
+	}
+
+	ctx := context.Background()
+
+	// Connect all
+	if err := registry.ConnectAll(ctx); err != nil {
+		logger.Log.Error("failed to connect channels", "error", err)
+		os.Exit(1)
+	}
+
+	// Start all
+	if err := registry.StartAll(ctx); err != nil {
+		logger.Log.Error("failed to start channels", "error", err)
+		os.Exit(1)
+	}
+
+	return registry
+}
+
 // shutdownConnectors gracefully shuts down all connectors
 func shutdownConnectors(registry *kernel.ConnectorRegistry) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -142,6 +183,19 @@ func shutdownConnectors(registry *kernel.ConnectorRegistry) {
 	}
 	if err := registry.DisconnectAll(ctx); err != nil {
 		logger.Log.Error("error disconnecting connectors", "error", err)
+	}
+}
+
+// shutdownConnectors gracefully shuts down all connectors
+func shutdownChannels(registry *kernel.ChannelRegistry) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer func() { cancel() }()
+
+	if err := registry.StopAll(ctx); err != nil {
+		logger.Log.Error("error stopping channels", "error", err)
+	}
+	if err := registry.DisconnectAll(ctx); err != nil {
+		logger.Log.Error("error disconnecting channels", "error", err)
 	}
 }
 
