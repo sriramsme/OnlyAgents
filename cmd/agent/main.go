@@ -54,15 +54,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create agent config
-	agentConfig := config.AgentConfig{
-		ID:             cfg.Agent.ID,
-		MaxConcurrency: cfg.Agent.MaxConcurrency,
-		BufferSize:     cfg.Agent.BufferSize,
-	}
-
 	// Create agent
-	agent, err := kernel.NewAgent(agentConfig, llmClient)
+	agent, err := kernel.NewAgent(*cfg, llmClient)
 	if err != nil {
 		logger.Log.Error("failed to create agent", "error", err)
 		os.Exit(1)
@@ -97,7 +90,7 @@ func main() {
 	defer stop()
 
 	logger.Log.Info("agent running",
-		"agent_id", cfg.Agent.ID,
+		"agent_id", cfg.ID,
 		"press", "Ctrl+C to stop")
 	fmt.Println("Agent running. Press Ctrl+C to stop...")
 
@@ -128,8 +121,8 @@ func loadConfig(path string, vault vault.Vault) (*config.Config, error) {
 	// Initialize logging after config is validated
 	logger.Initialize(cfg.Logging.Level, cfg.Logging.Format)
 	logger.Log.Info("configuration loaded",
-		"agent_id", cfg.Agent.ID,
-		"agent_name", cfg.Agent.Name,
+		"agent_id", cfg.ID,
+		"agent_name", cfg.Name,
 		"provider", cfg.LLM.Provider,
 		"model", cfg.LLM.Model)
 

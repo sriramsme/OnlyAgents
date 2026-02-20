@@ -18,25 +18,19 @@ func NewAgentRegistry(configs []*config.Config, v vault.Vault) (*AgentRegistry, 
 	for _, cfg := range configs {
 		llmClient, err := llm.NewFactory(cfg, v).Create()
 		if err != nil {
-			return nil, fmt.Errorf("agent %s: llm init: %w", cfg.Agent.ID, err)
+			return nil, fmt.Errorf("agent %s: llm init: %w", cfg.ID, err)
 		}
 
-		agent, err := NewAgent(config.AgentConfig{
-			ID:             cfg.Agent.ID,
-			MaxConcurrency: cfg.Agent.MaxConcurrency,
-			BufferSize:     cfg.Agent.BufferSize,
-		},
-			llmClient,
-		)
+		agent, err := NewAgent(*cfg, llmClient)
 		if err != nil {
-			return nil, fmt.Errorf("agent %s: init: %w", cfg.Agent.ID, err)
+			return nil, fmt.Errorf("agent %s: init: %w", cfg.ID, err)
 		}
 
 		if err := agent.Start(); err != nil {
-			return nil, fmt.Errorf("agent %s: start: %w", cfg.Agent.ID, err)
+			return nil, fmt.Errorf("agent %s: start: %w", cfg.ID, err)
 		}
 
-		r.agents[cfg.Agent.ID] = agent
+		r.agents[cfg.ID] = agent
 	}
 
 	return r, nil
@@ -100,7 +94,7 @@ func (r *AgentRegistry) RegisterConnectors(cfgs []*config.Config, connectorRegis
 	var errs []error
 	for id, agent := range r.agents {
 		for _, cfg := range cfgs {
-			if cfg.Agent.ID == id {
+			if cfg.ID == id {
 				if err := agent.RegisterConnectors(cfg.Connectors, connectorRegistry); err != nil {
 					errs = append(errs, fmt.Errorf("agent %s: %w", id, err))
 				}

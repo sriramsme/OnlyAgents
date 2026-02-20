@@ -9,25 +9,25 @@ import (
 
 // Config represents the complete agent configuration.
 type Config struct {
-	Agent      AgentConfig      `mapstructure:"agent"`
-	Logging    LoggingConfig    `mapstructure:"logging"`
-	Security   SecurityConfig   `mapstructure:"security"`
-	LLM        LLMConfig        `mapstructure:"llm"`
-	Vault      vault.Config     `mapstructure:"vault"`
-	Skills     []SkillConfig    `mapstructure:"skills"`
-	Platforms  []PlatformConfig `mapstructure:"platforms"`
-	Connectors []string         `mapstructure:"connectors"`
+	ID             string           `mapstructure:"id"`
+	Name           string           `mapstructure:"name"`
+	IsExecutive    bool             `mapstructure:"is_executive"`
+	Role           string           `mapstructure:"role"`
+	UserRef        string           `mapstructure:"user_ref"`
+	MaxConcurrency int              `mapstructure:"max_concurrency"`
+	BufferSize     int              `mapstructure:"buffer_size"`
+	Logging        LoggingConfig    `mapstructure:"logging"`
+	Security       SecurityConfig   `mapstructure:"security"`
+	LLM            LLMConfig        `mapstructure:"llm"`
+	Vault          vault.Config     `mapstructure:"vault"`
+	Skills         []SkillConfig    `mapstructure:"skills"`
+	Platforms      []PlatformConfig `mapstructure:"platforms"`
+	Connectors     []string         `mapstructure:"connectors"`
+	Soul           SoulConfig       `mapstructure:"soul"`
+	User           UserConfig       `mapstructure:"user"`
 
 	// unexported — injected after load, never in yaml
 	v vault.Vault
-}
-
-type AgentConfig struct {
-	ID             string `mapstructure:"id"`
-	Name           string `mapstructure:"name"`
-	Role           string `mapstructure:"role"`
-	MaxConcurrency int    `mapstructure:"max_concurrency"`
-	BufferSize     int    `mapstructure:"buffer_size"`
 }
 
 type LoggingConfig struct {
@@ -79,6 +79,98 @@ type ServerConfig struct {
 	Version      string        `mapstructure:"version"`
 }
 
+type SoulConfig struct {
+	Identity     IdentityConfig     `mapstructure:"identity"`
+	Behavior     BehaviorConfig     `mapstructure:"behavior"`
+	Relationship RelationshipConfig `mapstructure:"relationship"`
+
+	// Extensibility: capture any custom fields user adds
+	Custom map[string]interface{} `mapstructure:",remain"`
+}
+
+type IdentityConfig struct {
+	Essence string `mapstructure:"essence"`
+	Role    string `mapstructure:"role"`
+}
+
+type BehaviorConfig struct {
+	Communication CommunicationConfig `mapstructure:"communication"`
+	Boundaries    []string            `mapstructure:"boundaries"`
+	Workflow      string              `mapstructure:"workflow"`
+}
+
+type CommunicationConfig struct {
+	Style       string   `mapstructure:"style"`
+	Preferences []string `mapstructure:"preferences"`
+}
+
+type RelationshipConfig struct {
+	ToUser string   `mapstructure:"to_user"`
+	Values []string `mapstructure:"values"`
+}
+
+type UserConfig struct {
+	Identity     UserIdentity    `mapstructure:"identity"`
+	Background   UserBackground  `mapstructure:"background"`
+	Work         UserWork        `mapstructure:"work"`
+	DailyRoutine DailyRoutine    `mapstructure:"daily_routine"`
+	Preferences  UserPreferences `mapstructure:"preferences"`
+	Learned      UserLearned     `mapstructure:"learned"`
+}
+
+type UserIdentity struct {
+	Name          string `mapstructure:"name"`
+	PreferredName string `mapstructure:"preferred_name"`
+	Role          string `mapstructure:"role"`
+	Timezone      string `mapstructure:"timezone"`
+}
+
+type UserBackground struct {
+	Professional string `mapstructure:"professional"`
+	Personal     string `mapstructure:"personal"`
+}
+
+type UserCommunication struct {
+	Style              string   `mapstructure:"style"`
+	Verbosity          string   `mapstructure:"verbosity"`
+	FeedbackPreference string   `mapstructure:"feedback_preference"`
+	Preferences        []string `mapstructure:"preferences"`
+}
+
+type UserWork struct {
+	CurrentProjects []Project `mapstructure:"current_projects"`
+	Goals           Goals     `mapstructure:"goals"`
+}
+
+type Goals struct {
+	ShortTerm []string `mapstructure:"short_term"`
+	LongTerm  []string `mapstructure:"long_term"`
+}
+
+type DailyRoutine struct {
+	WorkingHours  string `mapstructure:"working_hours"`
+	SleepingHours string `mapstructure:"sleeping_hours"`
+}
+
+type Project struct {
+	Name        string `mapstructure:"name"`
+	Description string `mapstructure:"description"`
+	Status      string `mapstructure:"status"`
+	Priority    string `mapstructure:"priority"`
+}
+type UserPreferences struct {
+	Technical     []string `mapstructure:"technical"`
+	Collaboration []string `mapstructure:"collaboration"`
+	WhatIValue    []string `mapstructure:"what_i_value"`
+}
+
+type UserLearned struct {
+	Likes    []string `mapstructure:"likes"`
+	Dislikes []string `mapstructure:"dislikes"`
+	Patterns []string `mapstructure:"patterns"`
+	Context  []string `mapstructure:"context"`
+}
+
 // GetVault returns the vault instance attached to this config.
 func (c *Config) GetVault() vault.Vault { return c.v }
 
@@ -95,7 +187,7 @@ func (c *Config) Close() error {
 
 // Validate checks required fields are present.
 func (c *Config) Validate() error {
-	if c.Agent.ID == "" {
+	if c.ID == "" {
 		return fmt.Errorf("agent.id is required")
 	}
 	if c.LLM.Provider == "" {

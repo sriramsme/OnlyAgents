@@ -14,40 +14,56 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/a2a"
 	"github.com/sriramsme/OnlyAgents/pkg/config"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
+	"github.com/sriramsme/OnlyAgents/pkg/soul"
 )
 
 // NewAgent creates a new agent instance
-func NewAgent(config config.AgentConfig, llmClient llm.Client) (*Agent, error) {
+func NewAgent(cfg config.Config, llmClient llm.Client) (*Agent, error) {
 	if llmClient == nil {
 		return nil, fmt.Errorf("LLM client is required")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	logger := slog.With("agent_id", config.ID)
+	logger := slog.With("agent_id", cfg.ID)
+
+	agentSoul := soul.NewSoul(cfg.Soul)
+
+	var userConfigPath string
+	if cfg.UserRef == "" {
+		userConfigPath = "configs/user.yaml"
+	}
+
+	userCfg, err := config.LoadUserConfig(userConfigPath)
 
 	agent := &Agent{
-		id:        config.ID,
-		skills:    NewSkillRegistry(),
-		state:     NewStateManager(),
-		llmClient: llmClient,
-		incoming:  make(chan a2a.Message, config.BufferSize),
-		outgoing:  make(chan a2a.Message, config.BufferSize),
-		ctx:       ctx,
-		cancel:    cancel,
-		config:    config,
-		logger:    logger,
+		id:             cfg.ID,
+		name:           cfg.Name,
+		isExecutive:    cfg.IsExecutive,
+		maxConcurrency: cfg.MaxConcurrency,
+		bufferSize:     cfg.BufferSize,
+		skills:         NewSkillRegistry(),
+		state:          NewStateManager(),
+		llmClient:      llmClient,
+		incoming:       make(chan a2a.Message, cfg.BufferSize),
+		outgoing:       make(chan a2a.Message, cfg.BufferSize),
+		ctx:            ctx,
+		cancel:         cancel,
+		logger:         logger,
+		soul:           agentSoul,
+		user:           userCfg,
 		connectors: &ConnectorRegistry{ // Create empty registry
 			connectors: make(map[string]Connector),
 		},
 	}
 
-	return agent, nil
+	return agent, err
 }
 
 // Start starts the agent
@@ -148,7 +164,8 @@ func (a *Agent) Execute(ctx context.Context, userMessage string) (string, error)
 
 	// Build conversation with system prompt
 	messages := []llm.Message{
-		llm.SystemMessage(a.getSystemPrompt()),
+		llm.SystemMessage(a.soul.SystemPrompt(ctx)),
+		llm.SystemMessage(a.formatUserProfile()),
 		llm.UserMessage(userMessage),
 	}
 
@@ -304,25 +321,6 @@ func (a *Agent) AskLLM(ctx context.Context, system, prompt string) (string, erro
 	return resp.Content, nil
 }
 
-// getSystemPrompt generates the system prompt for the agent
-func (a *Agent) getSystemPrompt() string {
-	// TODO: Integrate with Soul package for personality-aware prompts
-	skillNames := a.skills.List()
-
-	if len(skillNames) == 0 {
-		return fmt.Sprintf(`You are agent %s, a helpful AI assistant.
-
-Be helpful, accurate, and concise in your responses.`, a.id)
-	}
-
-	return fmt.Sprintf(`You are agent %s, a helpful AI assistant.
-
-You have access to the following skills: %v
-
-Use these skills when appropriate to accomplish tasks. Be helpful, accurate, and efficient.`,
-		a.id, skillNames)
-}
-
 // skillsAsTools converts registered skills to LLM tool definitions
 func (a *Agent) skillsAsTools() []llm.ToolDef {
 	skills := a.skills.GetAll()
@@ -416,4 +414,36 @@ func (a *Agent) ListConnectors() []string {
 func (a *Agent) HasConnector(name string) bool {
 	_, err := a.connectors.Get(name)
 	return err == nil
+}
+
+func (a *Agent) formatUserProfile() string {
+	return fmt.Sprintf(`
+
+=== Who the user is ===
+
+Name: %s (you prefer I call you "%s")
+Job: %s
+
+Background:
+%s
+
+Daily Routine:
+%s
+
+What the user values:
+%s
+
+User preferences:
+- Technical: %v
+- On collaboration: %s
+	`,
+		a.user.Identity.Name,
+		a.user.Identity.PreferredName,
+		a.user.Identity.Role,
+		a.user.Background.Professional,
+		a.user.DailyRoutine,
+		strings.Join(a.user.Preferences.WhatIValue, "\n- "),
+		a.user.Preferences.Technical,
+		a.user.Preferences.Collaboration,
+	)
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/a2a"
 	"github.com/sriramsme/OnlyAgents/pkg/config"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/soul"
 )
 
 type AgentRegistry struct {
@@ -16,12 +17,17 @@ type AgentRegistry struct {
 }
 
 type Agent struct {
-	id          string
-	isExecutive bool
-	skills      *SkillRegistry
-	connectors  *ConnectorRegistry
-	state       *StateManager
-	llmClient   llm.Client
+	id             string
+	name           string
+	isExecutive    bool
+	maxConcurrency int
+	bufferSize     int
+	skills         *SkillRegistry
+	connectors     *ConnectorRegistry
+	state          *StateManager
+	llmClient      llm.Client
+	soul           *soul.Soul
+	user           *config.UserConfig
 
 	// Message handling
 	incoming chan a2a.Message
@@ -33,7 +39,6 @@ type Agent struct {
 	wg     sync.WaitGroup
 
 	// Config
-	config config.AgentConfig
 	logger *slog.Logger
 }
 
