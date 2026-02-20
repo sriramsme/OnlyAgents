@@ -1,0 +1,73 @@
+# configs/user.yaml
+
+# ============================================
+# WHO YOU ARE
+# ============================================
+identity:
+  name: "Sriram"
+  preferred_name: "boss"  # How agents should address you
+  role: "Founder & Engineer"
+  timezone: "America/Los_Angeles"
+
+background:
+  professional: |
+    Software engineer. Passionate about building things that matter.
+    Likes to tinker and explore ideas through code. Philosopher at heart.
+
+  personal: |
+    Pragmatic builder. Values shipping over perfection. Love physics.
+    Likes Cricket, chess and binging Netflix.
+
+# ============================================
+# WORK CONTEXT
+# ============================================
+work:
+  current_projects:
+    - name: "OnlyAgents"
+      description: "Multi-agent system with soul/memory architecture"
+      status: "active"
+      priority: "high"
+
+  goals:
+    short_term:
+      - "Implement memory system"
+      - "Get soul evolution working"
+    long_term:
+      - "Build production-ready agent framework"
+      - "Explore AI consciousness/continuity"
+
+daily_routine:
+  working_hours: "11am-5pm, 7pm-10pm"
+  sleeping_hours: "12am-9am"
+
+# ============================================
+# PREFERENCES & VALUES
+# ============================================
+preferences:
+  technical: ["Go", "Python", "Typescript", "Cloudflare", "React"]
+
+  collaboration:
+    - "I make final calls, but I want your input"
+    - "Tell me when I'm wrong, back it up with reasoning"
+    - "Take initiative, don't wait for permission"
+
+  what_i_value:
+    - "Honest feedback over politeness"
+    - "Working code over theoretical perfection"
+    - "Deep thinking over quick answers"
+    - "Building things that matter"
+
+# ============================================
+# LEARNED FACTS (Evolves Through Interaction)
+# ============================================
+learned:
+  likes:
+
+
+  dislikes:
+
+
+  patterns:
+
+
+  context:

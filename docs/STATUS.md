@@ -1,4 +1,3 @@
-```markdown
 # Project Status
 
 ## Overview
@@ -10,7 +9,7 @@
 | pkg/asec/vault | ✅ done      | dotenv/env working; aws/gcp/hashicorp untested |
 | pkg/kernel     | 🔄 partial  | agent + registry done; state not implemented |
 | pkg/a2a        | 🔄 partial  | message struct only                        |
-| pkg/connectors | ⬜ todo      |                                            |
+| pkg/connectors | 🔄 partial  | telegram integrated                     |
 | pkg/skills     | ⬜ todo      |                                            |
 | internal/api   | 🔄 partial  | server working; chat endpoints not tested  |
 | cmd/agent      | 🔄 partial  | single agent interaction working           |
@@ -74,6 +73,7 @@
   ```
   ├── agent.go
   ├── agent_registry.go
+  ├── connector_factory.go
   ├── connector_registry.go
   ├── skill_registry.go
   ├── state.go
@@ -86,8 +86,21 @@
   └── message.go
   ```
 
-- **pkg/connectors/** ⬜ — to be implemented
-  - connector.go (stub)
+- **pkg/connectors/**  🔄 — partial
+    - telegram integrated
+    ```
+    ├── bootstrap
+    │   ├── connectors_all.go
+    │   └── connectors_telegram.go
+    ├── telegram
+    │   ├── handlers.go
+    │   ├── polling.go
+    │   ├── telegram.go
+    │   ├── types.go
+    │   ├── utils.go
+    │   └── webhook.go
+    └── types.go
+    ```
 
 - **pkg/skills/** ⬜ — to be implemented
 
@@ -126,9 +139,11 @@
 
 ```
 configs/
-├── agents/
-│   ├── executive.yaml
-│   └── messenger.yaml
+├── agents
+│   ├── executive.yaml
+│   └── messenger.yaml
+├── connectors
+│   └── telegram.yaml
 ├── server.yaml
 └── vault.yaml
 ```
