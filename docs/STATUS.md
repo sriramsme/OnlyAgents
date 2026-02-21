@@ -10,6 +10,7 @@
 | pkg/kernel     | 🔄 partial  | agent + registry done; state not implemented |
 | pkg/a2a        | 🔄 partial  | message struct only                        |
 | pkg/connectors | 🔄 partial  | telegram integrated                     |
+| pkg/soul       | ✅ done      | soul (agent's personality, traits, identity, etc.) |
 | pkg/skills     | ⬜ todo      |                                            |
 | internal/api   | 🔄 partial  | server working; chat endpoints not tested  |
 | cmd/agent      | 🔄 partial  | single agent interaction working           |
@@ -101,7 +102,12 @@
     │   └── webhook.go
     └── types.go
     ```
-
+- **pkg/soul/** ⬜ — implemented
+    - soul (agent's personality, traits, identity, etc.)
+    ```
+    ├── soul.go
+    └── types.go
+    ```
 - **pkg/skills/** ⬜ — to be implemented
 
 ---
