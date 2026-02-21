@@ -21,6 +21,7 @@ import (
 
 func main() {
 	logger.Initialize("debug", "json")
+	ctx, cancel := context.WithCancel(context.Background())
 
 	fmt.Println("OnlyAgents Server v0.1.0")
 	fmt.Println("=========================")
@@ -33,26 +34,36 @@ func main() {
 		}
 	}()
 
-	agentConfigs := mustLoadAgentConfigs(vault)
 	serverConfig := mustLoadServerConfig()
 
-	// Setup registries
-	agentRegistry := mustSetupAgents(agentConfigs, vault)
-	defer func() {
-		if err := agentRegistry.StopAll(); err != nil {
-			logger.Log.Error("error stopping agents", "error", err)
-		}
-	}()
+	k, err := kernel.NewKernel(kernel.Config{
+		BusBufferSize:       100,
+		DefaultAgentID:      "default",
+		AgentConfigsDir:     "configs/agents/",
+		ConnectorConfigsDir: "configs/connectors/",
+		ChannelConfigsDir:   "configs/channels/",
+		SkillConfigsDir:     "configs/skills/",
+	}, vault, ctx, cancel)
 
-	connectorRegistry := setupConnectors(vault, agentRegistry, agentConfigs)
-	defer shutdownConnectors(connectorRegistry)
-
-	channelRegistry := setupChannels(vault, agentRegistry, agentConfigs)
-	defer shutdownChannels(channelRegistry)
+	if err != nil {
+		logger.Log.Error("failed to initialize kernel", "error", err)
+		os.Exit(1) // os.Exit lives HERE, not in the library
+	}
 
 	// Start API server
-	server := createServer(serverConfig, agentRegistry)
+	server := createServer(serverConfig, k)
 	runServer(server)
+	if err := k.Start(); err != nil {
+		logger.Log.Error("failed to start kernel", "error", err)
+		os.Exit(1) // os.Exit lives HERE, not in the library
+	}
+
+	<-ctx.Done()
+
+	logger.Log.Info("shutting down kernel")
+	if err := k.Stop(); err != nil {
+		logger.Log.Error("error shutting down kernel", "error", err)
+	}
 }
 
 // mustLoadVault loads vault config or exits
@@ -66,17 +77,6 @@ func mustLoadVault() vault.Vault {
 	return v
 }
 
-// mustLoadAgentConfigs loads agent configs or exits
-func mustLoadAgentConfigs(v vault.Vault) []*config.Config {
-	path := getConfigPath(2, "configs/agents/")
-	configs, err := config.LoadAllAgentsConfig(path, v)
-	if err != nil {
-		logger.Log.Error("failed to load agent configs", "error", err)
-		os.Exit(1)
-	}
-	return configs
-}
-
 // mustLoadServerConfig loads server config or exits
 func mustLoadServerConfig() *config.ServerConfig {
 	path := getConfigPath(4, "configs/server.yaml")
@@ -88,119 +88,8 @@ func mustLoadServerConfig() *config.ServerConfig {
 	return cfg
 }
 
-// mustSetupAgents creates and starts agent registry or exits
-func mustSetupAgents(configs []*config.Config, v vault.Vault) *kernel.AgentRegistry {
-	registry, err := kernel.NewAgentRegistry(configs, v)
-	if err != nil {
-		logger.Log.Error("failed to create agent registry", "error", err)
-		os.Exit(1)
-	}
-	return registry
-}
-
-// mustSetupConnectors creates, registers, connects and starts connectors or exits
-func setupConnectors(
-	v vault.Vault,
-	agentRegistry *kernel.AgentRegistry,
-	agentConfigs []*config.Config,
-) *kernel.ConnectorRegistry {
-	path := getConfigPath(3, "configs/connectors/")
-
-	// Create connector registry
-	registry, err := kernel.NewConnectorRegistry(path, v, agentRegistry)
-	if err != nil {
-		logger.Log.Error("failed to create connector registry", "error", err)
-		os.Exit(1)
-	}
-
-	// Wire connectors to agents
-	if err := agentRegistry.RegisterConnectors(agentConfigs, registry); err != nil {
-		logger.Log.Error("failed to register connectors", "error", err)
-		os.Exit(1)
-	}
-
-	ctx := context.Background()
-
-	// Connect all
-	if err := registry.ConnectAll(ctx); err != nil {
-		logger.Log.Error("failed to connect connectors", "error", err)
-		os.Exit(1)
-	}
-
-	// Start all
-	if err := registry.StartAll(ctx); err != nil {
-		logger.Log.Error("failed to start connectors", "error", err)
-		os.Exit(1)
-	}
-
-	return registry
-}
-
-func setupChannels(
-	v vault.Vault,
-	agentRegistry *kernel.AgentRegistry,
-	agentConfigs []*config.Config,
-) *kernel.ChannelRegistry {
-	path := getConfigPath(3, "configs/channels/")
-
-	// Create connector registry
-	registry, err := kernel.NewChannelRegistry(path, v, agentRegistry)
-	if err != nil {
-		logger.Log.Error("failed to create channel registry", "error", err)
-		os.Exit(1)
-	}
-
-	// Wire connectors to agents
-	if err := agentRegistry.RegisterChannels(agentConfigs, registry); err != nil {
-		logger.Log.Error("failed to register channels", "error", err)
-		os.Exit(1)
-	}
-
-	ctx := context.Background()
-
-	// Connect all
-	if err := registry.ConnectAll(ctx); err != nil {
-		logger.Log.Error("failed to connect channels", "error", err)
-		os.Exit(1)
-	}
-
-	// Start all
-	if err := registry.StartAll(ctx); err != nil {
-		logger.Log.Error("failed to start channels", "error", err)
-		os.Exit(1)
-	}
-
-	return registry
-}
-
-// shutdownConnectors gracefully shuts down all connectors
-func shutdownConnectors(registry *kernel.ConnectorRegistry) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer func() { cancel() }()
-
-	if err := registry.StopAll(ctx); err != nil {
-		logger.Log.Error("error stopping connectors", "error", err)
-	}
-	if err := registry.DisconnectAll(ctx); err != nil {
-		logger.Log.Error("error disconnecting connectors", "error", err)
-	}
-}
-
-// shutdownConnectors gracefully shuts down all connectors
-func shutdownChannels(registry *kernel.ChannelRegistry) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer func() { cancel() }()
-
-	if err := registry.StopAll(ctx); err != nil {
-		logger.Log.Error("error stopping channels", "error", err)
-	}
-	if err := registry.DisconnectAll(ctx); err != nil {
-		logger.Log.Error("error disconnecting channels", "error", err)
-	}
-}
-
 // createServer creates and configures the API server
-func createServer(cfg *config.ServerConfig, agentRegistry *kernel.AgentRegistry) *api.Server {
+func createServer(cfg *config.ServerConfig, k *kernel.Kernel) *api.Server {
 	return api.NewServer(
 		config.ServerConfig{
 			Host:        cfg.Host,
@@ -209,7 +98,7 @@ func createServer(cfg *config.ServerConfig, agentRegistry *kernel.AgentRegistry)
 			Version:     "0.1.0",
 		},
 		handlers.Deps{
-			Agents:  agentRegistry,
+			Bus:     k.Bus(),
 			Version: "0.1.0",
 		},
 		logger.Log,

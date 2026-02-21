@@ -2,6 +2,7 @@ package channels
 
 import (
 	"context"
+	"sync"
 )
 
 // Connector defines the interface for platform integrations
@@ -16,8 +17,14 @@ type Channel interface {
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 
+	Send(ctx context.Context, msg OutgoingMessage) error
 	// Health
 	HealthCheck() (bool, error)
+}
+
+type Registry struct {
+	mu       sync.RWMutex
+	channels map[string]Channel
 }
 
 // BaseConfig is the minimal config all connectors must have

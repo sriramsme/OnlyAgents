@@ -13,6 +13,7 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 const (
@@ -221,13 +222,13 @@ func toGeminiFunctionResponseContent(msg llm.Message) *genai.Content {
 }
 
 // toGeminiTools converts []llm.ToolDef into a single genai.Tool with FunctionDeclarations.
-func toGeminiTools(tools []llm.ToolDef) []*genai.Tool {
+func toGeminiTools(tools []tools.ToolDef) []*genai.Tool {
 	decls := make([]*genai.FunctionDeclaration, 0, len(tools))
 	for _, t := range tools {
 		decls = append(decls, &genai.FunctionDeclaration{
-			Name:        t.Function.Name,
-			Description: t.Function.Description,
-			Parameters:  toGeminiSchema(t.Function.Parameters),
+			Name:        t.Name,
+			Description: t.Description,
+			Parameters:  toGeminiSchema(t.Parameters),
 		})
 	}
 	return []*genai.Tool{{FunctionDeclarations: decls}}
@@ -275,7 +276,7 @@ func fromGeminiResponse(resp *genai.GenerateContentResponse, model string) (*llm
 
 	candidate := resp.Candidates[0]
 	var textBuilder strings.Builder
-	var toolCalls []llm.ToolCall
+	var toolCalls []tools.ToolCall
 
 	if candidate.Content != nil {
 		for _, part := range candidate.Content.Parts {
@@ -305,16 +306,16 @@ func fromGeminiResponse(resp *genai.GenerateContentResponse, model string) (*llm
 // Note: Gemini doesn't generate unique call IDs like OpenAI does (e.g. "call_abc123").
 // We use the function name as the ID. If your agent loop calls the same tool multiple
 // times in one turn, consider generating a UUID here instead.
-func fromGeminiFunctionCall(fc *genai.FunctionCall) (llm.ToolCall, error) {
+func fromGeminiFunctionCall(fc *genai.FunctionCall) (tools.ToolCall, error) {
 	argsJSON, err := json.Marshal(fc.Args)
 	if err != nil {
-		return llm.ToolCall{}, fmt.Errorf("gemini: failed to marshal function call args: %w", err)
+		return tools.ToolCall{}, fmt.Errorf("gemini: failed to marshal function call args: %w", err)
 	}
 
-	return llm.ToolCall{
+	return tools.ToolCall{
 		ID:   fc.Name,
 		Type: "function",
-		Function: llm.FunctionCall{
+		Function: tools.FunctionCall{
 			Name:      fc.Name,
 			Arguments: string(argsJSON),
 		},

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // Provider represents different LLM providers
@@ -27,7 +28,7 @@ type Request struct {
 	Messages []Message
 
 	// Tools available for the model to call
-	Tools []ToolDef
+	Tools []tools.ToolDef
 
 	// Model parameters (optional - uses client defaults if zero)
 	MaxTokens   int
@@ -46,7 +47,7 @@ type Message struct {
 	ReasoningContent string `json:"reasoning_content,omitempty"`
 
 	// For assistant messages with tool calls
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	ToolCalls []tools.ToolCall `json:"tool_calls,omitempty"`
 
 	// For tool result messages
 	ToolCallID string `json:"tool_call_id,omitempty"`
@@ -56,37 +57,11 @@ type Message struct {
 // Role represents the message sender
 type Role string
 
-// ToolCall represents a tool invocation by the model
-type ToolCall struct {
-	ID       string       `json:"id"`
-	Type     string       `json:"type"` // "function"
-	Function FunctionCall `json:"function"`
-}
-
-// FunctionCall represents a function call
-type FunctionCall struct {
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"` // JSON string
-}
-
-// ToolDef defines a tool for the LLM (function calling)
-type ToolDef struct {
-	Type     string      `json:"type"` // "function"
-	Function FunctionDef `json:"function"`
-}
-
-// FunctionDef defines a function that the model can call
-type FunctionDef struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Parameters  map[string]any `json:"parameters"` // JSON Schema
-}
-
 // Response represents the LLM's response
 type Response struct {
-	Content          string     // Final text response
-	ReasoningContent string     // Extended thinking/reasoning
-	ToolCalls        []ToolCall // Tool calls (if any)
+	Content          string           // Final text response
+	ReasoningContent string           // Extended thinking/reasoning
+	ToolCalls        []tools.ToolCall // Tool calls (if any)
 	StopReason       string
 	Usage            Usage
 	Model            string

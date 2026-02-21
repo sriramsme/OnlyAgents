@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 const (
@@ -85,7 +87,7 @@ func AssistantMessage(content string) Message {
 	return Message{Role: RoleAssistant, Content: content}
 }
 
-func AssistantMessageWithTools(content, reasoningContent string, toolCalls []ToolCall) Message {
+func AssistantMessageWithTools(content, reasoningContent string, toolCalls []tools.ToolCall) Message {
 	return Message{
 		Role:             RoleAssistant,
 		Content:          content,

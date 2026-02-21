@@ -3,8 +3,18 @@ package telegram
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
+
+// ParseChatID converts a string chatID into int64 for Telego API usage.
+func parseChatID(chatID string) (int64, error) {
+	id, err := strconv.ParseInt(chatID, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid chatID %q: %w", chatID, err)
+	}
+	return id, nil
+}
 
 // markdownToTelegramHTML converts Markdown to Telegram HTML
 func markdownToTelegramHTML(text string) string {

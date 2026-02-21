@@ -1,23 +1,44 @@
 package skills
 
-import "context"
+import (
+	"context"
 
-// Skill interface that all skills must implement
-type Skill interface {
-	// Metadata
-	Name() string
-	Description() string
-	Parameters() map[string]interface{}
-	Version() string
-	RequiredCapabilities() []string
+	"github.com/sriramsme/OnlyAgents/pkg/core"
+)
 
-	// Execution
-	Execute(ctx context.Context, params map[string]interface{}) (interface{}, error)
+// NewBaseSkill creates a new base skill
+func NewBaseSkill(name, description, version string, skillType SkillType) *BaseSkill {
+	return &BaseSkill{
+		name:        name,
+		description: description,
+		version:     version,
+		skillType:   skillType,
+	}
+}
 
-	// LLM Integration
-	GetSystemPrompt() string
+func (b *BaseSkill) Name() string        { return b.name }
+func (b *BaseSkill) Description() string { return b.description }
+func (b *BaseSkill) Version() string     { return b.version }
+func (b *BaseSkill) Type() SkillType     { return b.skillType }
 
-	// Lifecycle
-	Initialize() error
-	Shutdown() error
+// SetOutbox stores the event bus channel
+func (b *BaseSkill) SetOutbox(outbox chan<- core.Event) {
+	b.outbox = outbox
+}
+
+// RequestSubAgent fires an AgentRequest event to kernel.
+// Use when a skill needs another agent to perform a task (e.g. drafting).
+func (b *BaseSkill) RequestSubAgent(ctx context.Context, correlationID string, task string, context map[string]any) {
+	if b.outbox == nil {
+		return
+	}
+	b.outbox <- core.Event{
+		Type:          core.AgentRequest,
+		CorrelationID: correlationID,
+		Payload: core.AgentRequestPayload{
+			RequestingSkill: b.name,
+			Task:            task,
+			Context:         context,
+		},
+	}
 }

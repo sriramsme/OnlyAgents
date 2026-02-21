@@ -12,6 +12,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // OpenAIStreamingClient implements Client for OpenAI with streaming support
@@ -119,7 +120,7 @@ func (c *OpenAIClient) getTemperature(req *llm.Request) float64 {
 //	}
 type StreamChunk struct {
 	Content   string
-	ToolCalls []llm.ToolCall
+	ToolCalls []tools.ToolCall
 	Done      bool
 	Error     error
 }
@@ -167,7 +168,7 @@ func (c *OpenAIStreamingClient) createStream(ctx context.Context, req *llm.Reque
 
 // processStream reads chunks from the stream and sends them to the channel
 func (c *OpenAIStreamingClient) processStream(stream *openai.ChatCompletionStream, ch chan<- StreamChunk) {
-	toolCallsMap := make(map[int]*llm.ToolCall)
+	toolCallsMap := make(map[int]*tools.ToolCall)
 
 	for {
 		chunk, err := stream.Recv()
@@ -199,14 +200,14 @@ func (c *OpenAIStreamingClient) processStream(stream *openai.ChatCompletionStrea
 }
 
 // accumulateToolCalls merges streaming tool call deltas into the map
-func accumulateToolCalls(toolCallsMap map[int]*llm.ToolCall, deltas []openai.ToolCall) {
+func accumulateToolCalls(toolCallsMap map[int]*tools.ToolCall, deltas []openai.ToolCall) {
 	for _, tc := range deltas {
 		if tc.Index == nil {
 			continue
 		}
 		index := *tc.Index
 		if _, exists := toolCallsMap[index]; !exists {
-			toolCallsMap[index] = &llm.ToolCall{Type: "function"}
+			toolCallsMap[index] = &tools.ToolCall{Type: "function"}
 		}
 		entry := toolCallsMap[index]
 		if tc.ID != "" {
@@ -222,8 +223,8 @@ func accumulateToolCalls(toolCallsMap map[int]*llm.ToolCall, deltas []openai.Too
 }
 
 // collectToolCalls converts the map into an ordered slice
-func collectToolCalls(toolCallsMap map[int]*llm.ToolCall) []llm.ToolCall {
-	toolCalls := make([]llm.ToolCall, 0, len(toolCallsMap))
+func collectToolCalls(toolCallsMap map[int]*tools.ToolCall) []tools.ToolCall {
+	toolCalls := make([]tools.ToolCall, 0, len(toolCallsMap))
 	for i := 0; i < len(toolCallsMap); i++ {
 		if tc, exists := toolCallsMap[i]; exists {
 			toolCalls = append(toolCalls, *tc)
@@ -233,7 +234,7 @@ func collectToolCalls(toolCallsMap map[int]*llm.ToolCall) []llm.ToolCall {
 }
 func (c *OpenAIStreamingClient) accumulateStream(stream *openai.ChatCompletionStream) (*llm.Response, error) {
 	var contentBuilder strings.Builder
-	toolCallsMap := make(map[int]*llm.ToolCall)
+	toolCallsMap := make(map[int]*tools.ToolCall)
 	var finishReason string
 	var usage llm.Usage
 

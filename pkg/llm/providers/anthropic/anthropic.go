@@ -11,6 +11,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 const (
@@ -262,7 +263,7 @@ func (c *AnthropicClient) toAnthropicMessages(messages []llm.Message) (string, [
 }
 
 // toAnthropicTools converts our tool format to Anthropic's format
-func (c *AnthropicClient) toAnthropicTools(tools []llm.ToolDef) []anthropic.ToolUnionParam {
+func (c *AnthropicClient) toAnthropicTools(tools []tools.ToolDef) []anthropic.ToolUnionParam {
 	if len(tools) == 0 {
 		return nil
 	}
@@ -273,7 +274,7 @@ func (c *AnthropicClient) toAnthropicTools(tools []llm.ToolDef) []anthropic.Tool
 			ExtraFields: map[string]any{},
 		}
 
-		if params := t.Function.Parameters; params != nil {
+		if params := t.Parameters; params != nil {
 			if properties, ok := params["properties"]; ok {
 				schema.Properties = properties
 			}
@@ -289,11 +290,11 @@ func (c *AnthropicClient) toAnthropicTools(tools []llm.ToolDef) []anthropic.Tool
 		}
 
 		tool := anthropic.ToolParam{
-			Name:        t.Function.Name,
+			Name:        t.Name,
 			InputSchema: schema,
 		}
-		if t.Function.Description != "" {
-			tool.Description = anthropic.String(t.Function.Description)
+		if t.Description != "" {
+			tool.Description = anthropic.String(t.Description)
 		}
 
 		result = append(result, anthropic.ToolUnionParam{OfTool: &tool})
@@ -305,7 +306,7 @@ func (c *AnthropicClient) toAnthropicTools(tools []llm.ToolDef) []anthropic.Tool
 func (c *AnthropicClient) parseResponse(message *anthropic.Message) *llm.Response {
 	var textParts []string
 	var reasoningParts []string
-	var toolCalls []llm.ToolCall
+	var toolCalls []tools.ToolCall
 
 	for _, block := range message.Content {
 		switch block.Type {
@@ -320,10 +321,10 @@ func (c *AnthropicClient) parseResponse(message *anthropic.Message) *llm.Respons
 		case "redacted_thinking":
 			reasoningParts = append(reasoningParts, "[redacted_thinking]")
 		case "tool_use":
-			toolCalls = append(toolCalls, llm.ToolCall{
+			toolCalls = append(toolCalls, tools.ToolCall{
 				ID:   block.ID,
 				Type: "function",
-				Function: llm.FunctionCall{
+				Function: tools.FunctionCall{
 					Name:      block.Name,
 					Arguments: string(block.Input),
 				},

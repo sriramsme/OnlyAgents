@@ -6,45 +6,34 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/internal/api/httpx"
-	"github.com/sriramsme/OnlyAgents/pkg/kernel"
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
-// ChatHandler handles all /v1/chat endpoints.
-//
-// History is stored in-memory for now.
-// TODO: swap historyStore for memory.MemoryManager when that package is ready.
-// The handler interface won't change — just the storage backend.
 type ChatHandler struct {
-	deps   Deps
-	logger *slog.Logger
-
+	deps    Deps
+	logger  *slog.Logger
 	mu      sync.RWMutex
 	history []Message
 }
 
 func NewChatHandler(deps Deps, logger *slog.Logger) *ChatHandler {
-	return &ChatHandler{
-		deps:    deps,
-		logger:  logger,
-		history: make([]Message, 0),
-	}
+	return &ChatHandler{deps: deps, logger: logger, history: make([]Message, 0)}
 }
 
-// Message is one turn in the conversation
 type Message struct {
-	Role      string    `json:"role"` // "user" | "assistant"
+	Role      string    `json:"role"`
 	Content   string    `json:"content"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// sendRequest is the POST /v1/chat body
 type sendRequest struct {
 	Message   string `json:"message"`
+	AgentID   string `json:"agent_id,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
 }
 
-// sendResponse is the POST /v1/chat reply
 type sendResponse struct {
 	Response  string    `json:"response"`
 	AgentID   string    `json:"agent_id"`
@@ -53,28 +42,15 @@ type sendResponse struct {
 	LatencyMs int64     `json:"latency_ms"`
 }
 
-// Send handles POST /v1/chat — always routes to executive
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
-	agent, err := h.deps.Agents.Executive()
-	if err != nil {
-		httpx.Error(w, http.StatusServiceUnavailable, "no executive agent configured")
-		return
-	}
-	h.execute(w, r, agent)
+	h.send(w, r, "default")
 }
 
-// SendToAgent handles POST /v1/agents/{agent_id}/chat — routes to specific agent
 func (h *ChatHandler) SendToAgent(w http.ResponseWriter, r *http.Request) {
-	agent, err := h.deps.Agents.Get(r.PathValue("agent_id"))
-	if err != nil {
-		httpx.Error(w, http.StatusNotFound, "agent not found")
-		return
-	}
-	h.execute(w, r, agent)
+	h.send(w, r, r.PathValue("agent_id"))
 }
 
-// execute is the shared core — decode, run, save, respond
-func (h *ChatHandler) execute(w http.ResponseWriter, r *http.Request, agent *kernel.Agent) {
+func (h *ChatHandler) send(w http.ResponseWriter, r *http.Request, agentID string) {
 	var req sendRequest
 	if !httpx.Decode(w, r, &req) {
 		return
@@ -87,24 +63,34 @@ func (h *ChatHandler) execute(w http.ResponseWriter, r *http.Request, agent *ker
 	h.save("user", req.Message)
 	start := time.Now()
 
-	response, err := agent.Execute(r.Context(), req.Message)
-	if err != nil {
-		h.logger.Error("agent execution failed", "error", err)
-		httpx.Error(w, http.StatusInternalServerError, "agent execution failed")
-		return
+	replyCh := make(chan core.Event, 1)
+	h.deps.Bus <- core.Event{
+		Type:          core.AgentExecute,
+		CorrelationID: uuid.NewString(),
+		AgentID:       agentID,
+		ReplyTo:       replyCh,
+		Payload: core.AgentExecutePayload{
+			UserMessage: req.Message,
+		},
 	}
 
-	h.save("assistant", response)
-	httpx.JSON(w, http.StatusOK, sendResponse{
-		Response:  response,
-		AgentID:   agent.ID(),
-		SessionID: req.SessionID,
-		Timestamp: time.Now(),
-		LatencyMs: time.Since(start).Milliseconds(),
-	})
+	select {
+	case result := <-replyCh:
+		response := result.Payload.(string)
+		h.save("assistant", response)
+		httpx.JSON(w, http.StatusOK, sendResponse{
+			Response:  response,
+			AgentID:   agentID,
+			SessionID: req.SessionID,
+			Timestamp: time.Now(),
+			LatencyMs: time.Since(start).Milliseconds(),
+		})
+	case <-r.Context().Done():
+		httpx.Error(w, http.StatusGatewayTimeout, "request timed out")
+	}
 }
 
-// History handles GET /v1/chat/history
+// History handles GET /v1/chat/history.
 func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 	snapshot := make([]Message, len(h.history))
@@ -117,7 +103,7 @@ func (h *ChatHandler) History(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ClearHistory handles DELETE /v1/chat/history
+// ClearHistory handles DELETE /v1/chat/history.
 func (h *ChatHandler) ClearHistory(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	h.history = make([]Message, 0)

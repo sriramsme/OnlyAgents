@@ -23,7 +23,6 @@ func NewHealthHandler(deps Deps, logger *slog.Logger) *HealthHandler {
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{
 		"status":    "ok",
-		"agents":    h.deps.Agents.ListAll(),
 		"timestamp": time.Now(),
 	})
 }

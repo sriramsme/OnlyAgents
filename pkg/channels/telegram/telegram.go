@@ -15,7 +15,7 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
-	"github.com/sriramsme/OnlyAgents/pkg/kernel"
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 const (
@@ -23,16 +23,16 @@ const (
 )
 
 func init() {
-	kernel.RegisterChannel("telegram", NewChannel)
+	channels.Register("telegram", NewChannel)
 }
 
 // Connector implements the Connector interface for Telegram
 type TelegramChannel struct {
-	config        *Config // telegram.Config, not connectors.TelegramConfig
-	vault         vault.Vault
-	agentRegistry *kernel.AgentRegistry
-	bot           *telego.Bot
-	handler       *th.BotHandler
+	config  *Config // telegram.Config, not connectors.TelegramConfig
+	vault   vault.Vault
+	bus     chan<- core.Event
+	bot     *telego.Bot
+	handler *th.BotHandler
 
 	// State
 	mu      sync.RWMutex
@@ -52,7 +52,7 @@ type TelegramChannel struct {
 }
 
 // NewChannel creates a new Telegram channel
-func NewChannel(rawConfig map[string]interface{}, vault vault.Vault, agentRegistry *kernel.AgentRegistry) (channels.Channel, error) {
+func NewChannel(rawConfig map[string]interface{}, vault vault.Vault, bus chan<- core.Event) (channels.Channel, error) {
 
 	var cfg Config
 
@@ -70,24 +70,20 @@ func NewChannel(rawConfig map[string]interface{}, vault vault.Vault, agentRegist
 		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
 
-	if agentRegistry == nil {
-		return nil, fmt.Errorf("agent registry is required")
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	logger := slog.With(
 		"connector", "telegram",
 	)
 
 	return &TelegramChannel{
-		config:        &cfg,
-		vault:         vault,
-		agentRegistry: agentRegistry,
-		ctx:           ctx,
-		cancel:        cancel,
-		logger:        logger,
-		placeholders:  sync.Map{},
-		thinkingCtx:   sync.Map{},
+		config:       &cfg,
+		vault:        vault,
+		bus:          bus,
+		ctx:          ctx,
+		cancel:       cancel,
+		logger:       logger,
+		placeholders: sync.Map{},
+		thinkingCtx:  sync.Map{},
 	}, nil
 }
 

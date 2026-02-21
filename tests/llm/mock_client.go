@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // MockClient is a mock LLM client for testing
@@ -94,14 +95,14 @@ func (m *MockClient) Chat(ctx context.Context, req *llm.Request) (*llm.Response,
 	m.callCount++
 
 	// Simulate tool call if configured
-	var toolCalls []llm.ToolCall
+	var toolCalls []tools.ToolCall
 	if m.simulateTools && len(req.Tools) > 0 {
-		toolCalls = []llm.ToolCall{
+		toolCalls = []tools.ToolCall{
 			{
 				ID:   "call_mock_123",
 				Type: "function",
-				Function: llm.FunctionCall{
-					Name:      req.Tools[0].Function.Name,
+				Function: tools.FunctionCall{
+					Name:      req.Tools[0].Name,
 					Arguments: m.toolCallResult,
 				},
 			},

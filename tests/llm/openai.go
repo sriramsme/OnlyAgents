@@ -7,6 +7,7 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/llm/providers/openai"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 func TestOpenAIClientBasic(t *testing.T) {
@@ -57,34 +58,28 @@ func TestOpenAIToolCalling(t *testing.T) {
 	}
 
 	// Define a weather tool
-	weatherTool := llm.ToolDef{
-		Type: "function",
-		Function: llm.FunctionDef{
-			Name:        "get_weather",
-			Description: "Get the current weather for a location",
-			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"location": map[string]any{
-						"type":        "string",
-						"description": "The city and state, e.g. San Francisco, CA",
-					},
-					"unit": map[string]any{
-						"type": "string",
-						"enum": []string{"celsius", "fahrenheit"},
-					},
-				},
-				"required": []string{"location"},
+	weatherTool := tools.NewToolDef(
+		"get_weather",
+		"Get the current weather for a location",
+		tools.BuildParams(
+			map[string]tools.Property{
+				"location": tools.StringProp("The city and state, e.g. San Francisco, CA"),
+				"unit": tools.EnumProp(
+					"Temperature unit",
+					[]string{"celsius", "fahrenheit"},
+				),
 			},
-		},
-	}
+			[]string{"location"},
+		),
+	)
 
 	ctx := context.Background()
+
 	resp, err := client.Chat(ctx, &llm.Request{
 		Messages: []llm.Message{
 			llm.UserMessage("What's the weather in New York?"),
 		},
-		Tools: []llm.ToolDef{weatherTool},
+		Tools: []tools.ToolDef{weatherTool},
 	})
 	if err != nil {
 		t.Fatal(err)

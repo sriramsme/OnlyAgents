@@ -1,28 +1,28 @@
-package kernel
+package channels
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
-	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/config"
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 // NewConnectorRegistry creates a registry and loads all connector configs
-func NewChannelRegistry(
+func NewRegistry(
 	configDir string,
 	vault vault.Vault,
-	agentRegistry *AgentRegistry,
-) (*ChannelRegistry, error) {
+	bus chan<- core.Event,
+) (*Registry, error) {
 	// Load all connector configs
 	configs, err := config.LoadAllChannelConfigs(configDir)
 	if err != nil {
 		return nil, fmt.Errorf("load connector configs: %w", err)
 	}
 
-	registry := &ChannelRegistry{
-		channels: make(map[string]channels.Channel),
+	registry := &Registry{
+		channels: make(map[string]Channel),
 	}
 
 	// Create each connector
@@ -31,12 +31,12 @@ func NewChannelRegistry(
 			continue
 		}
 
-		factory, err := GetChannelFactory(cfg.Platform)
+		factory, err := GetFactory(cfg.Platform)
 		if err != nil {
 			return nil, fmt.Errorf("connector %s: %w", name, err)
 		}
 
-		channel, err := factory(cfg.RawConfig, vault, agentRegistry)
+		channel, err := factory(cfg.RawConfig, vault, bus)
 		if err != nil {
 			return nil, fmt.Errorf("channel %s: create: %w", name, err)
 		}
@@ -47,8 +47,14 @@ func NewChannelRegistry(
 	return registry, nil
 }
 
+func (r *Registry) Register(c Channel) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.channels[c.PlatformName()] = c
+}
+
 // Get returns a connector by name
-func (r *ChannelRegistry) Get(name string) (channels.Channel, error) {
+func (r *Registry) Get(name string) (Channel, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -61,7 +67,7 @@ func (r *ChannelRegistry) Get(name string) (channels.Channel, error) {
 }
 
 // List returns all connector names
-func (r *ChannelRegistry) List() []string {
+func (r *Registry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -72,8 +78,18 @@ func (r *ChannelRegistry) List() []string {
 	return names
 }
 
+func (r *Registry) All() []Channel {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]Channel, 0, len(r.channels))
+	for _, c := range r.channels {
+		out = append(out, c)
+	}
+	return out
+}
+
 // ConnectAll connects all connectors
-func (r *ChannelRegistry) ConnectAll(ctx context.Context) error {
+func (r *Registry) ConnectAll(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -92,7 +108,7 @@ func (r *ChannelRegistry) ConnectAll(ctx context.Context) error {
 }
 
 // StartAll starts all connectors
-func (r *ChannelRegistry) StartAll(ctx context.Context) error {
+func (r *Registry) StartAll(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -111,7 +127,7 @@ func (r *ChannelRegistry) StartAll(ctx context.Context) error {
 }
 
 // StopAll stops all connectors
-func (r *ChannelRegistry) StopAll(ctx context.Context) error {
+func (r *Registry) StopAll(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -130,7 +146,7 @@ func (r *ChannelRegistry) StopAll(ctx context.Context) error {
 }
 
 // DisconnectAll disconnects all connectors
-func (r *ChannelRegistry) DisconnectAll(ctx context.Context) error {
+func (r *Registry) DisconnectAll(ctx context.Context) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

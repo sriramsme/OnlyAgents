@@ -8,6 +8,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // const (
@@ -191,7 +192,7 @@ func (c *OpenAIClient) toOpenAIMessages(messages []llm.Message) []openai.ChatCom
 }
 
 // toOpenAITools converts our tool format to OpenAI's format
-func (c *OpenAIClient) toOpenAITools(tools []llm.ToolDef) []openai.Tool {
+func (c *OpenAIClient) toOpenAITools(tools []tools.ToolDef) []openai.Tool {
 	if len(tools) == 0 {
 		return nil
 	}
@@ -201,9 +202,9 @@ func (c *OpenAIClient) toOpenAITools(tools []llm.ToolDef) []openai.Tool {
 		tool := openai.Tool{
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
-				Name:        t.Function.Name,
-				Description: t.Function.Description,
-				Parameters:  t.Function.Parameters,
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
 			},
 		}
 
@@ -218,7 +219,7 @@ func (c *OpenAIClient) parseResponse(chatResp *openai.ChatCompletionResponse) *l
 	if len(chatResp.Choices) == 0 {
 		return &llm.Response{
 			Content:   "",
-			ToolCalls: []llm.ToolCall{},
+			ToolCalls: []tools.ToolCall{},
 			Usage: llm.Usage{
 				InputTokens:  chatResp.Usage.PromptTokens,
 				OutputTokens: chatResp.Usage.CompletionTokens,
@@ -232,14 +233,14 @@ func (c *OpenAIClient) parseResponse(chatResp *openai.ChatCompletionResponse) *l
 	message := choice.Message
 
 	// Extract tool calls
-	var toolCalls []llm.ToolCall
+	var toolCalls []tools.ToolCall
 	if len(message.ToolCalls) > 0 {
-		toolCalls = make([]llm.ToolCall, 0, len(message.ToolCalls))
+		toolCalls = make([]tools.ToolCall, 0, len(message.ToolCalls))
 		for _, tc := range message.ToolCalls {
-			toolCalls = append(toolCalls, llm.ToolCall{
+			toolCalls = append(toolCalls, tools.ToolCall{
 				ID:   tc.ID,
 				Type: "function",
-				Function: llm.FunctionCall{
+				Function: tools.FunctionCall{
 					Name:      tc.Function.Name,
 					Arguments: tc.Function.Arguments,
 				},

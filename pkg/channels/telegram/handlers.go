@@ -6,83 +6,59 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
 	tu "github.com/mymmrac/telego/telegoutil"
+	"github.com/sriramsme/OnlyAgents/pkg/channels"
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 func (c *TelegramChannel) registerHandlers() {
-	// Command: /start
 	c.handler.HandleMessage(func(ctx *th.Context, message telego.Message) error {
 		return c.handleStart(ctx, &message)
 	}, th.CommandEqual("start"))
 
-	// Command: /help
 	c.handler.HandleMessage(func(ctx *th.Context, message telego.Message) error {
 		return c.handleHelp(ctx, &message)
 	}, th.CommandEqual("help"))
 
-	// All other messages
 	c.handler.HandleMessage(func(ctx *th.Context, message telego.Message) error {
 		return c.handleMessage(ctx, &message)
 	}, th.AnyMessage())
 }
 
-// handleStart handles /start command
 func (c *TelegramChannel) handleStart(ctx *th.Context, message *telego.Message) error {
 	if message == nil {
 		return fmt.Errorf("message is nil")
 	}
-
-	response := "Hello! I'm your OnlyAgents assistant. Send me a message and I'll help you!"
-
 	_, err := c.bot.SendMessage(ctx, tu.Message(
 		tu.ID(message.Chat.ID),
-		response,
-	).WithReplyParameters(&telego.ReplyParameters{
-		MessageID: message.MessageID,
-	}))
-
-	if err != nil {
-		c.logger.Error("failed to send start message", "error", err)
-	}
-
-	return nil
+		"Hello! I'm your OnlyAgents assistant. Send me a message and I'll help you!",
+	).WithReplyParameters(&telego.ReplyParameters{MessageID: message.MessageID}))
+	return err
 }
 
-// handleHelp handles /help command
 func (c *TelegramChannel) handleHelp(ctx *th.Context, message *telego.Message) error {
 	if message == nil {
 		return fmt.Errorf("message is nil")
 	}
-
-	helpText := `Available commands:
-/start - Start the bot
-/help - Show this help message
-
-Just send me a message and I'll help you with your request!`
-
+	helpText := "Available commands:\n/start - Start the bot\n/help - Show this help\n\nJust send me a message!"
 	_, err := c.bot.SendMessage(ctx, tu.Message(
 		tu.ID(message.Chat.ID),
 		helpText,
-	).WithReplyParameters(&telego.ReplyParameters{
-		MessageID: message.MessageID,
-	}))
-
-	if err != nil {
-		c.logger.Error("failed to send help message", "error", err)
-	}
-
-	return nil
+	).WithReplyParameters(&telego.ReplyParameters{MessageID: message.MessageID}))
+	return err
 }
 
-// handleMessage handles incoming messages
+// handleMessage is the async entry point for all user messages.
+// It fires a MessageReceived event onto the bus and returns immediately.
+// The response arrives later via channel.Send() called by kernel.
 func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message) error {
 	if message == nil || message.From == nil {
 		return fmt.Errorf("invalid message")
 	}
 
-	// Check whitelist
 	if !c.isAllowed(message.From) {
 		c.logger.Debug("message rejected by allowlist",
 			"user_id", message.From.ID,
@@ -90,90 +66,86 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 		return nil
 	}
 
-	chatID := fmt.Sprintf("%d", message.Chat.ID)
-	userID := fmt.Sprintf("%d", message.From.ID)
-
-	// Extract message content
 	content := c.extractContent(message)
 	if content == "" {
 		content = "[empty message]"
 	}
+
+	chatID := fmt.Sprintf("%d", message.Chat.ID)
+	userID := fmt.Sprintf("%d", message.From.ID)
 
 	c.logger.Debug("received message",
 		"user_id", userID,
 		"chat_id", chatID,
 		"preview", truncate(content, 50))
 
-	// Route to appropriate agent
-	agentID := c.routeMessage(userID, content)
-	agent, err := c.agentRegistry.Get(agentID)
-	if err != nil {
-		c.logger.Error("failed to get agent",
-			"agent_id", agentID,
-			"available_agents", c.agentRegistry.ListAll(),
-			"error", err)
-		c.sendErrorResponse(ctx, chatID, message.Chat.ID, "Sorry, I couldn't find an agent to handle your request.")
-		return nil
+	// Determine target agent from channel config (default if not set)
+	agentID := c.config.DefaultAgent
+	if agentID == "" {
+		agentID = "default"
 	}
 
-	c.logger.Debug("routing message to agent",
-		"agent_id", agentID,
-		"user_id", userID)
-
-	// Send "thinking" indicator
+	// Show thinking indicator and create placeholder before firing event.
+	// Send() will update this placeholder when the response arrives.
 	c.sendThinkingIndicator(ctx, chatID, message.Chat.ID)
-
-	// Create placeholder message
 	c.createPlaceholder(ctx, chatID, message.Chat.ID)
-
-	// Create agent execution context with timeout from connector context
-	// Agent execution may take longer, so use a generous timeout
-	agentCtx, agentCancel := context.WithTimeout(c.ctx, 5*time.Minute)
-	defer func() { agentCancel() }()
-
-	// Process message through agent
-	response, err := agent.Execute(agentCtx, content)
-
-	// Stop thinking indicator
 	c.stopThinkingIndicator(chatID)
 
-	if err != nil {
-		c.logger.Error("agent execution failed",
-			"error", err,
-			"agent_id", agentID,
-			"user_id", userID)
-		response = "Sorry, I encountered an error processing your request."
-	}
-
-	// Send response
-	if err := c.sendResponse(ctx, chatID, message.Chat.ID, response); err != nil {
-		c.logger.Error("failed to send response", "error", err)
+	// Fire event — kernel routes to agent, agent replies via OutboundMessage → Send()
+	c.bus <- core.Event{
+		Type:          core.MessageReceived,
+		CorrelationID: uuid.NewString(),
+		Payload: core.MessageReceivedPayload{
+			ChannelName: "telegram",
+			ChatID:      chatID,
+			UserID:      userID,
+			Username:    message.From.Username,
+			Content:     content,
+			Metadata: map[string]string{
+				"target_agent": agentID,
+			},
+		},
 	}
 
 	return nil
 }
 
-// routeMessage determines which agent should handle the message
-func (c *TelegramChannel) routeMessage(userID, content string) string {
-	// Executive-driven routing: always route to default agent (usually executive)
-	// Executive agent handles delegation to specialized sub-agents
-
-	if c.config.DefaultAgent != "" {
-		c.logger.Debug("routing to default agent",
-			"agent_id", c.config.DefaultAgent)
-		return c.config.DefaultAgent
+// Send is called by kernel when the agent has a response ready.
+// It updates the placeholder message created in handleMessage.
+func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage) error {
+	chatID, err := parseChatID(msg.ChatID)
+	if err != nil {
+		return fmt.Errorf("invalid chat id: %w", err)
 	}
 
-	// Fallback: use first available agent
-	agents := c.agentRegistry.ListAll()
-	if len(agents) > 0 {
-		c.logger.Debug("routing to first available agent",
-			"agent_id", agents[0])
-		return agents[0]
+	htmlContent := markdownToTelegramHTML(msg.Content)
+
+	// Try to update the placeholder we created when the message came in
+	if msgID, ok := c.placeholders.LoadAndDelete(msg.ChatID); ok {
+		editMsg := tu.EditMessageText(
+			tu.ID(chatID),
+			msgID.(int),
+			htmlContent,
+		).WithParseMode(telego.ModeHTML)
+
+		_, err := c.bot.EditMessageText(ctx, editMsg)
+		if err == nil {
+			return nil
+		}
+		// Placeholder edit failed, fall through to sending a new message
+		c.logger.Debug("failed to edit placeholder, sending new message", "error", err)
 	}
 
-	c.logger.Warn("no agents available for routing")
-	return "default"
+	// No placeholder or edit failed — send fresh message
+	outMsg := tu.Message(tu.ID(chatID), htmlContent).WithParseMode(telego.ModeHTML)
+	_, err = c.bot.SendMessage(ctx, outMsg)
+	if err != nil {
+		// HTML parse failed, retry as plain text
+		c.logger.Debug("HTML send failed, falling back to plain text", "error", err)
+		outMsg.ParseMode = ""
+		_, err = c.bot.SendMessage(ctx, outMsg)
+	}
+	return err
 }
 
 // extractContent extracts text content from a message
@@ -264,54 +236,6 @@ func (c *TelegramChannel) createPlaceholder(ctx *th.Context, chatIDStr string, c
 	msg, err := c.bot.SendMessage(ctx, tu.Message(tu.ID(chatID), "💭 Thinking..."))
 	if err == nil {
 		c.placeholders.Store(chatIDStr, msg.MessageID)
-	}
-}
-
-// sendResponse sends the agent's response
-func (c *TelegramChannel) sendResponse(ctx *th.Context, chatIDStr string, chatID int64, content string) error {
-	// Convert markdown to Telegram HTML
-	htmlContent := markdownToTelegramHTML(content)
-
-	// Try to edit placeholder
-	if msgID, ok := c.placeholders.LoadAndDelete(chatIDStr); ok {
-		editMsg := tu.EditMessageText(
-			tu.ID(chatID),
-			msgID.(int),
-			htmlContent,
-		).WithParseMode(telego.ModeHTML)
-
-		_, err := c.bot.EditMessageText(ctx, editMsg)
-		if err == nil {
-			return nil
-		}
-		// Fallback to new message if edit fails
-		c.logger.Debug("failed to edit placeholder, sending new message", "error", err)
-	}
-
-	// Send new message
-	msg := tu.Message(tu.ID(chatID), htmlContent).
-		WithParseMode(telego.ModeHTML)
-
-	_, err := c.bot.SendMessage(ctx, msg)
-	if err != nil {
-		// Fallback to plain text if HTML parsing fails
-		c.logger.Debug("HTML parse failed, falling back to plain text", "error", err)
-		msg.ParseMode = ""
-		_, err = c.bot.SendMessage(ctx, msg)
-	}
-
-	return err
-}
-
-// sendErrorResponse sends an error message (without placeholder editing)
-func (c *TelegramChannel) sendErrorResponse(ctx *th.Context, chatIDStr string, chatID int64, errorMsg string) {
-	// Clean up placeholder
-	c.placeholders.Delete(chatIDStr)
-	c.stopThinkingIndicator(chatIDStr)
-
-	msg := tu.Message(tu.ID(chatID), errorMsg)
-	if _, err := c.bot.SendMessage(ctx, msg); err != nil {
-		c.logger.Error("failed to send error response", "error", err)
 	}
 }
 

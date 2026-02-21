@@ -3,7 +3,7 @@ package handlers
 import (
 	"context"
 
-	"github.com/sriramsme/OnlyAgents/pkg/kernel"
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 // Deps holds every dependency that handlers might need.
@@ -12,7 +12,7 @@ import (
 //
 // This is the idiomatic Go alternative to a global service locator.
 type Deps struct {
-	Agents  *kernel.AgentRegistry
+	Bus     chan<- core.Event
 	Version string
 
 	// Uncomment as you build these packages:
