@@ -6,7 +6,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/sriramsme/OnlyAgents/pkg/config"
+	"github.com/sriramsme/OnlyAgents/internal/config"
 )
 
 // Middleware holds the server config needed to build middleware chains

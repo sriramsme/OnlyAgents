@@ -84,6 +84,11 @@ type OutboundMessagePayload struct {
 	ParseMode   string
 }
 
+// ErrorPayload: send an error response back to a channel
+type ErrorPayload struct {
+	Error string
+}
+
 // Telegram
 //   → Event{MessageReceived}
 //   → Kernel

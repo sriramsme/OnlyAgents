@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sriramsme/OnlyAgents/pkg/config"
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/soul"
@@ -28,7 +28,13 @@ import (
 )
 
 // NewAgent creates an agent. Kernel calls this and injects the shared bus + tool definitions.
-func NewAgent(cfg config.Config, llmClient llm.Client, tools []tools.ToolDef, outbox chan<- core.Event) (*Agent, error) {
+func NewAgent(
+	ctx context.Context, // ← Parent context (kernel's context)
+	cfg config.Config,
+	llmClient llm.Client,
+	tools []tools.ToolDef,
+	outbox chan<- core.Event,
+) (*Agent, error) {
 	if llmClient == nil {
 		return nil, fmt.Errorf("llm client is required")
 	}
@@ -40,7 +46,9 @@ func NewAgent(cfg config.Config, llmClient llm.Client, tools []tools.ToolDef, ou
 	if err != nil {
 		return nil, fmt.Errorf("load user config: %w", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	// Create agent context from parent - ties agent lifecycle to kernel
+	agentCtx, cancel := context.WithCancel(ctx)
+
 	return &Agent{
 		id:             cfg.ID,
 		name:           cfg.Name,
@@ -52,7 +60,7 @@ func NewAgent(cfg config.Config, llmClient llm.Client, tools []tools.ToolDef, ou
 		tools:          tools,
 		outbox:         outbox,
 		inbox:          make(chan core.Event, cfg.BufferSize),
-		ctx:            ctx,
+		ctx:            agentCtx,
 		cancel:         cancel,
 		logger:         slog.With("agent_id", cfg.ID),
 	}, nil
@@ -70,6 +78,8 @@ func (a *Agent) Start() error {
 
 func (a *Agent) Stop() error {
 	a.logger.Info("stopping agent")
+
+	// Cancel context to signal shutdown
 	a.cancel()
 
 	done := make(chan struct{})
@@ -78,11 +88,17 @@ func (a *Agent) Stop() error {
 		close(done)
 	}()
 
+	// Wait with timeout
+	timeout := 10 * time.Second
 	select {
 	case <-done:
+		a.logger.Info("agent stopped gracefully")
 		return nil
-	case <-time.After(5 * time.Second):
-		return fmt.Errorf("agent %s shutdown timeout", a.id)
+	case <-time.After(timeout):
+		a.logger.Error("agent shutdown timeout",
+			"timeout", timeout,
+			"warning", "goroutines may still be running - check for blocked LLM calls or stuck tool executions")
+		return fmt.Errorf("agent %s shutdown timeout after %v", a.id, timeout)
 	}
 }
 
@@ -103,6 +119,7 @@ func (a *Agent) processEvents() {
 		case evt := <-a.inbox:
 			a.handleEvent(evt)
 		case <-a.ctx.Done():
+			a.logger.Info("event processor shutting down")
 			return
 		}
 	}
@@ -111,23 +128,53 @@ func (a *Agent) processEvents() {
 func (a *Agent) handleEvent(evt core.Event) {
 	switch evt.Type {
 	case core.AgentExecute:
-		payload := evt.Payload.(core.AgentExecutePayload)
-		response, err := a.execute(a.ctx, payload.UserMessage, evt.CorrelationID)
-		if err != nil {
-			a.logger.Error("execute failed", "error", err)
+
+		payload, ok := evt.Payload.(core.AgentExecutePayload)
+		if !ok {
+			a.logger.Error("invalid AgentExecute payload",
+				"actual_type", fmt.Sprintf("%T", evt.Payload),
+				"correlation_id", evt.CorrelationID)
 			return
 		}
 
+		requestCtx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
+		defer cancel()
+
+		// Add correlation ID to context for tracing
+		// (In production, use opentelemetry or similar)
+		// requestCtx = context.WithValue(requestCtx, "correlation_id", evt.CorrelationID)
+
+		a.logger.Debug("processing agent execute event",
+			"correlation_id", evt.CorrelationID,
+			"message_length", len(payload.UserMessage))
+		response, err := a.execute(requestCtx, payload.UserMessage, evt.CorrelationID)
+		if err != nil {
+			a.logger.Error("execute failed",
+				"error", err,
+				"correlation_id", evt.CorrelationID)
+
+			// Send error response if this is a sync request
+			if evt.ReplyTo != nil {
+				errorEvt := core.Event{
+					Type:          core.AgentExecute,
+					CorrelationID: evt.CorrelationID,
+					Payload:       fmt.Sprintf("Error: %v", err),
+				}
+				a.safeReply(evt.ReplyTo, errorEvt, "execute error")
+			}
+			return
+		}
 		if evt.ReplyTo != nil {
 			// HTTP path — reply directly
-			evt.ReplyTo <- core.Event{
+			replyEvt := core.Event{
 				Type:          core.AgentExecute,
 				CorrelationID: evt.CorrelationID,
 				Payload:       response,
 			}
+			a.safeReply(evt.ReplyTo, replyEvt, "http response")
 		} else {
 			// Async path (Telegram etc.) — fire OutboundMessage
-			a.outbox <- core.Event{
+			outboundEvt := core.Event{
 				Type:          core.OutboundMessage,
 				CorrelationID: evt.CorrelationID,
 				Payload: core.OutboundMessagePayload{
@@ -136,7 +183,47 @@ func (a *Agent) handleEvent(evt core.Event) {
 					Content:     response,
 				},
 			}
+			a.safeSend(outboundEvt, "outbound message")
 		}
+
+	default:
+		a.logger.Warn("unhandled event type",
+			"type", evt.Type,
+			"correlation_id", evt.CorrelationID)
+	}
+}
+
+// safeReply sends to a reply channel with timeout and context checks
+func (a *Agent) safeReply(replyCh chan<- core.Event, evt core.Event, description string) {
+	select {
+	case replyCh <- evt:
+		// Success
+	case <-time.After(5 * time.Second):
+		a.logger.Error("failed to send reply - timeout",
+			"description", description,
+			"correlation_id", evt.CorrelationID)
+	case <-a.ctx.Done():
+		a.logger.Info("failed to send reply - agent shutting down",
+			"description", description,
+			"correlation_id", evt.CorrelationID)
+	}
+}
+
+// safeSend sends to outbox with timeout and context checks
+func (a *Agent) safeSend(evt core.Event, description string) {
+	select {
+	case a.outbox <- evt:
+		// Success
+	case <-time.After(5 * time.Second):
+		a.logger.Error("failed to send to outbox - timeout",
+			"description", description,
+			"event_type", evt.Type,
+			"correlation_id", evt.CorrelationID)
+	case <-a.ctx.Done():
+		a.logger.Info("failed to send to outbox - agent shutting down",
+			"description", description,
+			"event_type", evt.Type,
+			"correlation_id", evt.CorrelationID)
 	}
 }
 
@@ -149,7 +236,9 @@ func (a *Agent) Execute(ctx context.Context, userMessage string) (string, error)
 
 // execute is the internal LLM loop, shared by both sync and async paths.
 func (a *Agent) execute(ctx context.Context, userMessage string, correlationID string) (string, error) {
-	a.logger.Debug("executing", "message_length", len(userMessage))
+	a.logger.Debug("executing",
+		"message_length", len(userMessage),
+		"correlation_id", correlationID)
 
 	messages := []llm.Message{
 		llm.SystemMessage(a.soul.SystemPrompt(ctx)),
@@ -158,10 +247,20 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 	}
 
 	for {
+		// Check context before making LLM call
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("request cancelled: %w", ctx.Err())
+		default:
+		}
+
 		resp, err := a.llmClient.Chat(ctx, &llm.Request{
 			Messages: messages,
 			Tools:    a.tools,
-			Metadata: map[string]string{"agent_id": a.id},
+			Metadata: map[string]string{
+				"agent_id":       a.id,
+				"correlation_id": correlationID,
+			},
 		})
 		if err != nil {
 			return "", fmt.Errorf("llm request failed: %w", err)
@@ -170,7 +269,8 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 		a.logger.Debug("llm response",
 			"stop_reason", resp.StopReason,
 			"tool_calls", len(resp.ToolCalls),
-			"tokens", resp.Usage.TotalTokens)
+			"tokens", resp.Usage.TotalTokens,
+			"correlation_id", correlationID)
 
 		if !resp.HasToolCalls() {
 			return resp.Content, nil
@@ -209,9 +309,10 @@ func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc to
 	}
 
 	// Kernel will send the result back on this channel
+	// Buffer of 1 ensures non-blocking send from kernel
 	replyCh := make(chan core.Event, 1)
 
-	a.outbox <- core.Event{
+	event := core.Event{
 		Type:          core.ToolCallRequest,
 		CorrelationID: correlationID,
 		AgentID:       a.id,
@@ -224,15 +325,46 @@ func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc to
 		},
 	}
 
+	a.logger.Debug("requesting tool call",
+		"tool", tc.Function.Name,
+		"correlation_id", correlationID)
+
+	// Safe send with timeout and context checks
+	select {
+	case a.outbox <- event:
+		// Successfully sent request
+	case <-ctx.Done():
+		return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
+	case <-a.ctx.Done():
+		return nil, fmt.Errorf("agent shutting down")
+	case <-time.After(5 * time.Second):
+		return nil, fmt.Errorf("failed to send tool call request (timeout): %s", tc.Function.Name)
+	}
+
+	// Wait for result with timeout
 	select {
 	case resultEvt := <-replyCh:
-		result := resultEvt.Payload.(core.ToolCallResultPayload)
+		result, ok := resultEvt.Payload.(core.ToolCallResultPayload)
+		if !ok {
+			return nil, fmt.Errorf("invalid tool result payload type: %T", resultEvt.Payload)
+		}
+
 		if result.Error != "" {
 			return nil, fmt.Errorf("tool call error: %s", result.Error)
 		}
+
+		a.logger.Debug("tool call succeeded",
+			"tool", tc.Function.Name,
+			"correlation_id", correlationID)
+
 		return result.Result, nil
+
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
+
+	case <-a.ctx.Done():
+		return nil, fmt.Errorf("agent shutting down")
+
 	case <-time.After(30 * time.Second):
 		return nil, fmt.Errorf("tool call timeout: %s", tc.Function.Name)
 	}
@@ -262,6 +394,7 @@ func (a *Agent) healthCheck() {
 		case <-ticker.C:
 			a.logger.Debug("health check ok")
 		case <-a.ctx.Done():
+			a.logger.Info("health check shutting down")
 			return
 		}
 	}

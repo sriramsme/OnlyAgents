@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
-	"github.com/sriramsme/OnlyAgents/pkg/config"
 	_ "github.com/sriramsme/OnlyAgents/pkg/connectors/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/kernel"
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
@@ -16,18 +16,24 @@ import (
 
 func main() {
 	logger.Initialize("debug", "json")
+
+	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+
+	// Handle signals in goroutine
+	go func() {
+		sig := <-sigChan
+		logger.Log.Info("received shutdown signal", "signal", sig.String())
+		cancel()
+	}()
 
 	fmt.Println("OnlyAgents Server v0.1.0")
 	fmt.Println("=========================")
-
-	// Load configurations
-	vault := mustLoadVault()
-	defer func() {
-		if err := vault.Close(); err != nil {
-			logger.Log.Error("error closing vault", "error", err)
-		}
-	}()
 
 	k, err := kernel.NewKernel(kernel.Config{
 		BusBufferSize:       100,
@@ -36,41 +42,28 @@ func main() {
 		ConnectorConfigsDir: "configs/connectors/",
 		ChannelConfigsDir:   "configs/channels/",
 		SkillConfigsDir:     "configs/skills/",
-	}, vault, ctx, cancel)
+	}, ctx, cancel)
 
 	if err != nil {
 		logger.Log.Error("failed to initialize kernel", "error", err)
-		os.Exit(1) // os.Exit lives HERE, not in the library
+		os.Exit(1)
 	}
 
 	if err := k.Start(); err != nil {
 		logger.Log.Error("failed to start kernel", "error", err)
-		os.Exit(1) // os.Exit lives HERE, not in the library
+		os.Exit(1)
 	}
 
+	logger.Log.Info("server started successfully - press Ctrl+C to stop")
+
+	// Wait for shutdown signal
 	<-ctx.Done()
 
 	logger.Log.Info("shutting down kernel")
 	if err := k.Stop(); err != nil {
 		logger.Log.Error("error shutting down kernel", "error", err)
-	}
-}
-
-// mustLoadVault loads vault config or exits
-func mustLoadVault() vault.Vault {
-	path := getConfigPath(1, "configs/vault.yaml")
-	v, err := config.LoadVault(path)
-	if err != nil {
-		logger.Log.Error("failed to load vault", "error", err)
 		os.Exit(1)
 	}
-	return v
-}
 
-// getConfigPath returns config path from args or default
-func getConfigPath(argIndex int, defaultPath string) string {
-	if len(os.Args) > argIndex {
-		return os.Args[argIndex]
-	}
-	return defaultPath
+	logger.Log.Info("shutdown complete")
 }

@@ -3,16 +3,18 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/internal/api"
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
-	"github.com/sriramsme/OnlyAgents/pkg/config"
 	_ "github.com/sriramsme/OnlyAgents/pkg/connectors/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/kernel"
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
@@ -21,20 +23,24 @@ import (
 
 func main() {
 	logger.Initialize("debug", "json")
+
+	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+
+	// Handle signals in goroutine
+	go func() {
+		sig := <-sigChan
+		logger.Log.Info("received shutdown signal", "signal", sig.String())
+		cancel()
+	}()
 
 	fmt.Println("OnlyAgents Server v0.1.0")
 	fmt.Println("=========================")
-
-	// Load configurations
-	vault := mustLoadVault()
-	defer func() {
-		if err := vault.Close(); err != nil {
-			logger.Log.Error("error closing vault", "error", err)
-		}
-	}()
-
-	serverConfig := mustLoadServerConfig()
 
 	k, err := kernel.NewKernel(kernel.Config{
 		BusBufferSize:       100,
@@ -43,15 +49,31 @@ func main() {
 		ConnectorConfigsDir: "configs/connectors/",
 		ChannelConfigsDir:   "configs/channels/",
 		SkillConfigsDir:     "configs/skills/",
-	}, vault, ctx, cancel)
+		VaultPath:           "configs/vault.yaml",
+	}, ctx, cancel)
 
 	if err != nil {
 		logger.Log.Error("failed to initialize kernel", "error", err)
-		os.Exit(1) // os.Exit lives HERE, not in the library
+		os.Exit(1)
 	}
 
+	if err := k.Start(); err != nil {
+		logger.Log.Error("failed to start kernel", "error", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("server started successfully - press Ctrl+C to stop")
+
 	// Start API server
+	serverConfig := mustLoadServerConfig()
 	server := createServer(serverConfig, k)
+
+	u := &url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(serverConfig.Host, strconv.Itoa(serverConfig.Port)),
+	}
+	fmt.Println("server started successfully", "url", u.String())
+
 	runServer(server)
 	if err := k.Start(); err != nil {
 		logger.Log.Error("failed to start kernel", "error", err)
@@ -63,18 +85,10 @@ func main() {
 	logger.Log.Info("shutting down kernel")
 	if err := k.Stop(); err != nil {
 		logger.Log.Error("error shutting down kernel", "error", err)
-	}
-}
-
-// mustLoadVault loads vault config or exits
-func mustLoadVault() vault.Vault {
-	path := getConfigPath(1, "configs/vault.yaml")
-	v, err := config.LoadVault(path)
-	if err != nil {
-		logger.Log.Error("failed to load vault", "error", err)
 		os.Exit(1)
 	}
-	return v
+
+	logger.Log.Info("shutdown complete")
 }
 
 // mustLoadServerConfig loads server config or exits

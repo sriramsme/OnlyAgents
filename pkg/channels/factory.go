@@ -1,6 +1,7 @@
 package channels
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -10,6 +11,7 @@ import (
 
 // Factory creates a connector from raw config
 type Factory func(
+	ctx context.Context,
 	rawConfig map[string]interface{},
 	vault vault.Vault,
 	bus chan<- core.Event,

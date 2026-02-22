@@ -28,11 +28,11 @@ func init() {
 
 // Connector implements the Connector interface for Telegram
 type TelegramChannel struct {
-	config  *Config // telegram.Config, not connectors.TelegramConfig
-	vault   vault.Vault
-	bus     chan<- core.Event
-	bot     *telego.Bot
-	handler *th.BotHandler
+	config   *Config // telegram.Config, not connectors.TelegramConfig
+	vault    vault.Vault
+	eventBus chan<- core.Event
+	bot      *telego.Bot
+	handler  *th.BotHandler
 
 	// State
 	mu      sync.RWMutex
@@ -52,7 +52,12 @@ type TelegramChannel struct {
 }
 
 // NewChannel creates a new Telegram channel
-func NewChannel(rawConfig map[string]interface{}, vault vault.Vault, bus chan<- core.Event) (channels.Channel, error) {
+func NewChannel(
+	ctx context.Context,
+	rawConfig map[string]interface{},
+	vault vault.Vault,
+	eventBus chan<- core.Event,
+) (channels.Channel, error) {
 
 	var cfg Config
 
@@ -70,7 +75,7 @@ func NewChannel(rawConfig map[string]interface{}, vault vault.Vault, bus chan<- 
 		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	channelCtx, cancel := context.WithCancel(ctx)
 	logger := slog.With(
 		"connector", "telegram",
 	)
@@ -78,8 +83,8 @@ func NewChannel(rawConfig map[string]interface{}, vault vault.Vault, bus chan<- 
 	return &TelegramChannel{
 		config:       &cfg,
 		vault:        vault,
-		bus:          bus,
-		ctx:          ctx,
+		eventBus:     eventBus,
+		ctx:          channelCtx,
 		cancel:       cancel,
 		logger:       logger,
 		placeholders: sync.Map{},
@@ -103,7 +108,7 @@ func (c *TelegramChannel) HealthCheck() (bool, error) {
 }
 
 // Connect initializes the Telegram bot connection
-func (c *TelegramChannel) Connect(ctx context.Context) error {
+func (c *TelegramChannel) Connect() error {
 	c.logger.Info("connecting to telegram")
 
 	// Get bot token from vault (always required)
@@ -111,7 +116,7 @@ func (c *TelegramChannel) Connect(ctx context.Context) error {
 		return fmt.Errorf("bot token vault key is required in credentials")
 	}
 
-	botToken, err := c.vault.GetSecret(ctx, c.config.Credentials.BotToken)
+	botToken, err := c.vault.GetSecret(c.ctx, c.config.Credentials.BotToken)
 	if err != nil {
 		return fmt.Errorf("failed to get bot token from vault (key: %s): %w",
 			c.config.Credentials.BotToken, err)
@@ -151,7 +156,7 @@ func (c *TelegramChannel) Connect(ctx context.Context) error {
 }
 
 // Disconnect closes the Telegram bot connection
-func (c *TelegramChannel) Disconnect(ctx context.Context) error {
+func (c *TelegramChannel) Disconnect() error {
 	c.logger.Info("disconnecting from telegram")
 
 	// Stop any running handlers
@@ -178,7 +183,7 @@ func (c *TelegramChannel) Disconnect(ctx context.Context) error {
 }
 
 // Start starts receiving messages
-func (c *TelegramChannel) Start(ctx context.Context) error {
+func (c *TelegramChannel) Start() error {
 	c.mu.Lock()
 	if c.running {
 		c.mu.Unlock()
@@ -199,16 +204,16 @@ func (c *TelegramChannel) Start(ctx context.Context) error {
 
 	switch mode {
 	case "polling":
-		return c.startPolling(ctx)
+		return c.startPolling(c.ctx)
 	case "webhook":
-		return c.startWebhook(ctx)
+		return c.startWebhook(c.ctx)
 	default:
 		return fmt.Errorf("unsupported mode: %s (use 'polling' or 'webhook')", mode)
 	}
 }
 
 // Stop stops the connector
-func (c *TelegramChannel) Stop(ctx context.Context) error {
+func (c *TelegramChannel) Stop() error {
 	c.mu.Lock()
 	if !c.running {
 		c.mu.Unlock()

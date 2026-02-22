@@ -3,6 +3,8 @@ package connectors
 import (
 	"context"
 	"io"
+
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 // Connector is the base interface all connectors must implement
@@ -12,10 +14,10 @@ type Connector interface {
 	Type() string
 
 	// Lifecycle
-	Connect(ctx context.Context) error
-	Disconnect(ctx context.Context) error
-	Start(ctx context.Context) error
-	Stop(ctx context.Context) error
+	Connect() error
+	Disconnect() error
+	Start() error
+	Stop() error
 
 	// Health
 	HealthCheck() error
@@ -51,7 +53,12 @@ type CalendarConnector interface {
 type WebSearchConnector interface {
 	Connector
 	Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error)
-	SearchNews(ctx context.Context, req *SearchRequest) (*SearchResponse, error)
+}
+
+// WebFetchConnector provides web fetching capabilities
+type WebFetchConnector interface {
+	Connector
+	Fetch(ctx context.Context, req *FetchRequest) (*FetchResponse, error)
 }
 
 // TaskConnector provides task management capabilities
@@ -91,24 +98,27 @@ type NotesConnector interface {
 // ====================
 
 // SupportsCapability checks if a connector implements a specific capability
-func SupportsCapability(conn Connector, capability string) bool {
+func SupportsCapability(conn Connector, capability core.Capability) bool {
 	switch capability {
-	case "email":
+	case core.CapabilityEmail:
 		_, ok := conn.(EmailConnector)
 		return ok
-	case "calendar":
+	case core.CapabilityCalendar:
 		_, ok := conn.(CalendarConnector)
 		return ok
-	case "web_search":
+	case core.CapabilityWebSearch:
 		_, ok := conn.(WebSearchConnector)
 		return ok
-	case "tasks":
+	case core.CapabilityWebFetch:
+		_, ok := conn.(WebFetchConnector)
+		return ok
+	case core.CapabilityTasks:
 		_, ok := conn.(TaskConnector)
 		return ok
-	case "storage":
+	case core.CapabilityStorage:
 		_, ok := conn.(StorageConnector)
 		return ok
-	case "notes":
+	case core.CapabilityNotes:
 		_, ok := conn.(NotesConnector)
 		return ok
 	default:
@@ -117,26 +127,29 @@ func SupportsCapability(conn Connector, capability string) bool {
 }
 
 // GetCapabilities returns all capabilities a connector supports
-func GetCapabilities(conn Connector) []string {
-	var caps []string
+func GetCapabilities(conn Connector) []core.Capability {
+	var caps []core.Capability
 
 	if _, ok := conn.(EmailConnector); ok {
-		caps = append(caps, "email")
+		caps = append(caps, core.CapabilityEmail)
 	}
 	if _, ok := conn.(CalendarConnector); ok {
-		caps = append(caps, "calendar")
+		caps = append(caps, core.CapabilityCalendar)
 	}
 	if _, ok := conn.(WebSearchConnector); ok {
-		caps = append(caps, "web_search")
+		caps = append(caps, core.CapabilityWebSearch)
+	}
+	if _, ok := conn.(WebFetchConnector); ok {
+		caps = append(caps, core.CapabilityWebFetch)
 	}
 	if _, ok := conn.(TaskConnector); ok {
-		caps = append(caps, "tasks")
+		caps = append(caps, core.CapabilityTasks)
 	}
 	if _, ok := conn.(StorageConnector); ok {
-		caps = append(caps, "storage")
+		caps = append(caps, core.CapabilityStorage)
 	}
 	if _, ok := conn.(NotesConnector); ok {
-		caps = append(caps, "notes")
+		caps = append(caps, core.CapabilityNotes)
 	}
 
 	return caps

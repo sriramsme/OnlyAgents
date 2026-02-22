@@ -144,6 +144,7 @@ type SearchResponse struct {
 	Query      string         `json:"query"`
 	Results    []SearchResult `json:"results"`
 	TotalCount int            `json:"total_count,omitempty"`
+	Provider   string         `json:"provider"` // brave, duckduckgo, perplexity
 }
 
 type SearchResult struct {
@@ -155,6 +156,24 @@ type SearchResult struct {
 	Source      string      `json:"source,omitempty"`
 	Favicon     string      `json:"favicon,omitempty"`
 	Raw         interface{} `json:"raw,omitempty"`
+}
+
+// ====================
+// Web Fetch Types
+// ====================
+
+type FetchRequest struct {
+	URL      string `json:"url"`
+	MaxChars int    `json:"max_chars,omitempty"`
+}
+
+type FetchResponse struct {
+	URL        string `json:"url"`
+	StatusCode int    `json:"status_code"`
+	Content    string `json:"content"`
+	Extractor  string `json:"extractor"` // text, json, raw
+	Truncated  bool   `json:"truncated"`
+	Length     int    `json:"length"`
 }
 
 // ====================

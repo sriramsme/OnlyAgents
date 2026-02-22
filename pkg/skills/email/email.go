@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
@@ -16,6 +17,10 @@ const (
 
 // EmailSkill provides email management capabilities
 type EmailSkill struct {
+	ctx      context.Context
+	cancel   context.CancelFunc
+	eventBus chan<- core.Event
+
 	*skills.BaseSkill
 
 	// Connectors injected by kernel
@@ -24,7 +29,7 @@ type EmailSkill struct {
 }
 
 // NewEmailSkill creates a new email skill
-func NewEmailSkill() *EmailSkill {
+func NewEmailSkill(ctx context.Context, eventBus chan<- core.Event) *EmailSkill {
 	base := skills.NewBaseSkill(
 		"email",
 		"Manage emails - send, search, read, and draft emails using AI",
@@ -32,14 +37,18 @@ func NewEmailSkill() *EmailSkill {
 		skills.SkillTypeNative,
 	)
 
+	skillCtx, cancel := context.WithCancel(ctx)
 	return &EmailSkill{
 		BaseSkill:  base,
 		emailConns: make(map[string]connectors.EmailConnector),
+		ctx:        skillCtx,
+		cancel:     cancel,
+		eventBus:   eventBus,
 	}
 }
 
 // Initialize sets up the email skill with injected connectors
-func (s *EmailSkill) Initialize(ctx context.Context, deps skills.SkillDeps) error {
+func (s *EmailSkill) Initialize(deps skills.SkillDeps) error {
 	s.SetOutbox(deps.Outbox)
 
 	// Extract email connectors from deps.Connectors
@@ -58,8 +67,13 @@ func (s *EmailSkill) Initialize(ctx context.Context, deps skills.SkillDeps) erro
 }
 
 // Shutdown cleans up resources
-func (s *EmailSkill) Shutdown(ctx context.Context) error {
+func (s *EmailSkill) Shutdown() error {
 	return nil
+}
+
+// RequiredCapabilities declares that this skill needs email connectors
+func (s *EmailSkill) RequiredCapabilities() []core.Capability {
+	return []core.Capability{core.CapabilityEmail}
 }
 
 // Tools returns the LLM function calling tools for email

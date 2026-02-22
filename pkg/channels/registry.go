@@ -3,29 +3,31 @@ package channels
 import (
 	"context"
 	"fmt"
+	"sync"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
-	"github.com/sriramsme/OnlyAgents/pkg/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
-// NewConnectorRegistry creates a registry and loads all connector configs
+// NewConnectorRegistry creates a registry and loads all channel configs
 func NewRegistry(
+	ctx context.Context,
 	configDir string,
 	vault vault.Vault,
 	bus chan<- core.Event,
 ) (*Registry, error) {
-	// Load all connector configs
+	// Load all channel configs
 	configs, err := config.LoadAllChannelConfigs(configDir)
 	if err != nil {
-		return nil, fmt.Errorf("load connector configs: %w", err)
+		return nil, fmt.Errorf("load channel configs: %w", err)
 	}
 
 	registry := &Registry{
 		channels: make(map[string]Channel),
 	}
 
-	// Create each connector
+	// Create each channel
 	for name, cfg := range configs {
 		if !cfg.Enabled {
 			continue
@@ -33,10 +35,10 @@ func NewRegistry(
 
 		factory, err := GetFactory(cfg.Platform)
 		if err != nil {
-			return nil, fmt.Errorf("connector %s: %w", name, err)
+			return nil, fmt.Errorf("channel %s: %w", name, err)
 		}
 
-		channel, err := factory(cfg.RawConfig, vault, bus)
+		channel, err := factory(ctx, cfg.RawConfig, vault, bus)
 		if err != nil {
 			return nil, fmt.Errorf("channel %s: create: %w", name, err)
 		}
@@ -53,20 +55,20 @@ func (r *Registry) Register(c Channel) {
 	r.channels[c.PlatformName()] = c
 }
 
-// Get returns a connector by name
+// Get returns a channel by name
 func (r *Registry) Get(name string) (Channel, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	channel, ok := r.channels[name]
 	if !ok {
-		return nil, fmt.Errorf("connector not found: %s", name)
+		return nil, fmt.Errorf("channel not found: %s", name)
 	}
 
 	return channel, nil
 }
 
-// List returns all connector names
+// List returns all channel names
 func (r *Registry) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -88,78 +90,146 @@ func (r *Registry) All() []Channel {
 	return out
 }
 
-// ConnectAll connects all connectors
-func (r *Registry) ConnectAll(ctx context.Context) error {
+// ConnectAll connects all channels
+// lock released before I/O operations
+func (r *Registry) ConnectAll() error {
+	// Get snapshot of channels without holding lock during I/O
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	var errs []error
+	channels := make([]Channel, 0, len(r.channels))
+	names := make([]string, 0, len(r.channels))
 	for name, channel := range r.channels {
-		if err := channel.Connect(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("channel %s: %w", name, err))
-		}
+		channels = append(channels, channel)
+		names = append(names, name)
+	}
+	r.mu.RUnlock()
+
+	// Parallel connect for better performance
+	type result struct {
+		name string
+		err  error
+	}
+
+	resultCh := make(chan result, len(channels))
+	var wg sync.WaitGroup
+
+	for i, channel := range channels {
+		wg.Add(1)
+		go func(idx int, ch Channel) {
+			defer wg.Done()
+
+			if err := ch.Connect(); err != nil {
+				resultCh <- result{name: names[idx], err: err}
+			}
+		}(i, channel)
+	}
+
+	wg.Wait()
+	close(resultCh)
+
+	// Collect errors
+	var errs []error
+	for res := range resultCh {
+		errs = append(errs, fmt.Errorf("channel %s: %w", res.name, res.err))
 	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("connect errors: %v", errs)
 	}
-
 	return nil
 }
 
-// StartAll starts all connectors
-func (r *Registry) StartAll(ctx context.Context) error {
+// StartAll starts all channels
+// lock released before I/O operations
+func (r *Registry) StartAll() error {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
+	channels := make([]Channel, 0, len(r.channels))
+	names := make([]string, 0, len(r.channels))
+	for name, channel := range r.channels {
+		channels = append(channels, channel)
+		names = append(names, name)
+	}
+	r.mu.RUnlock()
+
+	// Parallel start
+	type result struct {
+		name string
+		err  error
+	}
+
+	resultCh := make(chan result, len(channels))
+	var wg sync.WaitGroup
+
+	for i, channel := range channels {
+		wg.Add(1)
+		go func(idx int, ch Channel) {
+			defer wg.Done()
+
+			if err := ch.Start(); err != nil {
+				resultCh <- result{name: names[idx], err: err}
+			}
+		}(i, channel)
+	}
+
+	wg.Wait()
+	close(resultCh)
 
 	var errs []error
-	for name, channel := range r.channels {
-		if err := channel.Start(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("channel %s: %w", name, err))
-		}
+	for res := range resultCh {
+		errs = append(errs, fmt.Errorf("channel %s: %w", res.name, res.err))
 	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("start errors: %v", errs)
 	}
-
 	return nil
 }
 
-// StopAll stops all connectors
-func (r *Registry) StopAll(ctx context.Context) error {
+// StopAll stops all channels
+func (r *Registry) StopAll() error {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	var errs []error
+	channels := make([]Channel, 0, len(r.channels))
+	names := make([]string, 0, len(r.channels))
 	for name, channel := range r.channels {
-		if err := channel.Stop(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("channel %s: %w", name, err))
+		channels = append(channels, channel)
+		names = append(names, name)
+	}
+	r.mu.RUnlock()
+
+	// Sequential stop (order might matter for cleanup)
+	var errs []error
+	for i, channel := range channels {
+		if err := channel.Stop(); err != nil {
+			errs = append(errs, fmt.Errorf("channel %s: %w", names[i], err))
 		}
 	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("stop errors: %v", errs)
 	}
-
 	return nil
 }
 
-// DisconnectAll disconnects all connectors
-func (r *Registry) DisconnectAll(ctx context.Context) error {
+// DisconnectAll disconnects all channels
+func (r *Registry) DisconnectAll() error {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	var errs []error
+	channels := make([]Channel, 0, len(r.channels))
+	names := make([]string, 0, len(r.channels))
 	for name, channel := range r.channels {
-		if err := channel.Disconnect(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("channel %s: %w", name, err))
+		channels = append(channels, channel)
+		names = append(names, name)
+	}
+	r.mu.RUnlock()
+
+	// Sequential disconnect
+	var errs []error
+	for i, channel := range channels {
+		if err := channel.Disconnect(); err != nil {
+			errs = append(errs, fmt.Errorf("channel %s: %w", names[i], err))
 		}
 	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("disconnect errors: %v", errs)
 	}
-
 	return nil
 }

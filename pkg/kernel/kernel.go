@@ -17,11 +17,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -53,9 +54,10 @@ type Config struct {
 	ConnectorConfigsDir string
 	ChannelConfigsDir   string
 	SkillConfigsDir     string
+	VaultPath           string
 }
 
-func NewKernel(cfg Config, v vault.Vault, ctx context.Context, cancel context.CancelFunc) (*Kernel, error) {
+func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Kernel, error) {
 	if cfg.BusBufferSize == 0 {
 		cfg.BusBufferSize = 256
 	}
@@ -71,8 +73,16 @@ func NewKernel(cfg Config, v vault.Vault, ctx context.Context, cancel context.Ca
 	if cfg.SkillConfigsDir == "" {
 		cfg.SkillConfigsDir = "configs/skills/"
 	}
+	if cfg.VaultPath == "" {
+		cfg.VaultPath = "configs/vault.yaml"
+	}
 
 	kernelBus := make(chan core.Event, cfg.BusBufferSize)
+
+	v, err := loadVault(cfg.VaultPath)
+	if err != nil {
+		return nil, fmt.Errorf("load vault: %w", err)
+	}
 
 	agentsRegistry, err := loadAgents(ctx, v, cfg.AgentConfigsDir, kernelBus)
 	if err != nil {
@@ -89,7 +99,7 @@ func NewKernel(cfg Config, v vault.Vault, ctx context.Context, cancel context.Ca
 		return nil, fmt.Errorf("load channels: %w", err)
 	}
 
-	skillsRegistry, err := loadSkills(ctx, v, cfg.SkillConfigsDir, kernelBus)
+	skillsRegistry, err := loadSkills(ctx, cfg.SkillConfigsDir, kernelBus)
 	if err != nil {
 		return nil, fmt.Errorf("load skills: %w", err)
 	}
@@ -138,14 +148,14 @@ func (k *Kernel) Start() error {
 
 	// Start all channels — they'll write MessageReceived events to the bus
 	for _, ch := range k.channels.All() {
-		if err := ch.Start(k.ctx); err != nil {
+		if err := ch.Start(); err != nil {
 			return fmt.Errorf("failed to start channel %s: %w", ch.PlatformName(), err)
 		}
 	}
 
 	// Start all connectors
 	for _, c := range k.connectors.All() {
-		if err := c.Start(k.ctx); err != nil {
+		if err := c.Start(); err != nil {
 			return fmt.Errorf("failed to start connector %s: %w", c.Name(), err)
 		}
 	}
@@ -157,6 +167,11 @@ func (k *Kernel) Start() error {
 		}
 	}
 
+	// Start all skills
+	if err := k.initializeSkills(); err != nil {
+		return fmt.Errorf("failed to initialize skills: %w", err)
+	}
+
 	// Start event router
 	k.wg.Add(1)
 	go k.run()
@@ -166,9 +181,69 @@ func (k *Kernel) Start() error {
 }
 
 func (k *Kernel) Stop() error {
-	k.logger.Info("stopping kernel")
+	k.logger.Info("stopping kernel - beginning graceful shutdown")
+
+	// Step 1: Stop accepting new events - stop all channels first
+	k.logger.Info("stopping channels to prevent new messages")
+	for _, ch := range k.channels.All() {
+		if err := ch.Stop(); err != nil {
+			k.logger.Error("failed to stop channel",
+				"channel", ch.PlatformName(),
+				"error", err)
+		}
+	}
+
+	// Step 2: Allow time for in-flight events to be processed
+	k.logger.Info("draining event bus")
+	drainTimer := time.NewTimer(2 * time.Second)
+	select {
+	case <-drainTimer.C:
+		k.logger.Info("drain period complete", "pending_events", len(k.bus))
+	case <-k.ctx.Done():
+		// Already cancelled from outside
+	}
+
+	// Step 3: Cancel context to signal shutdown to router and components
+	k.logger.Info("cancelling context")
 	k.cancel()
-	k.wg.Wait()
+
+	// Step 4: Wait for event router and tool call goroutines
+	k.logger.Info("waiting for event router and goroutines to complete")
+	done := make(chan struct{})
+	go func() {
+		k.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		k.logger.Info("all goroutines stopped gracefully")
+	case <-time.After(10 * time.Second):
+		k.logger.Error("kernel shutdown timeout - some goroutines may be leaked",
+			"warning", "check for blocked channels or infinite loops")
+	}
+
+	// Step 5: Stop agents
+	k.logger.Info("stopping agents")
+	for _, a := range k.agents.All() {
+		if err := a.Stop(); err != nil {
+			k.logger.Error("failed to stop agent",
+				"agent_id", a.ID(),
+				"error", err)
+		}
+	}
+
+	// Step 6: Stop connectors
+	k.logger.Info("stopping connectors")
+	for _, c := range k.connectors.All() {
+		if err := c.Stop(); err != nil {
+			k.logger.Error("failed to stop connector",
+				"connector", c.Name(),
+				"error", err)
+		}
+	}
+
+	k.logger.Info("kernel stopped")
 	return nil
 }
 
@@ -176,21 +251,58 @@ func (k *Kernel) Stop() error {
 
 func (k *Kernel) run() {
 	defer k.wg.Done()
+
 	for {
 		select {
 		case evt := <-k.bus:
-			k.route(evt)
+			// Wrap route() in panic recovery
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						k.logger.Error("PANIC in event router",
+							"panic", r,
+							"event_type", evt.Type,
+							"correlation_id", evt.CorrelationID,
+							"agent_id", evt.AgentID,
+							"stack", string(debug.Stack()))
+
+						// Try to send error response if this was a request
+						if evt.ReplyTo != nil {
+							errorEvt := core.Event{
+								Type:          evt.Type,
+								CorrelationID: evt.CorrelationID,
+								Payload: core.ErrorPayload{
+									Error: "internal error processing event",
+								},
+							}
+
+							select {
+							case evt.ReplyTo <- errorEvt:
+								k.logger.Info("sent error response to requester")
+							default:
+								k.logger.Warn("could not send error response - channel full or closed")
+							}
+						}
+					}
+				}()
+
+				k.route(evt)
+			}()
+
 		case <-k.ctx.Done():
+			k.logger.Info("event router shutting down")
 			return
 		}
 	}
 }
 
 func (k *Kernel) route(evt core.Event) {
-	k.logger.Debug("routing event", "type", evt.Type, "correlation_id", evt.CorrelationID)
+	k.logger.Debug("routing event",
+		"type", evt.Type,
+		"correlation_id", evt.CorrelationID,
+		"agent_id", evt.AgentID)
 
 	switch evt.Type {
-
 	case core.MessageReceived:
 		k.handleMessageReceived(evt)
 
@@ -212,7 +324,8 @@ func (k *Kernel) route(evt core.Event) {
 func (k *Kernel) handleMessageReceived(evt core.Event) {
 	payload, ok := evt.Payload.(core.MessageReceivedPayload)
 	if !ok {
-		k.logger.Error("invalid MessageReceived payload")
+		k.logger.Error("invalid MessageReceived payload",
+			"actual_type", fmt.Sprintf("%T", evt.Payload))
 		return
 	}
 
@@ -229,7 +342,9 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 
 	agent, err := k.agents.Get(agentID)
 	if err != nil {
-		k.logger.Error("target agent not found", "agent_id", agentID)
+		k.logger.Error("target agent not found",
+			"agent_id", agentID,
+			"correlation_id", evt.CorrelationID)
 		return
 	}
 
@@ -238,7 +353,7 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 		correlationID = uuid.NewString()
 	}
 
-	agent.Inbox() <- core.Event{
+	agentEvent := core.Event{
 		Type:          core.AgentExecute,
 		CorrelationID: correlationID,
 		AgentID:       agentID,
@@ -252,13 +367,35 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 			},
 		},
 	}
+
+	// NON-BLOCKING SEND: Prevents kernel deadlock if agent inbox is full
+	select {
+	case agent.Inbox() <- agentEvent:
+		// Success
+		k.logger.Debug("dispatched to agent", "agent_id", agentID)
+
+	case <-time.After(5 * time.Second):
+		k.logger.Error("agent inbox full - message dropped",
+			"agent_id", agentID,
+			"correlation_id", correlationID,
+			"action", "consider increasing agent buffer size or investigating slow processing")
+
+		// TODO: Send error response back to channel
+		// Could implement a retry queue here
+
+	case <-k.ctx.Done():
+		k.logger.Info("shutdown in progress - message not delivered",
+			"correlation_id", correlationID)
+		return
+	}
 }
 
 // handleToolCallRequest: agent wants to execute a tool, kernel dispatches to the right skill
 func (k *Kernel) handleToolCallRequest(evt core.Event) {
 	payload, ok := evt.Payload.(core.ToolCallRequestPayload)
 	if !ok {
-		k.logger.Error("invalid ToolCallRequest payload")
+		k.logger.Error("invalid ToolCallRequest payload",
+			"actual_type", fmt.Sprintf("%T", evt.Payload))
 		return
 	}
 
@@ -268,9 +405,21 @@ func (k *Kernel) handleToolCallRequest(evt core.Event) {
 		return
 	}
 
-	// Execute skill in a goroutine so we don't block the router
+	// TRACKED GOROUTINE: Ensures graceful shutdown waits for tool calls
+	k.wg.Add(1)
 	go func() {
-		result, err := skill.Execute(k.ctx, payload.ToolName, payload.Params)
+		defer k.wg.Done()
+
+		// Create timeout context for skill execution
+		ctx, cancel := context.WithTimeout(k.ctx, 30*time.Second)
+		defer cancel()
+
+		k.logger.Debug("executing skill",
+			"skill", payload.SkillName,
+			"tool", payload.ToolName,
+			"correlation_id", evt.CorrelationID)
+
+		result, err := skill.Execute(ctx, payload.ToolName, payload.Params)
 
 		resultEvt := core.Event{
 			Type:          core.ToolCallResult,
@@ -279,12 +428,23 @@ func (k *Kernel) handleToolCallRequest(evt core.Event) {
 		}
 
 		if err != nil {
+			k.logger.Error("skill execution failed",
+				"skill", payload.SkillName,
+				"tool", payload.ToolName,
+				"error", err,
+				"correlation_id", evt.CorrelationID)
+
 			resultEvt.Payload = core.ToolCallResultPayload{
 				ToolCallID: payload.ToolCallID,
 				ToolName:   payload.ToolName,
 				Error:      err.Error(),
 			}
 		} else {
+			k.logger.Debug("skill execution succeeded",
+				"skill", payload.SkillName,
+				"tool", payload.ToolName,
+				"correlation_id", evt.CorrelationID)
+
 			resultEvt.Payload = core.ToolCallResultPayload{
 				ToolCallID: payload.ToolCallID,
 				ToolName:   payload.ToolName,
@@ -292,9 +452,24 @@ func (k *Kernel) handleToolCallRequest(evt core.Event) {
 			}
 		}
 
-		// Reply directly to the agent's waiting goroutine via the ReplyTo channel
+		// SAFE SEND: Reply directly to the agent's waiting goroutine
 		if evt.ReplyTo != nil {
-			evt.ReplyTo <- resultEvt
+			select {
+			case evt.ReplyTo <- resultEvt:
+				// Success
+			case <-time.After(5 * time.Second):
+				k.logger.Error("failed to send tool result - reply channel blocked",
+					"tool", payload.ToolName,
+					"correlation_id", evt.CorrelationID,
+					"warning", "agent may have timed out or shut down")
+			case <-k.ctx.Done():
+				k.logger.Info("shutdown in progress - tool result not delivered",
+					"correlation_id", evt.CorrelationID)
+			}
+		} else {
+			k.logger.Warn("tool call request missing ReplyTo channel",
+				"tool", payload.ToolName,
+				"correlation_id", evt.CorrelationID)
 		}
 	}()
 }
@@ -303,17 +478,24 @@ func (k *Kernel) handleToolCallRequest(evt core.Event) {
 func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	payload, ok := evt.Payload.(core.OutboundMessagePayload)
 	if !ok {
-		k.logger.Error("invalid OutboundMessage payload")
+		k.logger.Error("invalid OutboundMessage payload",
+			"actual_type", fmt.Sprintf("%T", evt.Payload))
 		return
 	}
 
 	ch, err := k.channels.Get(payload.ChannelName)
 	if err != nil {
-		k.logger.Error("channel not found", "channel", payload.ChannelName)
+		k.logger.Error("channel not found",
+			"channel", payload.ChannelName,
+			"correlation_id", evt.CorrelationID)
 		return
 	}
 
-	if err := ch.Send(k.ctx, channels.OutgoingMessage{
+	// Create timeout context for channel send
+	ctx, cancel := context.WithTimeout(k.ctx, 10*time.Second)
+	defer cancel()
+
+	if err := ch.Send(ctx, channels.OutgoingMessage{
 		ChatID:    payload.ChatID,
 		Content:   payload.Content,
 		ReplyToID: payload.ReplyToID,
@@ -321,7 +503,12 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	}); err != nil {
 		k.logger.Error("failed to send outbound message",
 			"channel", payload.ChannelName,
+			"correlation_id", evt.CorrelationID,
 			"error", err)
+	} else {
+		k.logger.Debug("outbound message sent",
+			"channel", payload.ChannelName,
+			"correlation_id", evt.CorrelationID)
 	}
 }
 
@@ -329,7 +516,8 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 func (k *Kernel) handleAgentRequest(evt core.Event) {
 	payload, ok := evt.Payload.(core.AgentRequestPayload)
 	if !ok {
-		k.logger.Error("invalid AgentRequest payload")
+		k.logger.Error("invalid AgentRequest payload",
+			"actual_type", fmt.Sprintf("%T", evt.Payload))
 		return
 	}
 
@@ -337,11 +525,12 @@ func (k *Kernel) handleAgentRequest(evt core.Event) {
 	// Later: could spawn a dedicated sub-agent based on task type.
 	agent, err := k.agents.Get(k.defaultAgentID)
 	if err != nil {
-		k.logger.Error("no agent available for sub-agent request")
+		k.logger.Error("no agent available for sub-agent request",
+			"correlation_id", evt.CorrelationID)
 		return
 	}
 
-	agent.Inbox() <- core.Event{
+	agentEvent := core.Event{
 		Type:          core.AgentExecute,
 		CorrelationID: evt.CorrelationID,
 		AgentID:       agent.ID(),
@@ -353,14 +542,37 @@ func (k *Kernel) handleAgentRequest(evt core.Event) {
 			},
 		},
 	}
+
+	// NON-BLOCKING SEND
+	select {
+	case agent.Inbox() <- agentEvent:
+		k.logger.Debug("dispatched sub-agent request",
+			"agent_id", agent.ID(),
+			"requesting_skill", payload.RequestingSkill)
+	case <-time.After(5 * time.Second):
+		k.logger.Error("failed to dispatch sub-agent request - inbox full",
+			"agent_id", agent.ID(),
+			"correlation_id", evt.CorrelationID)
+	case <-k.ctx.Done():
+		k.logger.Info("shutdown in progress - sub-agent request not delivered")
+	}
 }
 
 func (k *Kernel) sendToolError(evt core.Event, msg string) {
 	if evt.ReplyTo == nil {
+		k.logger.Warn("cannot send tool error - no reply channel",
+			"error", msg,
+			"correlation_id", evt.CorrelationID)
 		return
 	}
-	payload := evt.Payload.(core.ToolCallRequestPayload)
-	evt.ReplyTo <- core.Event{
+
+	payload, ok := evt.Payload.(core.ToolCallRequestPayload)
+	if !ok {
+		k.logger.Error("cannot send tool error - invalid payload type")
+		return
+	}
+
+	errorEvt := core.Event{
 		Type:          core.ToolCallResult,
 		CorrelationID: evt.CorrelationID,
 		Payload: core.ToolCallResultPayload{
@@ -368,5 +580,16 @@ func (k *Kernel) sendToolError(evt core.Event, msg string) {
 			ToolName:   payload.ToolName,
 			Error:      msg,
 		},
+	}
+
+	select {
+	case evt.ReplyTo <- errorEvt:
+		// Success
+	case <-time.After(time.Second):
+		k.logger.Error("failed to send tool error response - timeout",
+			"error", msg,
+			"correlation_id", evt.CorrelationID)
+	case <-k.ctx.Done():
+		// Shutdown in progress
 	}
 }

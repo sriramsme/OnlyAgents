@@ -1,21 +1,18 @@
-package connectors
+package skills
 
 import (
 	"context"
 	"fmt"
 	"sync"
 
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 // Factory creates a connector from raw config
 type Factory func(
 	ctx context.Context,
-	rawConfig map[string]interface{},
-	vault vault.Vault,
-	bus chan<- core.Event,
-) (Connector, error)
+	eventBus chan<- core.Event,
+) (Skill, error)
 
 var (
 	factoryMu sync.RWMutex
@@ -28,10 +25,10 @@ func Register(platform string, factory Factory) {
 	defer factoryMu.Unlock()
 
 	if factory == nil {
-		panic("connectors: Register factory is nil for platform " + platform)
+		panic("skills: Register factory is nil for platform " + platform)
 	}
 	if _, exists := factories[platform]; exists {
-		panic("connectors: Register called twice for platform " + platform)
+		panic("skillss: Register called twice for platform " + platform)
 	}
 
 	factories[platform] = factory

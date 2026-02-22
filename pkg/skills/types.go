@@ -34,6 +34,10 @@ type Skill interface {
 	Version() string
 	Type() SkillType
 
+	// RequiredCapabilities declares what connector capabilities this skill needs
+	// e.g., []core.Capability{core.CapabilityEmail, core.CapabilityCalendar}
+	RequiredCapabilities() []core.Capability
+
 	// Tools returns the function definitions this skill exposes to the LLM
 	Tools() []tools.ToolDef
 
@@ -41,7 +45,7 @@ type Skill interface {
 	Execute(ctx context.Context, toolName string, params map[string]any) (any, error)
 
 	// Initialize is called by kernel at startup, injecting dependencies
-	Initialize(ctx context.Context, deps SkillDeps) error
+	Initialize(deps SkillDeps) error
 
 	// Shutdown is called when kernel shuts down
 	Shutdown(ctx context.Context) error

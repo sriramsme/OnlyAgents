@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
-	"github.com/sriramsme/OnlyAgents/pkg/config"
+	"github.com/sriramsme/OnlyAgents/internal/config"
 )
 
 // Server is the OnlyAgents HTTP server.

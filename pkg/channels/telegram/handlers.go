@@ -92,7 +92,7 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 	c.stopThinkingIndicator(chatID)
 
 	// Fire event — kernel routes to agent, agent replies via OutboundMessage → Send()
-	c.bus <- core.Event{
+	c.eventBus <- core.Event{
 		Type:          core.MessageReceived,
 		CorrelationID: uuid.NewString(),
 		Payload: core.MessageReceivedPayload{

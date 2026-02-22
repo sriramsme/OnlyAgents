@@ -27,12 +27,12 @@ type Credentials struct {
 	BotToken string `yaml:"bot_token"` // Vault key name
 }
 
-// WebhookConfig holds webhook settings
 type WebhookConfig struct {
-	URL             string `yaml:"url"`
-	Port            int    `yaml:"port"`
-	CertificatePath string `yaml:"certificate_path,omitempty"`
-	MaxConnections  int    `yaml:"max_connections,omitempty"`
+	URL                string `yaml:"url"`
+	ListenAddr         string `yaml:"listen_addr"`
+	Path               string `yaml:"path"`
+	DropPendingUpdates bool   `yaml:"drop_pending_updates"`
+	MaxConnections     int    `yaml:"max_connections"`
 }
 
 // PollingConfig holds polling settings

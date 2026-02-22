@@ -2,8 +2,10 @@ package skills
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -14,10 +16,33 @@ type Registry struct {
 	mu     sync.RWMutex
 }
 
-func NewRegistry() *Registry {
-	return &Registry{
+func NewRegistry(
+	ctx context.Context,
+	configDir string, //cli skills via configs/skills/SKILL.md files
+	kernelBus chan<- core.Event,
+) (*Registry, error) {
+
+	// configs, err := config.LoadAllConnectorConfigs(configDir)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("load connector configs: %w", err)
+	// }
+
+	registry := &Registry{
 		skills: make(map[string]Skill),
 	}
+
+	// first loop through auto-registered system skills and create each skill
+	for name, skillFactory := range factories {
+
+		skill, err := skillFactory(ctx, kernelBus)
+		if err != nil {
+			return nil, fmt.Errorf("skill %s: %w", name, err)
+		}
+
+		registry.skills[name] = skill
+	}
+
+	return registry, nil
 }
 
 func (r *Registry) Register(s Skill) error {
