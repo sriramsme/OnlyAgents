@@ -1,0 +1,15 @@
+# Perplexity AI Search Connector Configuration
+
+name: perplexity_search
+platform: perplexity
+enabled: false  # Enable if you have a Perplexity API key
+max_results: 5  # Default number of results
+model: "sonar"  # Perplexity model to use
+
+credentials:
+  # This is a vault key - actual secret stored in vault
+  api_key: "PERPLEXITY_API_KEY"
+
+# Get your Perplexity API key from: https://www.perplexity.ai/
+# Store it in your vault (e.g., .env file):
+# PERPLEXITY_API_KEY=your_actual_api_key_here
