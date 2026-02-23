@@ -20,7 +20,13 @@ llm:
     max_tokens: "4096"
     temperature: "0.7"
 
-connectors: []
+connectors:
+  - "gmail"
+  - "duckduckgo"
+
+skills:
+  - "email"
+  - "websearch"
 
 # ============================================
 # SOUL (Identity, Behavior, Relationship)
