@@ -48,7 +48,7 @@ type Skill interface {
 	Initialize(deps SkillDeps) error
 
 	// Shutdown is called when kernel shuts down
-	Shutdown(ctx context.Context) error
+	Shutdown() error
 }
 
 // SkillDeps is what kernel provides to each skill at initialization.

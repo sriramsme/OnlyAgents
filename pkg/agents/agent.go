@@ -54,6 +54,7 @@ func NewAgent(
 		name:           cfg.Name,
 		isExecutive:    cfg.IsExecutive,
 		maxConcurrency: cfg.MaxConcurrency,
+		skills:         cfg.Skills,
 		llmClient:      llmClient,
 		soul:           agentSoul,
 		user:           userCfg,
@@ -109,6 +110,12 @@ func (a *Agent) Inbox() chan<- core.Event {
 
 // ID returns agent ID.
 func (a *Agent) ID() string { return a.id }
+
+func (a *Agent) IsExecutive() bool { return a.isExecutive }
+
+func (a *Agent) GetSkillNames() []string { return a.skills }
+
+func (a *Agent) SetTools(tools []tools.ToolDef) { a.tools = tools }
 
 // --- Async event loop ---
 

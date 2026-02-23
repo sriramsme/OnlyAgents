@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/spf13/viper"
@@ -39,6 +40,13 @@ func load(configPath string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+
+	// Validate skills (skill names should exist in skill registry)
+	// Note: This validation happens in kernel after skill registry is created
+	// Here we just check format
+	if slices.Contains(cfg.Skills, "") {
+		return nil, fmt.Errorf("empty skill is not allowed")
 	}
 	return &cfg, nil
 }

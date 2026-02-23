@@ -19,6 +19,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/kernel"
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	_ "github.com/sriramsme/OnlyAgents/pkg/skills/bootstrap"
 )
 
 func main() {

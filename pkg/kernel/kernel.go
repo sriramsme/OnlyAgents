@@ -104,6 +104,10 @@ func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Ker
 		return nil, fmt.Errorf("load skills: %w", err)
 	}
 
+	if err := validateAgentSkills(agentsRegistry, skillsRegistry); err != nil {
+		return nil, fmt.Errorf("validate agent skills: %w", err)
+	}
+
 	return &Kernel{
 		bus:            kernelBus,
 		agents:         agentsRegistry,
@@ -170,6 +174,11 @@ func (k *Kernel) Start() error {
 	// Start all skills
 	if err := k.initializeSkills(); err != nil {
 		return fmt.Errorf("failed to initialize skills: %w", err)
+	}
+
+	// assign agent tools
+	if err := k.assignAgentTools(); err != nil {
+		return fmt.Errorf("failed to assign agent tools: %w", err)
 	}
 
 	// Start event router
@@ -331,13 +340,14 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 
 	// Resolve target agent (could be from channel config, metadata, or default)
 	agentID := evt.AgentID
-
-	if agentID == "" {
-		agentID = k.defaultAgentID
-	}
+	var err error
 
 	if id, ok := payload.Metadata["target_agent"]; ok && id != "" {
 		agentID = id
+	}
+
+	if agentID == "" {
+		agentID, _ = k.findSpecializedAgent([]core.Capability{})
 	}
 
 	agent, err := k.agents.Get(agentID)

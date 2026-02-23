@@ -7,6 +7,7 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
@@ -14,6 +15,10 @@ import (
 const (
 	version = "1.0.0"
 )
+
+func init() {
+	skills.Register("email", NewEmailSkill)
+}
 
 // EmailSkill provides email management capabilities
 type EmailSkill struct {
@@ -29,7 +34,7 @@ type EmailSkill struct {
 }
 
 // NewEmailSkill creates a new email skill
-func NewEmailSkill(ctx context.Context, eventBus chan<- core.Event) *EmailSkill {
+func NewEmailSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skill, error) {
 	base := skills.NewBaseSkill(
 		"email",
 		"Manage emails - send, search, read, and draft emails using AI",
@@ -44,7 +49,7 @@ func NewEmailSkill(ctx context.Context, eventBus chan<- core.Event) *EmailSkill 
 		ctx:        skillCtx,
 		cancel:     cancel,
 		eventBus:   eventBus,
-	}
+	}, nil
 }
 
 // Initialize sets up the email skill with injected connectors
@@ -60,7 +65,7 @@ func (s *EmailSkill) Initialize(deps skills.SkillDeps) error {
 	}
 
 	if len(s.emailConns) == 0 {
-		return fmt.Errorf("email skill requires at least one email connector")
+		logger.Log.Error("email skill requires at least one email connector")
 	}
 
 	return nil

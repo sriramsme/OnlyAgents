@@ -82,12 +82,12 @@ func (r *Registry) AllToolDefs() []tools.ToolDef {
 }
 
 // Shutdown shuts down all skills
-func (r *Registry) Shutdown(ctx context.Context) error {
+func (r *Registry) Shutdown() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	for _, skill := range r.skills {
-		if err := skill.Shutdown(ctx); err != nil {
+		if err := skill.Shutdown(); err != nil {
 			// Log error but continue shutting down others
 			continue
 		}

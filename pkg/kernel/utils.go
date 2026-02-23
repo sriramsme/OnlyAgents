@@ -11,6 +11,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // mustLoadVault loads vault config or exits
@@ -81,17 +82,158 @@ func (k *Kernel) prepareSkillDeps(skill skills.Skill) skills.SkillDeps {
 	requiredCaps := skill.RequiredCapabilities()
 
 	// Find matching connectors
-	connectors := make(map[string]any)
+	conns := make(map[string]any)
 	for _, cap := range requiredCaps {
 		// Get all connectors that support this capability
 		for _, conn := range k.connectors.GetByCapability(cap) {
-			connectors[conn.Name()] = conn
+			conns[conn.Name()] = conn
 		}
 	}
 
 	return skills.SkillDeps{
 		Outbox:     k.bus,
-		Connectors: connectors, // Only relevant connectors
+		Connectors: conns, // Only relevant connectors
 		Config:     nil,
 	}
+}
+
+// assignAgentTools assigns tools to agents based on their configured skills
+// Called after both agent and skill registries are created
+func (k *Kernel) assignAgentTools() error {
+	for _, agent := range k.agents.All() {
+
+		// Executive agents get NO tools (they delegate)
+		if agent.IsExecutive() {
+			agent.SetTools([]tools.ToolDef{})
+			k.logger.Info("executive agent configured",
+				"agent_id", agent.ID(),
+				"tools", 0,
+				"role", "orchestrator")
+			continue
+		}
+
+		// Specialized agents get tools from assigned skills
+		agentTools := k.getToolsForAgent(agent.GetSkillNames())
+		agent.SetTools(agentTools)
+
+		k.logger.Info("specialized agent configured",
+			"agent_id", agent.ID(),
+			"skills", len(agent.GetSkillNames()),
+			"tools", len(agentTools))
+	}
+
+	return nil
+}
+
+// getToolsForAgent returns all tools from the given skill names
+func (k *Kernel) getToolsForAgent(skillNames []string) []tools.ToolDef {
+	var agentTools []tools.ToolDef
+
+	for _, skillName := range skillNames {
+		skill, ok := k.skills.Get(skillName)
+		if !ok {
+			k.logger.Warn("skill not found for agent",
+				"skill", skillName)
+			continue
+		}
+		agentTools = append(agentTools, skill.Tools()...)
+	}
+
+	return agentTools
+}
+
+//
+// // getDynamicToolsForTask analyzes a task and returns relevant tools
+// // Used by executive when routing to general agent
+// func (k *Kernel) getDynamicToolsForTask(taskDescription string, requiredCapabilities []core.Capability) []tools.ToolDef {
+// 	var relevantTools []tools.ToolDef
+//
+// 	// Get all skills that support the required capabilities
+// 	relevantSkills := make(map[string]skills.Skill)
+// 	for _, cap := range requiredCapabilities {
+// 		for _, skill := range k.skills.GetAll() {
+// 			if slices.Contains(skill.RequiredCapabilities(), cap) {
+// 				relevantSkills[skill.Name()] = skill
+// 				break
+// 			}
+// 		}
+// 	}
+//
+// 	// Collect tools from relevant skills
+// 	for _, skill := range relevantSkills {
+// 		relevantTools = append(relevantTools, skill.Tools()...)
+// 	}
+//
+// 	k.logger.Debug("dynamic tool assignment",
+// 		"capabilities", requiredCapabilities,
+// 		"skills", len(relevantSkills),
+// 		"tools", len(relevantTools))
+//
+// 	return relevantTools
+// }
+
+// findSpecializedAgent finds an agent that supports the required capabilities
+func (k *Kernel) findSpecializedAgent(capabilities []core.Capability) (string, bool) {
+	for _, agent := range k.agents.All() {
+		if agent.IsExecutive() {
+			continue
+		}
+
+		// Check if agent has skills covering all capabilities
+		agentCapabilities := k.getAgentCapabilities(agent.GetSkillNames())
+		if hasAllCapabilities(agentCapabilities, capabilities) {
+			return agent.ID(), true
+		}
+	}
+	return "", false
+}
+
+// getAgentCapabilities returns all capabilities covered by agent's assigned skills
+func (k *Kernel) getAgentCapabilities(skillNames []string) []core.Capability {
+	capSet := make(map[core.Capability]bool)
+
+	for _, skillName := range skillNames {
+		skill, ok := k.skills.Get(skillName)
+		if !ok {
+			continue
+		}
+		for _, cap := range skill.RequiredCapabilities() {
+			capSet[cap] = true
+		}
+	}
+
+	caps := make([]core.Capability, 0, len(capSet))
+	for cap := range capSet {
+		caps = append(caps, cap)
+	}
+	return caps
+}
+
+// hasAllCapabilities checks if agentCaps covers all required capabilities
+func hasAllCapabilities(agentCaps, required []core.Capability) bool {
+	capMap := make(map[core.Capability]bool)
+	for _, cap := range agentCaps {
+		capMap[cap] = true
+	}
+
+	for _, req := range required {
+		if !capMap[req] {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidateAgentSkills validates that all assigned skills exist in skill registry
+// Called by kernel after skill registry is initialized
+func validateAgentSkills(agentRegistry *agents.Registry, skillRegistry *skills.Registry) error {
+	for _, agent := range agentRegistry.All() {
+		for _, skillName := range agent.GetSkillNames() {
+			if _, exists := skillRegistry.Get(skillName); !exists {
+				return fmt.Errorf("agent %s: skill '%s' not found in skill registry", agent.ID(), skillName)
+			}
+		}
+	}
+
+	return nil
 }

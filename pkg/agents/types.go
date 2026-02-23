@@ -26,6 +26,7 @@ type Agent struct {
 	llmClient llm.Client
 	soul      *soul.Soul
 	user      *config.UserConfig
+	skills    []string
 
 	// Tool definitions given to LLM (schema only, no implementation)
 	// Kernel populates this based on which skills are assigned to this agent.

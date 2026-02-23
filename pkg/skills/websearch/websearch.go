@@ -14,6 +14,10 @@ const (
 	version = "1.0.0"
 )
 
+func init() {
+	skills.Register("websearch", NewWebSearchSkill)
+}
+
 // WebSearchSkill provides web search capabilities
 type WebSearchSkill struct {
 	ctx      context.Context
@@ -26,7 +30,7 @@ type WebSearchSkill struct {
 }
 
 // NewWebSearchSkill creates a new web search skill
-func NewWebSearchSkill(ctx context.Context, eventBus chan<- core.Event) *WebSearchSkill {
+func NewWebSearchSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skill, error) {
 	base := skills.NewBaseSkill(
 		"websearch",
 		"Search the web for current information using various search providers",
@@ -42,7 +46,7 @@ func NewWebSearchSkill(ctx context.Context, eventBus chan<- core.Event) *WebSear
 		ctx:         skillCtx,
 		cancel:      cancel,
 		eventBus:    eventBus,
-	}
+	}, nil
 }
 
 // Initialize sets up the web search skill with injected connectors
@@ -96,7 +100,7 @@ func (s *WebSearchSkill) Tools() []tools.ToolDef {
 }
 
 // Execute runs a tool
-func (s *WebSearchSkill) Execute(toolName string, params map[string]any) (any, error) {
+func (s *WebSearchSkill) Execute(ctx context.Context, toolName string, params map[string]any) (any, error) {
 	switch toolName {
 	case "websearch_search":
 		return s.search(params)

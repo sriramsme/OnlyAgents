@@ -20,7 +20,7 @@ type Config struct {
 	Security       SecurityConfig   `mapstructure:"security"`
 	LLM            LLMConfig        `mapstructure:"llm"`
 	Vault          vault.Config     `mapstructure:"vault"`
-	Skills         []SkillConfig    `mapstructure:"skills"`
+	Skills         []string         `mapstructure:"skills"`
 	Platforms      []PlatformConfig `mapstructure:"platforms"`
 	Connectors     []string         `mapstructure:"connectors"`
 	Channels       []string         `mapstructure:"channels"`
