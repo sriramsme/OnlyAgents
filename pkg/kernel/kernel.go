@@ -15,13 +15,15 @@ package kernel
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	_ "modernc.org/sqlite"
+
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
@@ -36,6 +38,7 @@ type Kernel struct {
 	skills     *skills.Registry
 	connectors *connectors.Registry
 	channels   *channels.Registry
+	workflow   *core.Engine
 
 	// defaultAgentID is used when a channel message doesn't specify a target agent
 	defaultAgentID string
@@ -108,12 +111,24 @@ func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Ker
 		return nil, fmt.Errorf("validate agent skills: %w", err)
 	}
 
+	// Initialize workflow engine
+	db, err := sql.Open("sqlite", "workflows.db")
+	if err != nil {
+		return nil, err
+	}
+
+	workflowEngine, err := core.NewEngine(db, kernelBus)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Kernel{
 		bus:            kernelBus,
 		agents:         agentsRegistry,
 		skills:         skillsRegistry,
 		connectors:     connectorsRegistry,
 		channels:       channelsRegistry,
+		workflow:       workflowEngine,
 		defaultAgentID: cfg.DefaultAgentID,
 		ctx:            ctx,
 		cancel:         cancel,
@@ -312,294 +327,53 @@ func (k *Kernel) route(evt core.Event) {
 		"agent_id", evt.AgentID)
 
 	switch evt.Type {
+	// User-facing
 	case core.MessageReceived:
 		k.handleMessageReceived(evt)
-
-	case core.ToolCallRequest:
-		k.handleToolCallRequest(evt)
 
 	case core.OutboundMessage:
 		k.handleOutboundMessage(evt)
 
-	case core.AgentRequest:
-		k.handleAgentRequest(evt)
+	// Agent execution
+	case core.AgentExecute:
+		// This is typically handled directly by agents' inboxes
+		// If it arrives here, route it
+		k.handleAgentExecute(evt)
+
+	// Tool execution
+	case core.ToolCallRequest:
+		k.handleToolCallRequest(evt)
+
+	case core.ToolCallResult:
+		// Results typically go directly via ReplyTo channel
+		// If it arrives here, it's an error
+		k.logger.Warn("ToolCallResult should not arrive at bus",
+			"correlation_id", evt.CorrelationID)
+
+	// Delegation
+	case core.AgentDelegate:
+		k.handleAgentDelegate(evt)
+
+	case core.DelegationResult:
+		// Results typically go directly via ReplyTo channel
+		k.logger.Debug("delegation result received",
+			"correlation_id", evt.CorrelationID)
+
+	// Workflow
+	case core.WorkflowSubmitted:
+		k.handleWorkflowSubmitted(evt)
+
+	case core.WorkflowCompleted:
+		k.handleWorkflowCompleted(evt)
+
+	case core.TaskAssigned:
+		k.handleTaskAssigned(evt)
+
+	// Future
+	case core.AgentMessage:
+		k.handleAgentMessage(evt)
 
 	default:
 		k.logger.Warn("unhandled event type", "type", evt.Type)
-	}
-}
-
-// handleMessageReceived: channel got a user message, route to appropriate agent
-func (k *Kernel) handleMessageReceived(evt core.Event) {
-	payload, ok := evt.Payload.(core.MessageReceivedPayload)
-	if !ok {
-		k.logger.Error("invalid MessageReceived payload",
-			"actual_type", fmt.Sprintf("%T", evt.Payload))
-		return
-	}
-
-	// Resolve target agent (could be from channel config, metadata, or default)
-	agentID := evt.AgentID
-	var err error
-
-	if id, ok := payload.Metadata["target_agent"]; ok && id != "" {
-		agentID = id
-	}
-
-	if agentID == "" {
-		agentID, _ = k.findSpecializedAgent([]core.Capability{})
-	}
-
-	agent, err := k.agents.Get(agentID)
-	if err != nil {
-		k.logger.Error("target agent not found",
-			"agent_id", agentID,
-			"correlation_id", evt.CorrelationID)
-		return
-	}
-
-	correlationID := evt.CorrelationID
-	if correlationID == "" {
-		correlationID = uuid.NewString()
-	}
-
-	agentEvent := core.Event{
-		Type:          core.AgentExecute,
-		CorrelationID: correlationID,
-		AgentID:       agentID,
-		Payload: core.AgentExecutePayload{
-			UserMessage: payload.Content,
-			ChatID:      payload.ChatID,
-			Metadata: map[string]string{
-				"channel":  payload.ChannelName,
-				"user_id":  payload.UserID,
-				"username": payload.Username,
-			},
-		},
-	}
-
-	// NON-BLOCKING SEND: Prevents kernel deadlock if agent inbox is full
-	select {
-	case agent.Inbox() <- agentEvent:
-		// Success
-		k.logger.Debug("dispatched to agent", "agent_id", agentID)
-
-	case <-time.After(5 * time.Second):
-		k.logger.Error("agent inbox full - message dropped",
-			"agent_id", agentID,
-			"correlation_id", correlationID,
-			"action", "consider increasing agent buffer size or investigating slow processing")
-
-		// TODO: Send error response back to channel
-		// Could implement a retry queue here
-
-	case <-k.ctx.Done():
-		k.logger.Info("shutdown in progress - message not delivered",
-			"correlation_id", correlationID)
-		return
-	}
-}
-
-// handleToolCallRequest: agent wants to execute a tool, kernel dispatches to the right skill
-func (k *Kernel) handleToolCallRequest(evt core.Event) {
-	payload, ok := evt.Payload.(core.ToolCallRequestPayload)
-	if !ok {
-		k.logger.Error("invalid ToolCallRequest payload",
-			"actual_type", fmt.Sprintf("%T", evt.Payload))
-		return
-	}
-
-	skill, ok := k.skills.Get(payload.SkillName)
-	if !ok {
-		k.sendToolError(evt, fmt.Sprintf("skill not found: %s", payload.SkillName))
-		return
-	}
-
-	// TRACKED GOROUTINE: Ensures graceful shutdown waits for tool calls
-	k.wg.Add(1)
-	go func() {
-		defer k.wg.Done()
-
-		// Create timeout context for skill execution
-		ctx, cancel := context.WithTimeout(k.ctx, 30*time.Second)
-		defer cancel()
-
-		k.logger.Debug("executing skill",
-			"skill", payload.SkillName,
-			"tool", payload.ToolName,
-			"correlation_id", evt.CorrelationID)
-
-		result, err := skill.Execute(ctx, payload.ToolName, payload.Params)
-
-		resultEvt := core.Event{
-			Type:          core.ToolCallResult,
-			CorrelationID: evt.CorrelationID,
-			AgentID:       evt.AgentID,
-		}
-
-		if err != nil {
-			k.logger.Error("skill execution failed",
-				"skill", payload.SkillName,
-				"tool", payload.ToolName,
-				"error", err,
-				"correlation_id", evt.CorrelationID)
-
-			resultEvt.Payload = core.ToolCallResultPayload{
-				ToolCallID: payload.ToolCallID,
-				ToolName:   payload.ToolName,
-				Error:      err.Error(),
-			}
-		} else {
-			k.logger.Debug("skill execution succeeded",
-				"skill", payload.SkillName,
-				"tool", payload.ToolName,
-				"correlation_id", evt.CorrelationID)
-
-			resultEvt.Payload = core.ToolCallResultPayload{
-				ToolCallID: payload.ToolCallID,
-				ToolName:   payload.ToolName,
-				Result:     result,
-			}
-		}
-
-		// SAFE SEND: Reply directly to the agent's waiting goroutine
-		if evt.ReplyTo != nil {
-			select {
-			case evt.ReplyTo <- resultEvt:
-				// Success
-			case <-time.After(5 * time.Second):
-				k.logger.Error("failed to send tool result - reply channel blocked",
-					"tool", payload.ToolName,
-					"correlation_id", evt.CorrelationID,
-					"warning", "agent may have timed out or shut down")
-			case <-k.ctx.Done():
-				k.logger.Info("shutdown in progress - tool result not delivered",
-					"correlation_id", evt.CorrelationID)
-			}
-		} else {
-			k.logger.Warn("tool call request missing ReplyTo channel",
-				"tool", payload.ToolName,
-				"correlation_id", evt.CorrelationID)
-		}
-	}()
-}
-
-// handleOutboundMessage: agent has a response, send it via the appropriate channel
-func (k *Kernel) handleOutboundMessage(evt core.Event) {
-	payload, ok := evt.Payload.(core.OutboundMessagePayload)
-	if !ok {
-		k.logger.Error("invalid OutboundMessage payload",
-			"actual_type", fmt.Sprintf("%T", evt.Payload))
-		return
-	}
-
-	ch, err := k.channels.Get(payload.ChannelName)
-	if err != nil {
-		k.logger.Error("channel not found",
-			"channel", payload.ChannelName,
-			"correlation_id", evt.CorrelationID)
-		return
-	}
-
-	// Create timeout context for channel send
-	ctx, cancel := context.WithTimeout(k.ctx, 10*time.Second)
-	defer cancel()
-
-	if err := ch.Send(ctx, channels.OutgoingMessage{
-		ChatID:    payload.ChatID,
-		Content:   payload.Content,
-		ReplyToID: payload.ReplyToID,
-		ParseMode: payload.ParseMode,
-	}); err != nil {
-		k.logger.Error("failed to send outbound message",
-			"channel", payload.ChannelName,
-			"correlation_id", evt.CorrelationID,
-			"error", err)
-	} else {
-		k.logger.Debug("outbound message sent",
-			"channel", payload.ChannelName,
-			"correlation_id", evt.CorrelationID)
-	}
-}
-
-// handleAgentRequest: a skill needs a sub-agent to perform a task
-func (k *Kernel) handleAgentRequest(evt core.Event) {
-	payload, ok := evt.Payload.(core.AgentRequestPayload)
-	if !ok {
-		k.logger.Error("invalid AgentRequest payload",
-			"actual_type", fmt.Sprintf("%T", evt.Payload))
-		return
-	}
-
-	// For now, route to default executive agent.
-	// Later: could spawn a dedicated sub-agent based on task type.
-	agent, err := k.agents.Get(k.defaultAgentID)
-	if err != nil {
-		k.logger.Error("no agent available for sub-agent request",
-			"correlation_id", evt.CorrelationID)
-		return
-	}
-
-	agentEvent := core.Event{
-		Type:          core.AgentExecute,
-		CorrelationID: evt.CorrelationID,
-		AgentID:       agent.ID(),
-		Payload: core.AgentExecutePayload{
-			UserMessage: payload.Task,
-			Metadata: map[string]string{
-				"requesting_skill": payload.RequestingSkill,
-				"context":          fmt.Sprintf("%v", payload.Context),
-			},
-		},
-	}
-
-	// NON-BLOCKING SEND
-	select {
-	case agent.Inbox() <- agentEvent:
-		k.logger.Debug("dispatched sub-agent request",
-			"agent_id", agent.ID(),
-			"requesting_skill", payload.RequestingSkill)
-	case <-time.After(5 * time.Second):
-		k.logger.Error("failed to dispatch sub-agent request - inbox full",
-			"agent_id", agent.ID(),
-			"correlation_id", evt.CorrelationID)
-	case <-k.ctx.Done():
-		k.logger.Info("shutdown in progress - sub-agent request not delivered")
-	}
-}
-
-func (k *Kernel) sendToolError(evt core.Event, msg string) {
-	if evt.ReplyTo == nil {
-		k.logger.Warn("cannot send tool error - no reply channel",
-			"error", msg,
-			"correlation_id", evt.CorrelationID)
-		return
-	}
-
-	payload, ok := evt.Payload.(core.ToolCallRequestPayload)
-	if !ok {
-		k.logger.Error("cannot send tool error - invalid payload type")
-		return
-	}
-
-	errorEvt := core.Event{
-		Type:          core.ToolCallResult,
-		CorrelationID: evt.CorrelationID,
-		Payload: core.ToolCallResultPayload{
-			ToolCallID: payload.ToolCallID,
-			ToolName:   payload.ToolName,
-			Error:      msg,
-		},
-	}
-
-	select {
-	case evt.ReplyTo <- errorEvt:
-		// Success
-	case <-time.After(time.Second):
-		k.logger.Error("failed to send tool error response - timeout",
-			"error", msg,
-			"correlation_id", evt.CorrelationID)
-	case <-k.ctx.Done():
-		// Shutdown in progress
 	}
 }

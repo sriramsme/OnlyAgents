@@ -172,58 +172,6 @@ func (k *Kernel) getToolsForAgent(skillNames []string) []tools.ToolDef {
 // 	return relevantTools
 // }
 
-// findSpecializedAgent finds an agent that supports the required capabilities
-func (k *Kernel) findSpecializedAgent(capabilities []core.Capability) (string, bool) {
-	for _, agent := range k.agents.All() {
-		if agent.IsExecutive() {
-			continue
-		}
-
-		// Check if agent has skills covering all capabilities
-		agentCapabilities := k.getAgentCapabilities(agent.GetSkillNames())
-		if hasAllCapabilities(agentCapabilities, capabilities) {
-			return agent.ID(), true
-		}
-	}
-	return "", false
-}
-
-// getAgentCapabilities returns all capabilities covered by agent's assigned skills
-func (k *Kernel) getAgentCapabilities(skillNames []string) []core.Capability {
-	capSet := make(map[core.Capability]bool)
-
-	for _, skillName := range skillNames {
-		skill, ok := k.skills.Get(skillName)
-		if !ok {
-			continue
-		}
-		for _, cap := range skill.RequiredCapabilities() {
-			capSet[cap] = true
-		}
-	}
-
-	caps := make([]core.Capability, 0, len(capSet))
-	for cap := range capSet {
-		caps = append(caps, cap)
-	}
-	return caps
-}
-
-// hasAllCapabilities checks if agentCaps covers all required capabilities
-func hasAllCapabilities(agentCaps, required []core.Capability) bool {
-	capMap := make(map[core.Capability]bool)
-	for _, cap := range agentCaps {
-		capMap[cap] = true
-	}
-
-	for _, req := range required {
-		if !capMap[req] {
-			return false
-		}
-	}
-	return true
-}
-
 // ValidateAgentSkills validates that all assigned skills exist in skill registry
 // Called by kernel after skill registry is initialized
 func validateAgentSkills(agentRegistry *agents.Registry, skillRegistry *skills.Registry) error {

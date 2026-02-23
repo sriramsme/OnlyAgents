@@ -1,112 +1,182 @@
 package core
 
-// EventType defines all events flowing through the kernel bus
+// EventType identifies the type of event
 type EventType string
 
 const (
-	// Inbound: channel → kernel → agent
-	MessageReceived EventType = "message.received"
+	// =====================================
+	// User-Facing Events
+	// =====================================
 
-	// Kernel → agent: agent should start executing
-	AgentExecute EventType = "agent.execute"
+	// MessageReceived: Channel received a user message
+	// Flow: Channel → Kernel → Executive Agent
+	MessageReceived EventType = "message_received"
 
-	// Agent → kernel: LLM wants to call a tool
-	ToolCallRequest EventType = "tool.call.request"
+	// OutboundMessage: Agent has response for user
+	// Flow: Agent → Kernel → Channel
+	OutboundMessage EventType = "outbound_message"
 
-	// Kernel → agent: tool result ready, resume LLM loop
-	ToolCallResult EventType = "tool.call.result"
+	// =====================================
+	// Agent Execution Events
+	// =====================================
 
-	// Skill → kernel: skill needs a sub-agent to do something
-	AgentRequest EventType = "agent.request"
+	// AgentExecute: Execute an agent with a message
+	// Flow: Kernel → Agent
+	AgentExecute EventType = "agent_execute"
 
-	// Agent/skill → kernel → channel: send a message out
-	OutboundMessage EventType = "message.outbound"
+	// =====================================
+	// Tool Execution Events
+	// =====================================
+
+	// ToolCallRequest: Agent wants to execute a tool
+	// Flow: Agent → Kernel → Skill
+	ToolCallRequest EventType = "tool_call_request"
+
+	// ToolCallResult: Tool execution result
+	// Flow: Skill → Kernel → Agent
+	ToolCallResult EventType = "tool_call_result"
+
+	// =====================================
+	// Agent-to-Agent Delegation Events
+	// =====================================
+
+	// AgentDelegate: Executive/Agent delegates task to another agent
+	// Flow: Executive → Kernel → Specialized Agent
+	AgentDelegate EventType = "agent_delegate"
+
+	// DelegationResult: Agent finished delegated task
+	// Flow: Specialized Agent → Kernel → Executive
+	DelegationResult EventType = "delegation_result"
+
+	// =====================================
+	// Workflow Orchestration Events
+	// =====================================
+
+	// WorkflowSubmitted: Executive creates multi-task workflow
+	// Flow: Executive → Kernel → Workflow Engine
+	WorkflowSubmitted EventType = "workflow_submitted"
+
+	// WorkflowCompleted: Workflow engine finished all tasks
+	// Flow: Workflow Engine → Kernel → Executive
+	WorkflowCompleted EventType = "workflow_completed"
+
+	// TaskAssigned: Workflow engine assigns task to agent (internal)
+	// Flow: Workflow Engine → Kernel → Agent
+	// Note: NOT routed through executive - engine manages DAG internally
+	TaskAssigned EventType = "task_assigned"
+
+	// =====================================
+	// Future: Agent-to-Agent Communication
+	// =====================================
+
+	// AgentMessage: Direct agent-to-agent message (future)
+	// Flow: Agent A → Kernel → Agent B
+	AgentMessage EventType = "agent_message"
 )
 
-// Event is the universal message on the kernel bus.
-// CorrelationID ties a request to its response across hops.
+// Event represents a message passed through the event bus
 type Event struct {
-	Type          EventType
-	CorrelationID string     // e.g. request ID, ties ToolCallRequest → ToolCallResult
-	AgentID       string     // which agent this event is for/from
-	ReplyTo       chan Event `json:"-"` // for sync request/response (not serialized)
-	Payload       any
+	Type          EventType    `json:"type"`
+	CorrelationID string       `json:"correlation_id"` // For request tracing
+	AgentID       string       `json:"agent_id"`       // Target agent
+	Payload       interface{}  `json:"payload"`
+	ReplyTo       chan<- Event `json:"-"` // For sync responses (not serialized)
 }
 
-// --- Payload types ---
+// =====================================
+// Event Payloads
+// =====================================
 
-// MessageReceivedPayload: inbound message from a channel (telegram, discord, etc.)
+// MessageReceivedPayload: User message from channel
 type MessageReceivedPayload struct {
-	ChannelName string
-	ChatID      string
-	UserID      string
-	Username    string
-	Content     string
-	Metadata    map[string]string
+	ChannelName string            `json:"channel_name"`
+	ChatID      string            `json:"chat_id"`
+	UserID      string            `json:"user_id"`
+	Username    string            `json:"username"`
+	Content     string            `json:"content"`
+	Metadata    map[string]string `json:"metadata"`
 }
 
-// AgentExecutePayload: tells an agent to handle a user message
-type AgentExecutePayload struct {
-	UserMessage string
-	ChatID      string // so agent knows where to reply
-	Metadata    map[string]string
-}
-
-// ToolCallRequestPayload: agent asking kernel to execute a tool/skill
-type ToolCallRequestPayload struct {
-	ToolCallID string // from LLM response, must be echoed back
-	SkillName  string // e.g. "email", "calendar"
-	ToolName   string // specific function e.g. "send_email"
-	Params     map[string]any
-}
-
-// ToolCallResultPayload: kernel returning skill result to agent
-type ToolCallResultPayload struct {
-	ToolCallID string
-	ToolName   string
-	Result     any
-	Error      string // non-empty if skill failed
-}
-
-// AgentRequestPayload: skill needs a sub-agent (e.g. to draft something)
-type AgentRequestPayload struct {
-	RequestingSkill string
-	Task            string
-	Context         map[string]any
-}
-
-// OutboundMessagePayload: send a response back to a channel
+// OutboundMessagePayload: Response to send to channel
 type OutboundMessagePayload struct {
-	ChannelName string
-	ChatID      string
-	Content     string
-	ReplyToID   string
-	ParseMode   string
+	ChannelName string `json:"channel_name"`
+	ChatID      string `json:"chat_id"`
+	Content     string `json:"content"`
+	ReplyToID   string `json:"reply_to_id,omitempty"`
+	ParseMode   string `json:"parse_mode,omitempty"`
 }
 
-// ErrorPayload: send an error response back to a channel
+// AgentExecutePayload: Execute agent with message
+type AgentExecutePayload struct {
+	UserMessage string            `json:"user_message"`
+	ChatID      string            `json:"chat_id,omitempty"`
+	Metadata    map[string]string `json:"metadata"`
+}
+
+// ToolCallRequestPayload: Tool execution request
+type ToolCallRequestPayload struct {
+	ToolCallID string         `json:"tool_call_id"`
+	SkillName  string         `json:"skill_name"`
+	ToolName   string         `json:"tool_name"`
+	Params     map[string]any `json:"params"`
+}
+
+// ToolCallResultPayload: Tool execution result
+type ToolCallResultPayload struct {
+	ToolCallID string `json:"tool_call_id"`
+	ToolName   string `json:"tool_name"`
+	Result     any    `json:"result,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+// AgentDelegatePayload: Delegate task to another agent
+type AgentDelegatePayload struct {
+	DelegationID string         `json:"delegation_id"` // Unique delegation ID
+	Task         string         `json:"task"`          // Task description
+	Capabilities []Capability   `json:"capabilities"`  // Required capabilities
+	Context      map[string]any `json:"context,omitempty"`
+	Timeout      int            `json:"timeout,omitempty"` // Seconds
+}
+
+// DelegationResultPayload: Result of delegated task
+type DelegationResultPayload struct {
+	DelegationID string `json:"delegation_id"`
+	Result       any    `json:"result,omitempty"`
+	Error        string `json:"error,omitempty"`
+}
+
+// WorkflowPayload: Submit workflow for execution
+type WorkflowPayload struct {
+	Workflow Workflow `json:"workflow"` // *workflow.Workflow (avoid import cycle)
+}
+
+// WorkflowResultPayload: Workflow execution completed
+type WorkflowResultPayload struct {
+	WorkflowID string         `json:"workflow_id"`
+	Status     string         `json:"status"`  // completed, failed, cancelled
+	Results    map[string]any `json:"results"` // Task ID → result
+	Error      string         `json:"error,omitempty"`
+	CreatedBy  string         `json:"created_by"` // Executive agent ID
+}
+
+// TaskAssignedPayload: Workflow engine assigns task to agent
+type TaskAssignedPayload struct {
+	WorkflowID string         `json:"workflow_id"`
+	TaskID     string         `json:"task_id"`
+	TaskName   string         `json:"task_name"`
+	Task       string         `json:"task"` // Task description
+	Context    map[string]any `json:"context,omitempty"`
+}
+
+// AgentMessagePayload: Direct agent-to-agent message (future)
+type AgentMessagePayload struct {
+	FromAgent string         `json:"from_agent"`
+	ToAgent   string         `json:"to_agent"`
+	Content   string         `json:"content"`
+	Context   map[string]any `json:"context,omitempty"`
+}
+
+// ErrorPayload: Error response
 type ErrorPayload struct {
-	Error string
+	Error string `json:"error"`
 }
-
-// Telegram
-//   → Event{MessageReceived}
-//   → Kernel
-//   → Event{AgentExecute} → Agent
-//                            Agent builds messages, gets tools from soul/skills
-//                            calls LLM
-//                            LLM returns ToolCall
-//   → Event{ToolCallRequest, payload: {skill: "email", fn: "send", args: ...}}
-//   → Kernel
-//   → Skill.Execute()
-//       skill needs a sub-agent?
-//   → Event{AgentRequest}
-//   → Kernel spins up/routes to agent
-//   → ... (same flow recursively)
-//       skill gets result
-//   → Event{ToolCallResult}
-//   → Kernel
-//   → Agent (resumes with tool result, calls LLM again)
-//   → Event{OutboundMessage}
-//   → Kernel
-//   → GmailConnector.Send()

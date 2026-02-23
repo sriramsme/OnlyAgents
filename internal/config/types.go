@@ -12,6 +12,7 @@ type Config struct {
 	ID             string           `mapstructure:"id"`
 	Name           string           `mapstructure:"name"`
 	IsExecutive    bool             `mapstructure:"is_executive"`
+	IsGeneral      bool             `mapstructure:"is_general"`
 	Role           string           `mapstructure:"role"`
 	UserRef        string           `mapstructure:"user_ref"`
 	MaxConcurrency int              `mapstructure:"max_concurrency"`

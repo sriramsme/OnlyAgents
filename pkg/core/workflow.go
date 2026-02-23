@@ -1,4 +1,4 @@
-package workflow
+package core
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 // ====================
@@ -21,14 +20,14 @@ type Engine struct {
 	db       *sql.DB
 	queue    *TaskQueue
 	executor *TaskExecutor
-	bus      chan<- core.Event
+	bus      chan<- Event
 	ctx      context.Context
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
 }
 
 // NewEngine creates a workflow engine
-func NewEngine(db *sql.DB, bus chan<- core.Event) (*Engine, error) {
+func NewEngine(db *sql.DB, bus chan<- Event) (*Engine, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	queue, err := NewTaskQueue(db)
@@ -164,32 +163,6 @@ func (e *Engine) checkAndEnqueueDependents(ctx context.Context, completedTask *T
 	}
 }
 
-// ====================
-// Workflow Definition
-// ====================
-
-// Workflow represents a collection of tasks with dependencies
-type Workflow struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Tasks       []*Task           `json:"tasks"`
-	CreatedAt   time.Time         `json:"created_at"`
-	CreatedBy   string            `json:"created_by"` // Agent ID
-	Status      WorkflowStatus    `json:"status"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
-}
-
-type WorkflowStatus string
-
-const (
-	WorkflowStatusPending   WorkflowStatus = "pending"
-	WorkflowStatusRunning   WorkflowStatus = "running"
-	WorkflowStatusCompleted WorkflowStatus = "completed"
-	WorkflowStatusFailed    WorkflowStatus = "failed"
-	WorkflowStatusCancelled WorkflowStatus = "cancelled"
-)
-
 // Validate checks if workflow is valid
 func (w *Workflow) Validate() error {
 	if w.ID == "" {
@@ -217,55 +190,6 @@ func (w *Workflow) GetRootTasks() []*Task {
 	}
 	return roots
 }
-
-// ====================
-// Task Definition
-// ====================
-
-// Task represents a unit of work
-type Task struct {
-	ID                   string            `json:"id"`
-	WorkflowID           string            `json:"workflow_id"`
-	Name                 string            `json:"name"`
-	Description          string            `json:"description"`
-	Type                 TaskType          `json:"type"`
-	DependsOn            []string          `json:"depends_on"` // Task IDs
-	RequiredCapabilities []string          `json:"required_capabilities"`
-	Payload              json.RawMessage   `json:"payload"` // Task-specific data
-	Status               TaskStatus        `json:"status"`
-	Result               json.RawMessage   `json:"result,omitempty"`
-	Error                string            `json:"error,omitempty"`
-	AssignedAgentID      string            `json:"assigned_agent_id,omitempty"`
-	CreatedAt            time.Time         `json:"created_at"`
-	StartedAt            *time.Time        `json:"started_at,omitempty"`
-	CompletedAt          *time.Time        `json:"completed_at,omitempty"`
-	RetryCount           int               `json:"retry_count"`
-	MaxRetries           int               `json:"max_retries"`
-	Timeout              time.Duration     `json:"timeout,omitempty"`
-	Metadata             map[string]string `json:"metadata,omitempty"`
-}
-
-type TaskType string
-
-const (
-	TaskTypeAgentExecution TaskType = "agent_execution" // Execute via agent
-	TaskTypeSkillExecution TaskType = "skill_execution" // Execute skill directly
-	TaskTypeWebhook        TaskType = "webhook"         // HTTP callback
-	TaskTypeDelay          TaskType = "delay"           // Wait for duration
-	TaskTypeCondition      TaskType = "condition"       // Branch based on condition
-)
-
-type TaskStatus string
-
-const (
-	TaskStatusPending   TaskStatus = "pending"
-	TaskStatusQueued    TaskStatus = "queued"
-	TaskStatusRunning   TaskStatus = "running"
-	TaskStatusCompleted TaskStatus = "completed"
-	TaskStatusFailed    TaskStatus = "failed"
-	TaskStatusCancelled TaskStatus = "cancelled"
-	TaskStatusBlocked   TaskStatus = "blocked" // Waiting for dependencies
-)
 
 // ====================
 // Task Queue (Persistence Layer)
@@ -553,11 +477,11 @@ func (q *TaskQueue) scanTask(rows *sql.Rows) (*Task, error) {
 // TaskExecutor executes tasks
 type TaskExecutor struct {
 	db  *sql.DB
-	bus chan<- core.Event
+	bus chan<- Event
 }
 
 // NewTaskExecutor creates a task executor
-func NewTaskExecutor(db *sql.DB, bus chan<- core.Event) *TaskExecutor {
+func NewTaskExecutor(db *sql.DB, bus chan<- Event) *TaskExecutor {
 	return &TaskExecutor{db: db, bus: bus}
 }
 
@@ -586,11 +510,11 @@ func (e *TaskExecutor) executeViaAgent(ctx context.Context, task *Task) error {
 	}
 
 	// Fire AgentExecute event
-	e.bus <- core.Event{
-		Type:          core.AgentExecute,
+	e.bus <- Event{
+		Type:          AgentExecute,
 		CorrelationID: task.ID,
 		AgentID:       task.AssignedAgentID,
-		Payload: core.AgentExecutePayload{
+		Payload: AgentExecutePayload{
 			UserMessage: payload.Message,
 			Metadata: map[string]string{
 				"task_id":     task.ID,
@@ -615,10 +539,10 @@ func (e *TaskExecutor) executeViaSkill(ctx context.Context, task *Task) error {
 		return fmt.Errorf("unmarshal skill payload: %w", err)
 	}
 
-	e.bus <- core.Event{
-		Type:          core.ToolCallRequest,
+	e.bus <- Event{
+		Type:          ToolCallRequest,
 		CorrelationID: task.ID,
-		Payload: core.ToolCallRequestPayload{
+		Payload: ToolCallRequestPayload{
 			ToolCallID: task.ID,
 			SkillName:  payload.SkillName,
 			ToolName:   payload.ToolName,

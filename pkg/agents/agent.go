@@ -53,6 +53,7 @@ func NewAgent(
 		id:             cfg.ID,
 		name:           cfg.Name,
 		isExecutive:    cfg.IsExecutive,
+		isGeneral:      cfg.IsGeneral,
 		maxConcurrency: cfg.MaxConcurrency,
 		skills:         cfg.Skills,
 		llmClient:      llmClient,
@@ -112,6 +113,8 @@ func (a *Agent) Inbox() chan<- core.Event {
 func (a *Agent) ID() string { return a.id }
 
 func (a *Agent) IsExecutive() bool { return a.isExecutive }
+
+func (a *Agent) IsGeneral() bool { return a.isGeneral }
 
 func (a *Agent) GetSkillNames() []string { return a.skills }
 

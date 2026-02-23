@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
@@ -44,9 +45,37 @@ func NewRegistry(
 		}
 
 		r.agents[cfg.ID] = agent
+		if agent.IsExecutive() {
+			if r.executive != nil {
+				return nil, fmt.Errorf("multiple executive agents configured")
+			}
+			r.executive = agent
+		}
+		if agent.IsGeneral() {
+			if r.general != nil {
+				return nil, fmt.Errorf("multiple general agents configured")
+			}
+			r.general = agent
+		}
+	}
+
+	// Validate
+	if r.executive == nil || r.general == nil {
+		var missing []string
+
+		if r.executive == nil {
+			missing = append(missing, "Executive agent not configured")
+		}
+
+		if r.general == nil {
+			missing = append(missing, "General agent not configured")
+		}
+
+		return nil, errors.New(strings.Join(missing, " or "))
 	}
 
 	return r, nil
+
 }
 
 func (r *Registry) Register(a *Agent) {
@@ -66,17 +95,9 @@ func (r *Registry) Get(id string) (*Agent, error) {
 	return agent, nil
 }
 
-func (r *Registry) Executive() (*Agent, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+func (r *Registry) GetExecutive() *Agent { return r.executive }
 
-	for _, agent := range r.agents {
-		if agent.isExecutive {
-			return agent, nil
-		}
-	}
-	return nil, fmt.Errorf("no executive agent configured")
-}
+func (r *Registry) GetGeneral() *Agent { return r.general }
 
 func (r *Registry) All() []*Agent {
 	r.mu.RLock()

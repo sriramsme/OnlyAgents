@@ -293,26 +293,47 @@ func (s *EmailSkill) getEmail(ctx context.Context, params map[string]any) (any, 
 }
 
 func (s *EmailSkill) draftEmail(ctx context.Context, params map[string]any) (any, error) {
-	// Fire AgentRequest event to kernel
-	// Kernel will route to an agent that can draft text
-	contextStr := params["context"].(string)
-	tone := "professional"
-	if val, ok := params["tone"]; ok {
-		tone = val.(string)
+	// Use first available email connector (kernel ensures at least one exists)
+	var emailConn connectors.EmailConnector
+	for _, conn := range s.emailConns {
+		emailConn = conn
+		break
 	}
 
-	// Fire event (non-blocking)
-	// Note: This is async - we return immediately.
-	// For sync behavior, skill would need a reply channel pattern.
-	s.RequestSubAgent(ctx, "", fmt.Sprintf("Draft a %s email: %s", tone, contextStr), map[string]any{
-		"task_type": "email_draft",
-		"tone":      tone,
-	})
+	// Parse recipients
+	toInterfaces := params["to"].([]interface{})
+	to := make([]string, len(toInterfaces))
+	for i, v := range toInterfaces {
+		to[i] = v.(string)
+	}
+
+	req := &connectors.SendEmailRequest{
+		To:      to,
+		Subject: params["subject"].(string),
+		Body:    params["body"].(string),
+	}
+
+	// Optional CC
+	if ccVal, ok := params["cc"]; ok {
+		ccInterfaces := ccVal.([]interface{})
+		cc := make([]string, len(ccInterfaces))
+		for i, v := range ccInterfaces {
+			cc[i] = v.(string)
+		}
+		req.Cc = cc
+	}
+
+	err := emailConn.SendEmail(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("send email: %w", err)
+	}
 
 	return map[string]any{
-		"status":  "draft_requested",
-		"message": "AI agent is drafting the email. This is an async operation.",
+		"status":  "drafted",
+		"to":      to,
+		"subject": req.Subject,
 	}, nil
+
 }
 
 func (s *EmailSkill) markAsRead(ctx context.Context, params map[string]any) (any, error) {

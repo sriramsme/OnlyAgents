@@ -218,6 +218,10 @@ func (g *GmailConnector) SendEmail(ctx context.Context, req *connectors.SendEmai
 	_, err := g.service.Users.Messages.Send("me", gmailMessage).Do()
 	return err
 }
+func (g *GmailConnector) DraftEmail(ctx context.Context, req *connectors.SendEmailRequest) error {
+
+	return nil
+}
 
 func (g *GmailConnector) GetEmail(ctx context.Context, id string) (*connectors.Email, error) {
 	if g.service == nil {

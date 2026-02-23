@@ -20,6 +20,7 @@ type Agent struct {
 	id             string
 	name           string
 	isExecutive    bool
+	isGeneral      bool
 	maxConcurrency int
 
 	// Core capabilities
@@ -47,6 +48,8 @@ type Agent struct {
 
 // AgentRegistry holds all running agents. Lives in kernel.
 type Registry struct {
-	agents map[string]*Agent
-	mu     sync.RWMutex
+	agents    map[string]*Agent
+	executive *Agent
+	general   *Agent
+	mu        sync.RWMutex
 }

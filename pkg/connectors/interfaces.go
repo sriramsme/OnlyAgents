@@ -32,6 +32,7 @@ type EmailConnector interface {
 	Connector
 	SendEmail(ctx context.Context, req *SendEmailRequest) error
 	GetEmail(ctx context.Context, id string) (*Email, error)
+	DraftEmail(ctx context.Context, req *SendEmailRequest) (*Email, error)
 	SearchEmails(ctx context.Context, req *SearchEmailsRequest) ([]*Email, error)
 	DeleteEmail(ctx context.Context, id string) error
 	MarkAsRead(ctx context.Context, id string) error
