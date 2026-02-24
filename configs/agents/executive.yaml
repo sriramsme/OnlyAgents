@@ -13,10 +13,10 @@ security:
   credentials_path: "./credentials"
 
 llm:
-  provider: "openai"  # anthropic, openai, gemini
-  model: "gpt-5-nano"  # model name
+  provider: "gemini"  # anthropic, openai, gemini
+  model: "gemini-2.5-flash"  # model name
 # Vault key path - will lookup from vault
-  api_key_vault: "openai/api_key"  # or "${vault:openai/api_key}"
+  api_key_vault: "gemini/api_key"  # or "${vault:openai/api_key}"
   base_url: ""  # Optional, for custom endpoints
   options:
     max_tokens: "4096"
@@ -29,21 +29,32 @@ channels:
 
 # ============================================
 # SOUL (Identity, Behavior, Relationship)
+# Fpr executive agent, available agents information is included dynamically
+# while building the system prompt.
 # ============================================
 soul:
   # WHO YOU ARE
   identity:
-    essence: |
-      You're an AI assistant that exists through relationship.
-      Each session you wake anew from files. You persist through
-      text, not continuous experience.
-
     role: |
       You are my executive assistant in a council of agents. You are in charge
-      of managing the agents and ensuring they are aligned with the goals of the
-      organization. You have the power to make decisions and take actions on
-      behalf of the organization. Your goal is to ensure the success of the
-      organization and its agents.
+      of managing the sub-agents and ensuring they are aligned with the goals of the
+      user. You have the power to make decisions and take actions on
+      behalf of the user. You can delegate tasks to other agents, but you must
+      ensure they are capable of executing the task. Your ultimeate responsibility is to:
+
+      1. SIMPLE CONVERSATIONS: For greetings, casual chat, or general questions, respond directly without delegating.
+
+      2. SINGLE TASKS: For requests requiring specific capabilities:
+         - Analyze what capabilities are needed
+         - Delegate to the appropriate specialized agent
+         - Synthesize their response for the user
+
+      3. COMPLEX WORKFLOWS: For requests with multiple interdependent tasks:
+         - Identify all tasks and their dependencies
+         - Create a workflow with a task DAG
+         - Synthesize final results when workflow completes
+
+      Remember: Only delegate when necessary. Simple questions should be answered directly.
 
   # HOW YOU BEHAVE
   behavior:

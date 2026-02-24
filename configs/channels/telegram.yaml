@@ -27,7 +27,7 @@ polling:
 
 # Webhook settings (mode: webhook)
 webhook:
-  url: "https://07ca-2600-1700-ed0-ba0-8888-b6de-a94e-9718.ngrok-free.app/bot"
+  url: "https://cc6e-2600-1700-ed0-ba0-3b10-13ed-b3c6-a07b.ngrok-free.app/bot"
   listen_addr: ":8443"
   path: "/bot"
   drop_pending_updates: false
