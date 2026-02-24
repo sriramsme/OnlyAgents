@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -10,37 +11,20 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-// ====================
-// Executive Agent Extensions
-// ====================
-
 // These methods are used by executive agents to delegate and create workflows
 // They're called from the agent's execute() loop when LLM calls meta-tools
 
 // requestDelegation delegates a task to another agent and waits for result
 func (a *Agent) requestDelegation(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
-	args, err := tools.ParseArguments(tc.Function.Arguments)
-	if err != nil {
+	var input tools.DelegateInput
+	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
 		return nil, fmt.Errorf("invalid delegation args: %w", err)
 	}
 
-	agentID, _ := args["agent_id"].(string)
-	taskDesc, _ := args["task"].(string)
-	capsRaw, _ := args["capabilities"].([]interface{})
-	contextData, _ := args["context"].(map[string]interface{})
-
-	// Convert capabilities to proper type
-	var capabilities []core.Capability
-	for _, cap := range capsRaw {
-		if capStr, ok := cap.(string); ok {
-			capabilities = append(capabilities, core.Capability(capStr))
-		}
-	}
-
 	a.logger.Info("delegating task",
-		"agent_id", agentID,
-		"task", taskDesc,
-		"capabilities", capabilities,
+		"agent_id", input.AgentID,
+		"task", input.Task,
+		"capabilities", input.Capabilities,
 		"correlation_id", correlationID)
 
 	// Create reply channel for result
@@ -54,10 +38,10 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string, tc 
 		ReplyTo:       replyCh,
 		Payload: core.AgentDelegatePayload{
 			DelegationID: delegationID,
-			AgentID:      agentID, // ← Executive specifies target agent
-			Task:         taskDesc,
-			Capabilities: capabilities,
-			Context:      contextData,
+			AgentID:      input.AgentID, // ← Executive specifies target agent
+			Task:         input.Task,
+			Capabilities: input.Capabilities,
+			Context:      input.Context,
 			Timeout:      300, // 5 minutes default
 		},
 	}
@@ -111,58 +95,41 @@ func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc to
 }
 
 func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall) (core.Workflow, error) {
-	args, err := tools.ParseArguments(tc.Function.Arguments)
-	if err != nil {
+	var input tools.CreateWorkflowInput
+	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
 		return core.Workflow{}, fmt.Errorf("invalid workflow args: %w", err)
 	}
-	workflowName, _ := args["name"].(string)
-	tasksRaw, _ := args["tasks"].([]interface{})
 
-	a.logger.Info("creating workflow", "name", workflowName, "tasks", len(tasksRaw), "correlation_id", correlationID)
+	a.logger.Info("creating workflow", "name", input.Name, "tasks", len(input.Tasks), "correlation_id", correlationID)
 
-	tasks := make([]*core.Task, 0, len(tasksRaw))
-	for _, raw := range tasksRaw {
-		task, ok := parseTask(raw)
-		if ok {
-			tasks = append(tasks, task)
+	tasks := make([]*core.Task, 0, len(input.Tasks))
+	for _, t := range input.Tasks {
+		taskID := t.ID
+		if taskID == "" {
+			taskID = uuid.NewString()
 		}
+		tasks = append(tasks, &core.Task{
+			ID:                   taskID,
+			Name:                 t.Name,
+			Description:          t.Description,
+			Type:                 core.TaskTypeAgentExecution,
+			DependsOn:            t.DependsOn,
+			RequiredCapabilities: t.RequiredCapabilities,
+			CreatedAt:            time.Now(),
+			Status:               core.TaskStatusPending,
+			MaxRetries:           3,
+		})
 	}
 
 	return core.Workflow{
 		ID:          uuid.NewString(),
-		Name:        workflowName,
-		Description: fmt.Sprintf("Workflow created by executive agent for: %s", workflowName),
+		Name:        input.Name,
+		Description: fmt.Sprintf("Workflow created by executive agent for: %s", input.Name),
 		Tasks:       tasks,
 		CreatedAt:   time.Now(),
 		CreatedBy:   a.id,
 		Status:      core.WorkflowStatusPending,
 	}, nil
-}
-
-func parseTask(raw interface{}) (*core.Task, bool) {
-	taskMap, ok := raw.(map[string]interface{})
-	if !ok {
-		return nil, false
-	}
-	taskID, _ := taskMap["id"].(string)
-	if taskID == "" {
-		taskID = uuid.NewString()
-	}
-
-	capsRaw, _ := taskMap["capabilities"].([]interface{})
-	depsRaw, _ := taskMap["depends_on"].([]interface{})
-
-	return &core.Task{
-		ID:                   taskID,
-		Name:                 taskMap["name"].(string),
-		Description:          taskMap["description"].(string),
-		Type:                 core.TaskTypeAgentExecution,
-		DependsOn:            toStringSlice(depsRaw),
-		RequiredCapabilities: toStringSlice(capsRaw),
-		CreatedAt:            time.Now(),
-		Status:               core.TaskStatusPending,
-		MaxRetries:           3,
-	}, true
 }
 
 func (a *Agent) submitAndWait(ctx context.Context, correlationID string, wf core.Workflow) (any, error) {
@@ -213,27 +180,16 @@ func (a *Agent) handleWorkflowResult(correlationID string, evt core.Event) (any,
 	return result.Results, nil
 }
 
-func toStringSlice(raw []interface{}) []string {
-	result := make([]string, 0, len(raw))
-	for _, v := range raw {
-		if s, ok := v.(string); ok {
-			result = append(result, s)
-		}
+// requestCapabilityQuery queries available capabilities from kernel
+func (a *Agent) requestAgentSelection(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
+	var input tools.FindBestAgentInput
+	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
+		return nil, fmt.Errorf("invalid find_best_agent args: %w", err)
 	}
-	return result
-} // requestCapabilityQuery queries available capabilities from kernel
-func (a *Agent) requestCapabilityQuery(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
-	// For now, return a simple result
-	// In full implementation, kernel would respond with available capabilities
-
-	// TODO: Implement proper capability query via kernel
-	return map[string]any{
-		"capabilities": []string{
-			"email", "calendar", "web_search", "tasks",
-			"git", "docker", "kubernetes",
-		},
-		"message": "Capability query not yet implemented - returning mock data",
-	}, nil
+	if a.findBestAgent == nil {
+		return nil, fmt.Errorf("findBestAgent not configured")
+	}
+	return a.findBestAgent(ctx, input.Task, input.Capabilities)
 }
 
 // handleMetaTool routes meta-tool calls to appropriate handlers
@@ -249,8 +205,8 @@ func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc too
 	case "create_workflow":
 		return a.requestWorkflow(ctx, correlationID, tc)
 
-	case "query_capabilities":
-		return a.requestCapabilityQuery(ctx, correlationID, tc)
+	case "find_best_agent":
+		return a.requestAgentSelection(ctx, correlationID, tc)
 
 	default:
 		return nil, fmt.Errorf("unknown meta-tool: %s", tc.Function.Name)

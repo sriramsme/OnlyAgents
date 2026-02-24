@@ -83,92 +83,24 @@ func (s *EmailSkill) RequiredCapabilities() []core.Capability {
 
 // Tools returns the LLM function calling tools for email
 func (s *EmailSkill) Tools() []tools.ToolDef {
-	return []tools.ToolDef{
-		tools.NewToolDef(
-			"email_send",
-			"Send an email to one or more recipients",
-			tools.BuildParams(
-				map[string]tools.Property{
-					"to":      tools.ArrayProp("Email addresses to send to", tools.StringProp("")),
-					"subject": tools.StringProp("Email subject line"),
-					"body":    tools.StringProp("Email body content"),
-					"cc":      tools.ArrayProp("CC email addresses (optional)", tools.StringProp("")),
-				},
-				[]string{"to", "subject", "body"},
-			),
-		),
-		tools.NewToolDef(
-			"email_search",
-			"Search for emails matching criteria",
-			tools.BuildParams(
-				map[string]tools.Property{
-					"query":       tools.StringProp("Search query (keywords, phrases)"),
-					"from":        tools.StringProp("Filter by sender email (optional)"),
-					"max_results": tools.IntProp("Maximum number of results (default: 10)"),
-					"is_unread":   tools.BoolProp("Only return unread emails (optional)"),
-				},
-				[]string{"query"},
-			),
-		),
-		tools.NewToolDef(
-			"email_get",
-			"Get full details of a specific email by ID",
-			tools.BuildParams(
-				map[string]tools.Property{
-					"email_id": tools.StringProp("The email ID"),
-				},
-				[]string{"email_id"},
-			),
-		),
-		tools.NewToolDef(
-			"email_draft",
-			"Use AI to draft an email based on context and tone. This will request a sub-agent to generate the draft.",
-			tools.BuildParams(
-				map[string]tools.Property{
-					"context": tools.StringProp("Context for the email (what to say, who it's to, purpose)"),
-					"tone":    tools.EnumProp("Tone of the email", []string{"professional", "casual", "friendly", "formal"}),
-				},
-				[]string{"context"},
-			),
-		),
-		tools.NewToolDef(
-			"email_mark_read",
-			"Mark an email as read",
-			tools.BuildParams(
-				map[string]tools.Property{
-					"email_id": tools.StringProp("The email ID"),
-				},
-				[]string{"email_id"},
-			),
-		),
-		tools.NewToolDef(
-			"email_delete",
-			"Delete an email",
-			tools.BuildParams(
-				map[string]tools.Property{
-					"email_id": tools.StringProp("The email ID to delete"),
-				},
-				[]string{"email_id"},
-			),
-		),
-	}
+	return tools.GetEmailTools()
 }
 
 // Execute runs a tool
-func (s *EmailSkill) Execute(ctx context.Context, toolName string, params map[string]any) (any, error) {
+func (s *EmailSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {
 	switch toolName {
 	case "email_send":
-		return s.sendEmail(ctx, params)
+		return s.sendEmail(ctx, args)
 	case "email_search":
-		return s.searchEmails(ctx, params)
+		return s.searchEmails(ctx, args)
 	case "email_get":
-		return s.getEmail(ctx, params)
+		return s.getEmail(ctx, args)
 	case "email_draft":
-		return s.draftEmail(ctx, params)
+		return s.draftEmail(ctx, args)
 	case "email_mark_read":
-		return s.markAsRead(ctx, params)
+		return s.markAsRead(ctx, args)
 	case "email_delete":
-		return s.deleteEmail(ctx, params)
+		return s.deleteEmail(ctx, args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", toolName)
 	}
@@ -178,77 +110,57 @@ func (s *EmailSkill) Execute(ctx context.Context, toolName string, params map[st
 // Tool Implementations
 // ====================
 
-func (s *EmailSkill) sendEmail(ctx context.Context, params map[string]any) (any, error) {
-	// Use first available email connector (kernel ensures at least one exists)
-	var emailConn connectors.EmailConnector
-	for _, conn := range s.emailConns {
-		emailConn = conn
-		break
+func (s *EmailSkill) sendEmail(ctx context.Context, args []byte) (any, error) {
+	input, err := tools.UnmarshalParams[tools.EmailSendInput](args)
+	if err != nil {
+		return nil, err
 	}
-
-	// Parse recipients
-	toInterfaces := params["to"].([]interface{})
-	to := make([]string, len(toInterfaces))
-	for i, v := range toInterfaces {
-		to[i] = v.(string)
+	emailConn, err := s.getConnector()
+	if err != nil {
+		return nil, err
 	}
 
 	req := &connectors.SendEmailRequest{
-		To:      to,
-		Subject: params["subject"].(string),
-		Body:    params["body"].(string),
+		To:      input.To,
+		Subject: input.Subject,
+		Body:    input.Body,
+		Cc:      input.CC,
 	}
 
-	// Optional CC
-	if ccVal, ok := params["cc"]; ok {
-		ccInterfaces := ccVal.([]interface{})
-		cc := make([]string, len(ccInterfaces))
-		for i, v := range ccInterfaces {
-			cc[i] = v.(string)
-		}
-		req.Cc = cc
-	}
-
-	err := emailConn.SendEmail(ctx, req)
+	err = emailConn.SendEmail(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("send email: %w", err)
 	}
 
 	return map[string]any{
 		"status":  "sent",
-		"to":      to,
+		"to":      req.To,
 		"subject": req.Subject,
 	}, nil
 }
 
-func (s *EmailSkill) searchEmails(ctx context.Context, params map[string]any) (any, error) {
-	var emailConn connectors.EmailConnector
-	for _, conn := range s.emailConns {
-		emailConn = conn
-		break
+func (s *EmailSkill) searchEmails(ctx context.Context, args []byte) (any, error) {
+	input, err := tools.UnmarshalParams[tools.EmailSearchInput](args)
+	if err != nil {
+		return nil, err
 	}
-
+	emailConn, err := s.getConnector()
+	if err != nil {
+		return nil, err
+	}
 	req := &connectors.SearchEmailsRequest{
-		Query:      params["query"].(string),
-		MaxResults: 10,
+		Query:      input.Query,
+		From:       input.From,
+		MaxResults: input.MaxResults,
+		IsUnread:   input.IsUnread,
 	}
-
-	if val, ok := params["from"]; ok {
-		req.From = val.(string)
+	if req.MaxResults == 0 {
+		req.MaxResults = 10
 	}
-	if val, ok := params["max_results"]; ok {
-		req.MaxResults = int(val.(float64))
-	}
-	if val, ok := params["is_unread"]; ok {
-		req.IsUnread = val.(bool)
-	}
-
 	emails, err := emailConn.SearchEmails(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("search emails: %w", err)
 	}
-
-	// Return simplified email list
 	results := make([]map[string]any, len(emails))
 	for i, email := range emails {
 		results[i] = map[string]any{
@@ -260,27 +172,25 @@ func (s *EmailSkill) searchEmails(ctx context.Context, params map[string]any) (a
 			"received": email.ReceivedAt.Format(time.RFC3339),
 		}
 	}
-
 	return map[string]any{
 		"count":  len(results),
 		"emails": results,
 	}, nil
 }
 
-func (s *EmailSkill) getEmail(ctx context.Context, params map[string]any) (any, error) {
-	var emailConn connectors.EmailConnector
-	for _, conn := range s.emailConns {
-		emailConn = conn
-		break
+func (s *EmailSkill) getEmail(ctx context.Context, args []byte) (any, error) {
+	input, err := tools.UnmarshalParams[tools.EmailGetInput](args)
+	if err != nil {
+		return nil, err
 	}
-
-	emailID := params["email_id"].(string)
-
-	email, err := emailConn.GetEmail(ctx, emailID)
+	emailConn, err := s.getConnector()
+	if err != nil {
+		return nil, err
+	}
+	email, err := emailConn.GetEmail(ctx, input.EmailID)
 	if err != nil {
 		return nil, fmt.Errorf("get email: %w", err)
 	}
-
 	return map[string]any{
 		"id":       email.ID,
 		"from":     email.From.Email,
@@ -292,93 +202,70 @@ func (s *EmailSkill) getEmail(ctx context.Context, params map[string]any) (any, 
 	}, nil
 }
 
-func (s *EmailSkill) draftEmail(ctx context.Context, params map[string]any) (any, error) {
-	// Use first available email connector (kernel ensures at least one exists)
-	var emailConn connectors.EmailConnector
-	for _, conn := range s.emailConns {
-		emailConn = conn
-		break
-	}
-
-	// Parse recipients
-	toInterfaces := params["to"].([]interface{})
-	to := make([]string, len(toInterfaces))
-	for i, v := range toInterfaces {
-		to[i] = v.(string)
-	}
-
-	req := &connectors.SendEmailRequest{
-		To:      to,
-		Subject: params["subject"].(string),
-		Body:    params["body"].(string),
-	}
-
-	// Optional CC
-	if ccVal, ok := params["cc"]; ok {
-		ccInterfaces := ccVal.([]interface{})
-		cc := make([]string, len(ccInterfaces))
-		for i, v := range ccInterfaces {
-			cc[i] = v.(string)
-		}
-		req.Cc = cc
-	}
-
-	err := emailConn.SendEmail(ctx, req)
+func (s *EmailSkill) draftEmail(ctx context.Context, args []byte) (any, error) {
+	input, err := tools.UnmarshalParams[tools.EmailDraftInput](args)
 	if err != nil {
-		return nil, fmt.Errorf("send email: %w", err)
+		return nil, err
 	}
-
+	emailConn, err := s.getConnector()
+	if err != nil {
+		return nil, err
+	}
+	// draftEmail doesn't actually send — it returns a draft for the LLM to confirm
+	_ = emailConn
 	return map[string]any{
 		"status":  "drafted",
-		"to":      to,
-		"subject": req.Subject,
+		"context": input.Context,
+		"tone":    input.Tone,
 	}, nil
-
 }
 
-func (s *EmailSkill) markAsRead(ctx context.Context, params map[string]any) (any, error) {
-	var emailConn connectors.EmailConnector
-	for _, conn := range s.emailConns {
-		emailConn = conn
-		break
-	}
-
-	emailID := params["email_id"].(string)
-
-	err := emailConn.MarkAsRead(ctx, emailID)
+func (s *EmailSkill) markAsRead(ctx context.Context, args []byte) (any, error) {
+	input, err := tools.UnmarshalParams[tools.EmailMarkReadInput](args)
 	if err != nil {
+		return nil, err
+	}
+	emailConn, err := s.getConnector()
+	if err != nil {
+		return nil, err
+	}
+	if err := emailConn.MarkAsRead(ctx, input.EmailID); err != nil {
 		return nil, fmt.Errorf("mark as read: %w", err)
 	}
-
 	return map[string]any{
 		"status":   "marked_read",
-		"email_id": emailID,
+		"email_id": input.EmailID,
 	}, nil
 }
 
-func (s *EmailSkill) deleteEmail(ctx context.Context, params map[string]any) (any, error) {
-	var emailConn connectors.EmailConnector
-	for _, conn := range s.emailConns {
-		emailConn = conn
-		break
-	}
-
-	emailID := params["email_id"].(string)
-
-	err := emailConn.DeleteEmail(ctx, emailID)
+func (s *EmailSkill) deleteEmail(ctx context.Context, args []byte) (any, error) {
+	input, err := tools.UnmarshalParams[tools.EmailDeleteInput](args)
 	if err != nil {
+		return nil, err
+	}
+	emailConn, err := s.getConnector()
+	if err != nil {
+		return nil, err
+	}
+	if err := emailConn.DeleteEmail(ctx, input.EmailID); err != nil {
 		return nil, fmt.Errorf("delete email: %w", err)
 	}
-
 	return map[string]any{
 		"status":   "deleted",
-		"email_id": emailID,
+		"email_id": input.EmailID,
 	}, nil
 }
 
 // ====================
 // Helper Methods
 // ====================
+
+func (s *EmailSkill) getConnector() (connectors.EmailConnector, error) {
+	for _, conn := range s.emailConns {
+		return conn, nil
+	}
+	return nil, fmt.Errorf("no email connector available")
+}
 
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {

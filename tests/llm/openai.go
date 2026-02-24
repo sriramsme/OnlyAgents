@@ -79,7 +79,7 @@ func TestOpenAIToolCalling(t *testing.T) {
 		Messages: []llm.Message{
 			llm.UserMessage("What's the weather in New York?"),
 		},
-		Tools: []tools.ToolDef{weatherTool},
+		Tools: []tools.ToolDef{weatherTool}, // <-- ED
 	})
 	if err != nil {
 		t.Fatal(err)

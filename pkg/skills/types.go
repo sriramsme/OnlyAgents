@@ -42,7 +42,7 @@ type Skill interface {
 	Tools() []tools.ToolDef
 
 	// Execute is called by kernel when LLM requests a tool call
-	Execute(ctx context.Context, toolName string, params map[string]any) (any, error)
+	Execute(ctx context.Context, toolName string, args []byte) (any, error)
 
 	// Initialize is called by kernel at startup, injecting dependencies
 	Initialize(deps SkillDeps) error

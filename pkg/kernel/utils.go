@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,9 +12,24 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
+
+type AgentInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type kernelComponents struct {
+	agents        *agents.Registry
+	connectors    *connectors.Registry
+	channels      *channels.Registry
+	skills        *skills.Registry
+	user          *config.UserConfig
+	capabilityMap map[core.Capability][]AgentInfo
+}
 
 // mustLoadVault loads vault config or exits
 func loadVault(path string) (vault.Vault, error) {
@@ -105,8 +121,9 @@ func (k *Kernel) assignAgentTools() error {
 
 		// Executive agents get NO tools (they delegate)
 		if agent.IsExecutive() {
-			execTools := getExecutiveTools()
+			execTools := tools.GetExecutiveTools()
 			agent.SetTools(execTools)
+			agent.SetFindBestAgent(k.findBestAgentToolDep)
 			k.logger.Info("executive agent configured",
 				"agent_id", agent.ID(),
 				"tools", len(execTools),
@@ -127,6 +144,21 @@ func (k *Kernel) assignAgentTools() error {
 	return nil
 }
 
+func (k *Kernel) findBestAgentToolDep(ctx context.Context, task string, capabilities []core.Capability) (tools.AgentInfo, error) {
+	agent, capabilities, found := k.findSpecializedAgent(capabilities)
+	if !found {
+		agent = k.agents.GetGeneral()
+	}
+	if agent == nil {
+		return tools.AgentInfo{}, fmt.Errorf("no agent found for capabilities %v", capabilities)
+	}
+	return tools.AgentInfo{
+		ID:           agent.ID(),
+		Name:         agent.Name(),
+		Capabilities: capabilities,
+	}, nil
+}
+
 // getToolsForAgent returns all tools from the given skill names
 func (k *Kernel) getToolsForAgent(skillNames []string) []tools.ToolDef {
 	var agentTools []tools.ToolDef
@@ -142,68 +174,6 @@ func (k *Kernel) getToolsForAgent(skillNames []string) []tools.ToolDef {
 	}
 
 	return agentTools
-}
-
-// GetExecutiveTools returns orchestration tools for the executive agent
-// These are NOT regular skills - they trigger kernel routing events
-func getExecutiveTools() []tools.ToolDef {
-	return []tools.ToolDef{
-		// Delegate single task to specialized agent
-		tools.NewToolDef(
-			"delegate_to_agent",
-			"Delegate a task to a specialized agent. Use when a request requires specific capabilities (calendar, email, web search, etc.) that you don't handle directly.",
-			tools.BuildParams(
-				map[string]tools.Property{
-					"agent_id": tools.StringProp("ID of the agent to delegate to (from Available Capabilities & Agents list)"),
-					"task":     tools.StringProp("Clear description of the task to delegate"),
-					"capabilities": tools.ArrayProp(
-						"Required capabilities for this task (for validation)",
-						tools.EnumProp("", []string{
-							"email", "calendar", "web_search", "web_fetch",
-							"tasks", "storage", "notes", "git", "docker", "kubernetes",
-						}),
-					),
-					"context": {
-						Type:        "object",
-						Description: "Additional context for the delegated task (optional)",
-					},
-				},
-				[]string{"agent_id", "task"}, // agent_id and task required, capabilities optional
-			),
-		),
-
-		// Create multi-task workflow
-		tools.NewToolDef(
-			"create_workflow",
-			"Create a workflow with multiple interdependent tasks. Use when a request requires multiple steps with dependencies (e.g., 'Check Bob's availability, then email him').",
-			tools.BuildParams(
-				map[string]tools.Property{
-					"name": tools.StringProp("Name for this workflow"),
-					"tasks": tools.ArrayProp(
-						"List of tasks in the workflow",
-						tools.Property{
-							Type:        "object",
-							Description: "Task definition",
-							// Schema would include: id, name, description, capabilities, depends_on
-						},
-					),
-				},
-				[]string{"name", "tasks"},
-			),
-		),
-
-		// Query available capabilities (for executive to know what's available)
-		// tools.NewToolDef(
-		// 	"query_capabilities",
-		// 	"Query what capabilities and agents are currently available. Use when you need to check if a certain capability exists before delegating.",
-		// 	tools.BuildParams(
-		// 		map[string]tools.Property{
-		// 			"capability": tools.StringProp("Capability to query (optional - leave empty for all)"),
-		// 		},
-		// 		[]string{},
-		// 	),
-		// ),
-	}
 }
 
 // IsExecutiveTool checks if a tool is an executive meta-tool
@@ -236,15 +206,6 @@ func applyConfigDefaults(cfg Config) Config {
 		cfg.VaultPath = "configs/vault.yaml"
 	}
 	return cfg
-}
-
-type kernelComponents struct {
-	agents        *agents.Registry
-	connectors    *connectors.Registry
-	channels      *channels.Registry
-	skills        *skills.Registry
-	user          *config.UserConfig
-	capabilityMap map[core.Capability][]string
 }
 
 func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kernelComponents, error) {
@@ -285,28 +246,48 @@ func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kerne
 // validateAndBuildCapabilityMap validates that all assigned skills exist in skill registry
 // and builds a map of capabilities to agents
 // Called by kernel after skill registry is initialized
-func validateAndBuildCapabilityMap(agentsReg *agents.Registry, skillsReg *skills.Registry) (map[core.Capability][]string, error) {
-	capabilityMap := make(map[core.Capability][]string)
-
+func validateAndBuildCapabilityMap(agentsReg *agents.Registry, skillsReg *skills.Registry) (map[core.Capability][]AgentInfo, error) {
+	capabilityMap := make(map[core.Capability][]AgentInfo)
 	for _, agent := range agentsReg.All() {
 		if agent.IsExecutive() {
 			continue
 		}
-
 		for _, skillName := range agent.GetSkillNames() {
 			skill, exists := skillsReg.Get(skillName)
 			if !exists {
 				return nil, fmt.Errorf("agent %s: skill '%s' not found in skill registry", agent.ID(), skillName)
 			}
 			for _, cap := range skill.RequiredCapabilities() {
-				capabilityMap[cap] = append(capabilityMap[cap], agent.ID())
+				capabilityMap[cap] = append(capabilityMap[cap], AgentInfo{
+					ID:   agent.ID(),
+					Name: agent.Name(),
+				})
 			}
 		}
 	}
 	return capabilityMap, nil
 }
 
-func buildSystemPrompts(user *config.UserConfig, agentsReg *agents.Registry, capabilityMap map[core.Capability][]string) {
+func buildCapabilitySection(capabilityMap map[core.Capability][]AgentInfo) string {
+	if len(capabilityMap) == 0 {
+		return "=== Available Sub-Agents & Capabilities ===\n(No specialized agents available - handle all tasks directly)"
+	}
+
+	// build a clean map for JSON marshaling
+	out := make(map[string][]AgentInfo, len(capabilityMap))
+	for cap, agents := range capabilityMap {
+		out[string(cap)] = agents
+	}
+
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return "=== AVAILABLE SUB-AGENTS & CAPABILITIES ===\n(error building capability map)"
+	}
+
+	return "=== AVAILABLE SUB-AGENTS & CAPABILITIES ===\n" + string(b)
+}
+
+func buildSystemPrompts(user *config.UserConfig, agentsReg *agents.Registry, capabilityMap map[core.Capability][]AgentInfo) {
 	userSection := formatUserProfile(user)
 	for _, agent := range agentsReg.All() {
 		extra := ""
@@ -314,19 +295,13 @@ func buildSystemPrompts(user *config.UserConfig, agentsReg *agents.Registry, cap
 			extra = buildCapabilitySection(capabilityMap)
 		}
 		agent.SetSystemPrompt(userSection, extra)
-	}
-}
 
-func buildCapabilitySection(capabilityMap map[core.Capability][]string) string {
-	if len(capabilityMap) == 0 {
-		return "Available Capabilities & Agents:\n(No specialized agents available - handle all tasks directly)"
+		// Log agent system prompt
+		logger.Log.Info("agent system prompt",
+			"agent_id", agent.ID(),
+			"system_prompt", agent.GetSystemPrompt(),
+		)
 	}
-	var sb strings.Builder
-	sb.WriteString("Available Capabilities & Agents:\n")
-	for cap, agents := range capabilityMap {
-		sb.WriteString(fmt.Sprintf("- %s: %v\n", cap, agents))
-	}
-	return sb.String()
 }
 
 func formatUserProfile(user *config.UserConfig) string {
@@ -336,15 +311,12 @@ Name: %s (preferred: "%s")
 Job: %s
 Background: %s
 Daily Routine: %s
-Values: %s
-Technical: %v | Collaboration: %s`,
+Values: %s`,
 		user.Identity.Name,
 		user.Identity.PreferredName,
 		user.Identity.Role,
 		user.Background.Professional,
 		user.DailyRoutine,
 		strings.Join(user.Preferences.WhatIValue, ", "),
-		user.Preferences.Technical,
-		user.Preferences.Collaboration,
 	)
 }

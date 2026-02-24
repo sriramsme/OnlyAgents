@@ -91,8 +91,7 @@ type SoulConfig struct {
 }
 
 type IdentityConfig struct {
-	Essence string `mapstructure:"essence"`
-	Role    string `mapstructure:"role"`
+	Role string `mapstructure:"role"`
 }
 
 type BehaviorConfig struct {

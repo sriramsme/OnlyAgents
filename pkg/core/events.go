@@ -115,10 +115,10 @@ type AgentExecutePayload struct {
 
 // ToolCallRequestPayload: Tool execution request
 type ToolCallRequestPayload struct {
-	ToolCallID string         `json:"tool_call_id"`
-	SkillName  string         `json:"skill_name"`
-	ToolName   string         `json:"tool_name"`
-	Params     map[string]any `json:"params"`
+	ToolCallID string `json:"tool_call_id"`
+	SkillName  string `json:"skill_name"`
+	ToolName   string `json:"tool_name"`
+	Arguments  []byte `json:"arguments"`
 }
 
 // ToolCallResultPayload: Tool execution result

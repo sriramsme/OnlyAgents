@@ -528,17 +528,17 @@ func (e *TaskExecutor) executeViaAgent(ctx context.Context, task *Task) error {
 }
 
 // executeViaSkill executes task directly via skill
+type SkillTaskPayload struct {
+	SkillName string          `json:"skill_name"`
+	ToolName  string          `json:"tool_name"`
+	Arguments json.RawMessage `json:"arguments"` // raw bytes, passed straight to skill
+}
+
 func (e *TaskExecutor) executeViaSkill(ctx context.Context, task *Task) error {
-	// Fire ToolCallRequest event
-	var payload struct {
-		SkillName string         `json:"skill_name"`
-		ToolName  string         `json:"tool_name"`
-		Params    map[string]any `json:"params"`
-	}
+	var payload SkillTaskPayload
 	if err := json.Unmarshal(task.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal skill payload: %w", err)
 	}
-
 	e.bus <- Event{
 		Type:          ToolCallRequest,
 		CorrelationID: task.ID,
@@ -546,10 +546,9 @@ func (e *TaskExecutor) executeViaSkill(ctx context.Context, task *Task) error {
 			ToolCallID: task.ID,
 			SkillName:  payload.SkillName,
 			ToolName:   payload.ToolName,
-			Params:     payload.Params,
+			Arguments:  payload.Arguments, // json.RawMessage is []byte
 		},
 	}
-
 	return nil
 }
 

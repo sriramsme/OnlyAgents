@@ -78,29 +78,11 @@ func (s *WebSearchSkill) RequiredCapabilities() []core.Capability {
 	return []core.Capability{core.CapabilityWebSearch}
 }
 
-// Tools returns the LLM function calling tools for web search
 func (s *WebSearchSkill) Tools() []tools.ToolDef {
-	return []tools.ToolDef{
-		tools.NewToolDef(
-			"websearch_search",
-			"Search the web for current information. Returns titles, URLs, and snippets from search results.",
-			tools.BuildParams(
-				map[string]tools.Property{
-					"query": tools.StringProp("Search query (what to search for)"),
-					"max_results": {
-						Type:        "integer",
-						Description: "Number of results to return (1-10, default: 5)",
-						Default:     5,
-					},
-				},
-				[]string{"query"},
-			),
-		),
-	}
+	return tools.GetWebSearchTools()
 }
 
-// Execute runs a tool
-func (s *WebSearchSkill) Execute(ctx context.Context, toolName string, params map[string]any) (any, error) {
+func (s *WebSearchSkill) Execute(ctx context.Context, toolName string, params []byte) (any, error) {
 	switch toolName {
 	case "websearch_search":
 		return s.search(params)
@@ -109,12 +91,12 @@ func (s *WebSearchSkill) Execute(ctx context.Context, toolName string, params ma
 	}
 }
 
-// ====================
-// Tool Implementations
-// ====================
+func (s *WebSearchSkill) search(args []byte) (any, error) {
+	input, err := tools.UnmarshalParams[tools.WebSearchInput](args)
+	if err != nil {
+		return nil, err
+	}
 
-func (s *WebSearchSkill) search(params map[string]any) (any, error) {
-	// Use first available search connector
 	var searchConn connectors.WebSearchConnector
 	var connectorName string
 	for name, conn := range s.searchConns {
@@ -122,46 +104,37 @@ func (s *WebSearchSkill) search(params map[string]any) (any, error) {
 		connectorName = name
 		break
 	}
-
-	query, ok := params["query"].(string)
-	if !ok {
-		return nil, fmt.Errorf("query parameter is required")
+	if searchConn == nil {
+		return nil, fmt.Errorf("no web search connector available")
 	}
 
-	maxResults := 5
-	if mr, ok := params["max_results"].(float64); ok {
-		maxResults = int(mr)
-		if maxResults < 1 {
-			maxResults = 1
-		}
-		if maxResults > 10 {
-			maxResults = 10
-		}
+	maxResults := input.MaxResults
+	if maxResults == 0 {
+		maxResults = 5
+	} else if maxResults < 1 {
+		maxResults = 1
+	} else if maxResults > 10 {
+		maxResults = 10
 	}
 
-	req := &connectors.SearchRequest{
-		Query:      query,
+	resp, err := searchConn.Search(s.ctx, &connectors.SearchRequest{
+		Query:      input.Query,
 		MaxResults: maxResults,
-	}
-
-	// Use skill's context for the search operation
-	resp, err := searchConn.Search(s.ctx, req)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 
-	// Format results for LLM
 	results := make([]map[string]any, len(resp.Results))
-	for i, result := range resp.Results {
+	for i, r := range resp.Results {
 		results[i] = map[string]any{
-			"title":   result.Title,
-			"url":     result.URL,
-			"snippet": result.Snippet,
+			"title":   r.Title,
+			"url":     r.URL,
+			"snippet": r.Snippet,
 		}
 	}
-
 	return map[string]any{
-		"query":     query,
+		"query":     input.Query,
 		"results":   results,
 		"count":     len(results),
 		"provider":  resp.Provider,

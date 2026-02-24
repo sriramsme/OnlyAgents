@@ -45,3 +45,11 @@ func AllCapabilities() []Capability {
 		CapabilitySMS,
 	}
 }
+
+func AllCapabilityStrings() []string {
+	var caps []string
+	for _, cap := range AllCapabilities() {
+		caps = append(caps, cap.String())
+	}
+	return caps
+}

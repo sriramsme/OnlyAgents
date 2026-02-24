@@ -15,31 +15,6 @@ import (
 // Executive Delegation System
 // ====================
 
-// ExecutiveDecision represents what the executive decided to do
-type ExecutiveDecision struct {
-	Type         DecisionType       `json:"type"`
-	Response     string             `json:"response,omitempty"`     // For conversational
-	Delegation   *DelegationRequest `json:"delegation,omitempty"`   // For single task
-	Workflow     *core.Workflow     `json:"workflow,omitempty"`     // For complex tasks
-	Capabilities []core.Capability  `json:"capabilities,omitempty"` // Required capabilities
-}
-
-type DecisionType string
-
-const (
-	DecisionConversational DecisionType = "conversational" // Just respond
-	DecisionDelegate       DecisionType = "delegate"       // Single agent task
-	DecisionWorkflow       DecisionType = "workflow"       // Multi-task DAG
-)
-
-// DelegationRequest represents a task to delegate to an agent
-type DelegationRequest struct {
-	Task         string            `json:"task"`
-	Capabilities []core.Capability `json:"capabilities"`
-	Context      map[string]any    `json:"context,omitempty"`
-	Timeout      time.Duration     `json:"timeout,omitempty"`
-}
-
 // ====================
 // Message Flow Handlers
 // ====================
@@ -416,7 +391,7 @@ func (k *Kernel) handleToolCallRequest(evt core.Event) {
 			"tool", payload.ToolName,
 			"correlation_id", evt.CorrelationID)
 
-		result, err := skill.Execute(ctx, payload.ToolName, payload.Params)
+		result, err := skill.Execute(ctx, payload.ToolName, payload.Arguments)
 
 		resultEvt := core.Event{
 			Type:          core.ToolCallResult,
@@ -544,7 +519,7 @@ func (k *Kernel) sendToolError(evt core.Event, errorMsg string) {
 // findBestAgent finds the best agent for a task based on capabilities
 func (k *Kernel) findBestAgent(capabilities []core.Capability, task string) *agents.Agent {
 	// 1. Try to find specialized agent
-	agent, found := k.findSpecializedAgent(capabilities)
+	agent, _, found := k.findSpecializedAgent(capabilities)
 	if found {
 		return agent
 	}
@@ -556,7 +531,7 @@ func (k *Kernel) findBestAgent(capabilities []core.Capability, task string) *age
 }
 
 // findSpecializedAgent finds an agent that has skills for all required capabilities
-func (k *Kernel) findSpecializedAgent(capabilities []core.Capability) (*agents.Agent, bool) {
+func (k *Kernel) findSpecializedAgent(capabilities []core.Capability) (*agents.Agent, []core.Capability, bool) {
 	for _, agent := range k.agents.All() {
 		if agent.IsExecutive() {
 			continue
@@ -565,10 +540,10 @@ func (k *Kernel) findSpecializedAgent(capabilities []core.Capability) (*agents.A
 		// Check if agent has skills covering all capabilities
 		agentCapabilities := k.getAgentCapabilities(agent.GetSkillNames())
 		if hasAllCapabilities(agentCapabilities, capabilities) {
-			return agent, true
+			return agent, capabilities, true
 		}
 	}
-	return nil, false
+	return nil, nil, false
 }
 
 // ====================

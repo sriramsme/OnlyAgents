@@ -106,6 +106,8 @@ func (a *Agent) Inbox() chan<- core.Event {
 // ID returns agent ID.
 func (a *Agent) ID() string { return a.id }
 
+func (a *Agent) Name() string { return a.name }
+
 func (a *Agent) IsExecutive() bool { return a.isExecutive }
 
 func (a *Agent) IsGeneral() bool { return a.isGeneral }
@@ -114,15 +116,20 @@ func (a *Agent) GetSkillNames() []string { return a.skills }
 
 func (a *Agent) SetTools(tools []tools.ToolDef) { a.tools = tools }
 
-func (a *Agent) SetSystemPrompt(userSection string, extraDetails string) {
+func (a *Agent) SetFindBestAgent(fn tools.FindBestAgentFunc) {
+	a.findBestAgent = fn
+}
+
+func (a *Agent) SetSystemPrompt(userSection string, availableAgents string) {
 	parts := []string{
-		a.soul.SystemPrompt(),
-	}
-	if extraDetails != "" {
-		parts = append(parts, extraDetails)
+		a.soul.SystemPrompt(availableAgents),
 	}
 	parts = append(parts, userSection)
 	a.systemPrompt = strings.Join(parts, "\n\n")
+}
+
+func (a *Agent) GetSystemPrompt() string {
+	return a.systemPrompt
 }
 
 // --- Async event loop ---
@@ -354,10 +361,6 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 // requestToolCall fires a ToolCallRequest to kernel and blocks until result arrives.
 // Uses a per-call reply channel so concurrent tool calls don't mix up results.
 func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
-	args, err := llm.ParseToolArguments(tc.Function.Arguments)
-	if err != nil {
-		return nil, fmt.Errorf("invalid tool args: %w", err)
-	}
 
 	// Kernel will send the result back on this channel
 	// Buffer of 1 ensures non-blocking send from kernel
@@ -372,7 +375,7 @@ func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc to
 			ToolCallID: tc.ID,
 			SkillName:  skillNameFromTool(tc.Function.Name), // e.g. "email" from "email_send"
 			ToolName:   tc.Function.Name,
-			Params:     args,
+			Arguments:  []byte(tc.Function.Arguments), // direct cast, no parsing
 		},
 	}
 

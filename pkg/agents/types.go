@@ -37,7 +37,8 @@ type Agent struct {
 	// Inbox — kernel sends events here (execute requests, tool results)
 	inbox chan core.Event
 
-	systemPrompt string
+	systemPrompt  string
+	findBestAgent tools.FindBestAgentFunc // injected by kernel
 
 	// Lifecycle
 	ctx    context.Context
