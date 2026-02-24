@@ -87,7 +87,7 @@ func (s *WebSearchSkill) Tools() []tools.ToolDef {
 			tools.BuildParams(
 				map[string]tools.Property{
 					"query": tools.StringProp("Search query (what to search for)"),
-					"max_results": tools.Property{
+					"max_results": {
 						Type:        "integer",
 						Description: "Number of results to return (1-10, default: 5)",
 						Default:     5,

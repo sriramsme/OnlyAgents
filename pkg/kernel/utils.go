@@ -163,7 +163,7 @@ func getExecutiveTools() []tools.ToolDef {
 							"tasks", "storage", "notes", "git", "docker", "kubernetes",
 						}),
 					),
-					"context": tools.Property{
+					"context": {
 						Type:        "object",
 						Description: "Additional context for the delegated task (optional)",
 					},
