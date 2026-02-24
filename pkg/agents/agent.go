@@ -41,11 +41,6 @@ func NewAgent(
 
 	agentSoul := soul.NewSoul(cfg.Soul)
 
-	userConfigPath := "configs/user.yaml"
-	userCfg, err := config.LoadUserConfig(userConfigPath)
-	if err != nil {
-		return nil, fmt.Errorf("load user config: %w", err)
-	}
 	// Create agent context from parent - ties agent lifecycle to kernel
 	agentCtx, cancel := context.WithCancel(ctx)
 
@@ -58,7 +53,6 @@ func NewAgent(
 		skills:         cfg.Skills,
 		llmClient:      llmClient,
 		soul:           agentSoul,
-		user:           userCfg,
 		tools:          tools,
 		outbox:         outbox,
 		inbox:          make(chan core.Event, cfg.BufferSize),
@@ -120,6 +114,17 @@ func (a *Agent) GetSkillNames() []string { return a.skills }
 
 func (a *Agent) SetTools(tools []tools.ToolDef) { a.tools = tools }
 
+func (a *Agent) SetSystemPrompt(userSection string, extraDetails string) {
+	parts := []string{
+		a.soul.SystemPrompt(),
+	}
+	if extraDetails != "" {
+		parts = append(parts, extraDetails)
+	}
+	parts = append(parts, userSection)
+	a.systemPrompt = strings.Join(parts, "\n\n")
+}
+
 // --- Async event loop ---
 
 func (a *Agent) processEvents() {
@@ -135,71 +140,84 @@ func (a *Agent) processEvents() {
 	}
 }
 
+// handleEvent is the event handler that processes delegation/workflow results
 func (a *Agent) handleEvent(evt core.Event) {
 	switch evt.Type {
 	case core.AgentExecute:
+		a.handleAgentExecute(evt)
 
-		payload, ok := evt.Payload.(core.AgentExecutePayload)
-		if !ok {
-			a.logger.Error("invalid AgentExecute payload",
-				"actual_type", fmt.Sprintf("%T", evt.Payload),
-				"correlation_id", evt.CorrelationID)
-			return
-		}
+	case core.DelegationResult:
+		// This shouldn't arrive here - it goes to ReplyTo channel
+		// But log for debugging
+		a.logger.Debug("delegation result received (via event bus)",
+			"correlation_id", evt.CorrelationID)
 
-		requestCtx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
-		defer cancel()
-
-		// Add correlation ID to context for tracing
-		// (In production, use opentelemetry or similar)
-		// requestCtx = context.WithValue(requestCtx, "correlation_id", evt.CorrelationID)
-
-		a.logger.Debug("processing agent execute event",
-			"correlation_id", evt.CorrelationID,
-			"message_length", len(payload.UserMessage))
-		response, err := a.execute(requestCtx, payload.UserMessage, evt.CorrelationID)
-		if err != nil {
-			a.logger.Error("execute failed",
-				"error", err,
-				"correlation_id", evt.CorrelationID)
-
-			// Send error response if this is a sync request
-			if evt.ReplyTo != nil {
-				errorEvt := core.Event{
-					Type:          core.AgentExecute,
-					CorrelationID: evt.CorrelationID,
-					Payload:       fmt.Sprintf("Error: %v", err),
-				}
-				a.safeReply(evt.ReplyTo, errorEvt, "execute error")
-			}
-			return
-		}
-		if evt.ReplyTo != nil {
-			// HTTP path — reply directly
-			replyEvt := core.Event{
-				Type:          core.AgentExecute,
-				CorrelationID: evt.CorrelationID,
-				Payload:       response,
-			}
-			a.safeReply(evt.ReplyTo, replyEvt, "http response")
-		} else {
-			// Async path (Telegram etc.) — fire OutboundMessage
-			outboundEvt := core.Event{
-				Type:          core.OutboundMessage,
-				CorrelationID: evt.CorrelationID,
-				Payload: core.OutboundMessagePayload{
-					ChannelName: payload.Metadata["channel"],
-					ChatID:      payload.ChatID,
-					Content:     response,
-				},
-			}
-			a.safeSend(outboundEvt, "outbound message")
-		}
+	case core.WorkflowCompleted:
+		// This shouldn't arrive here - it goes to ReplyTo channel
+		// But log for debugging
+		a.logger.Debug("workflow completed (via event bus)",
+			"correlation_id", evt.CorrelationID)
 
 	default:
 		a.logger.Warn("unhandled event type",
 			"type", evt.Type,
 			"correlation_id", evt.CorrelationID)
+	}
+}
+
+// handleAgentExecute processes AgentExecute events
+func (a *Agent) handleAgentExecute(evt core.Event) {
+	payload, ok := evt.Payload.(core.AgentExecutePayload)
+	if !ok {
+		a.logger.Error("invalid AgentExecute payload",
+			"actual_type", fmt.Sprintf("%T", evt.Payload),
+			"correlation_id", evt.CorrelationID)
+		return
+	}
+
+	requestCtx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
+	defer cancel()
+
+	a.logger.Debug("processing agent execute event",
+		"correlation_id", evt.CorrelationID,
+		"message_type", payload.Metadata["message_type"],
+		"message_length", len(payload.UserMessage))
+
+	// Regular agent uses standard execute
+	response, err := a.execute(requestCtx, payload.UserMessage, evt.CorrelationID)
+
+	if err != nil {
+		a.logger.Error("execute failed",
+			"error", err,
+			"correlation_id", evt.CorrelationID)
+
+		if evt.ReplyTo != nil {
+			a.sendError(evt.ReplyTo, evt.CorrelationID, err)
+		}
+		return
+	}
+
+	// Determine how to respond based on message type
+	messageType := payload.Metadata["message_type"]
+
+	switch messageType {
+	case "delegation":
+		// Task was delegated to this agent - send result back
+		a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response)
+
+	case "workflow_task":
+		// Task from workflow engine - send result back
+		a.sendTaskResult(evt.ReplyTo, evt.CorrelationID, response)
+
+	default:
+		// Regular user message - send to channel
+		if evt.ReplyTo != nil {
+			// Sync response (HTTP)
+			a.sendSyncResponse(evt.ReplyTo, evt.CorrelationID, response)
+		} else {
+			// Async response (channel)
+			a.sendOutboundMessage(payload, evt.CorrelationID, response)
+		}
 	}
 }
 
@@ -246,24 +264,25 @@ func (a *Agent) Execute(ctx context.Context, userMessage string) (string, error)
 
 // execute is the internal LLM loop, shared by both sync and async paths.
 func (a *Agent) execute(ctx context.Context, userMessage string, correlationID string) (string, error) {
-	a.logger.Debug("executing",
+	a.logger.Debug("executing with meta-tools",
 		"message_length", len(userMessage),
-		"correlation_id", correlationID)
+		"correlation_id", correlationID,
+		"is_executive", a.isExecutive)
 
 	messages := []llm.Message{
-		llm.SystemMessage(a.soul.SystemPrompt(ctx)),
-		llm.SystemMessage(a.formatUserProfile()),
+		llm.SystemMessage(a.systemPrompt),
 		llm.UserMessage(userMessage),
 	}
 
 	for {
-		// Check context before making LLM call
+		// Check context
 		select {
 		case <-ctx.Done():
 			return "", fmt.Errorf("request cancelled: %w", ctx.Err())
 		default:
 		}
 
+		// Make LLM call
 		resp, err := a.llmClient.Chat(ctx, &llm.Request{
 			Messages: messages,
 			Tools:    a.tools,
@@ -282,6 +301,7 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 			"tokens", resp.Usage.TotalTokens,
 			"correlation_id", correlationID)
 
+		// No tool calls - return final response
 		if !resp.HasToolCalls() {
 			return resp.Content, nil
 		}
@@ -291,13 +311,33 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 			resp.Content, resp.ReasoningContent, resp.ToolCalls,
 		))
 
-		// Execute each tool call via kernel
+		// Execute tool calls
 		for _, tc := range resp.ToolCalls {
-			result, err := a.requestToolCall(ctx, correlationID, tc)
-			if err != nil {
-				return "", fmt.Errorf("tool call %s failed: %w", tc.Function.Name, err)
+			var result any
+			var err error
+
+			// Check if it's a meta-tool (executive only)
+			if a.isExecutive && isMetaTool(tc.Function.Name) {
+				result, err = a.handleMetaTool(ctx, correlationID, tc)
+			} else {
+				// Regular tool call via skill
+				result, err = a.requestToolCall(ctx, correlationID, tc)
 			}
 
+			if err != nil {
+				// Add error to conversation - let LLM handle it
+				a.logger.Warn("tool call failed",
+					"tool", tc.Function.Name,
+					"error", err,
+					"correlation_id", correlationID)
+
+				messages = append(messages, llm.ToolResultMessage(
+					tc.ID, tc.Function.Name, fmt.Sprintf(`{"error": "%s"}`, err.Error()),
+				))
+				continue
+			}
+
+			// Add successful result
 			resultJSON, err := json.Marshal(result)
 			if err != nil {
 				return "", fmt.Errorf("marshal tool result: %w", err)
@@ -306,7 +346,8 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 				tc.ID, tc.Function.Name, string(resultJSON),
 			))
 		}
-		// Loop: LLM will now see tool results and either call more tools or return final response
+
+		// Loop: LLM will see tool results and continue
 	}
 }
 
@@ -408,29 +449,6 @@ func (a *Agent) healthCheck() {
 			return
 		}
 	}
-}
-
-func (a *Agent) formatUserProfile() string {
-	if a.user == nil {
-		return ""
-	}
-	return fmt.Sprintf(`
-=== Who the user is ===
-Name: %s (preferred: "%s")
-Job: %s
-Background: %s
-Daily Routine: %s
-Values: %s
-Technical: %v | Collaboration: %s`,
-		a.user.Identity.Name,
-		a.user.Identity.PreferredName,
-		a.user.Identity.Role,
-		a.user.Background.Professional,
-		a.user.DailyRoutine,
-		strings.Join(a.user.Preferences.WhatIValue, ", "),
-		a.user.Preferences.Technical,
-		a.user.Preferences.Collaboration,
-	)
 }
 
 // skillNameFromTool extracts skill name from tool name convention "skillname_action"

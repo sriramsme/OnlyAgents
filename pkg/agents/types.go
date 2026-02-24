@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/soul"
@@ -26,7 +25,6 @@ type Agent struct {
 	// Core capabilities
 	llmClient llm.Client
 	soul      *soul.Soul
-	user      *config.UserConfig
 	skills    []string
 
 	// Tool definitions given to LLM (schema only, no implementation)
@@ -38,6 +36,8 @@ type Agent struct {
 
 	// Inbox — kernel sends events here (execute requests, tool results)
 	inbox chan core.Event
+
+	systemPrompt string
 
 	// Lifecycle
 	ctx    context.Context

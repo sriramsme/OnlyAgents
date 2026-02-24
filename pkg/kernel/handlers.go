@@ -41,21 +41,6 @@ type DelegationRequest struct {
 }
 
 // ====================
-// Executive Tool Definitions
-// ====================
-
-// GetExecutiveTools returns meta-tools for the executive agent
-// These are NOT regular skills - they're for orchestration
-func (k *Kernel) GetExecutiveTools() []any {
-	// TODO: Define executive routing tools
-	// These would be things like:
-	// - delegate_to_agent
-	// - create_workflow
-	// - query_capabilities
-	return nil
-}
-
-// ====================
 // Message Flow Handlers
 // ====================
 
@@ -117,14 +102,44 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 		return
 	}
 
-	// Find best agent for the task
-	targetAgent := k.findBestAgent(payload.Capabilities, payload.Task)
-	if targetAgent != nil {
-		k.logger.Error("no agent found for delegation",
-			"capabilities", payload.Capabilities)
+	var targetAgent *agents.Agent
+	var err error
 
-		// Send error back to delegating agent
-		k.sendDelegationError(evt, "No agent available")
+	// Executive specifies agent_id directly (preferred)
+	if payload.AgentID != "" {
+		targetAgent, err = k.agents.Get(payload.AgentID)
+		if err != nil {
+			k.logger.Error("specified agent not found",
+				"agent_id", payload.AgentID,
+				"capabilities", payload.Capabilities)
+
+			// Fallback: try to find agent by capabilities
+			k.logger.Info("falling back to capability-based agent search")
+			targetAgent = k.findBestAgent(payload.Capabilities, payload.Task)
+		} else {
+			// Validate agent has required capabilities (optional check)
+			if len(payload.Capabilities) > 0 {
+				agentCaps := k.getAgentCapabilities(targetAgent.GetSkillNames())
+				if !hasAllCapabilities(agentCaps, payload.Capabilities) {
+					k.logger.Warn("agent missing some capabilities",
+						"agent_id", payload.AgentID,
+						"has", agentCaps,
+						"needs", payload.Capabilities)
+					// Continue anyway - executive knows best
+				}
+			}
+		}
+	} else {
+		// No agent_id specified - search by capabilities (fallback for non-executive callers)
+		k.logger.Debug("no agent_id specified, searching by capabilities")
+		targetAgent = k.findBestAgent(payload.Capabilities, payload.Task)
+	}
+
+	if targetAgent == nil {
+		k.logger.Error("no agent found for delegation",
+			"agent_id", payload.AgentID,
+			"capabilities", payload.Capabilities)
+		k.sendDelegationError(evt, fmt.Sprintf("No agent available for capabilities: %v", payload.Capabilities))
 		return
 	}
 
@@ -521,69 +536,6 @@ func (k *Kernel) sendToolError(evt core.Event, errorMsg string) {
 		return
 	}
 }
-
-// ====================
-// Utility Methods
-// ====================
-//
-// // buildExecutiveSystemPrompt builds executive's system prompt with available capabilities
-// func (k *Kernel) buildExecutiveSystemPrompt() string {
-// 	// Get all available capabilities from registered skills
-// 	capabilityMap := make(map[core.Capability][]string) // capability -> agent names
-//
-// 	for _, agent := range k.agents.All() {
-// 		if agent.IsExecutive() {
-// 			continue
-// 		}
-//
-// 		// Get agent's capabilities from its skills
-// 		for _, skillName := range agent.GetSkillNames() {
-// 			skill, ok := k.skills.Get(skillName)
-// 			if !ok {
-// 				continue
-// 			}
-//
-// 			for _, cap := range skill.RequiredCapabilities() {
-// 				capabilityMap[cap] = append(capabilityMap[cap], agent.ID())
-// 			}
-// 		}
-// 	}
-//
-// 	// Build prompt
-// 	prompt := `You are the Executive Agent. Your role is to:
-//
-// 1. SIMPLE CONVERSATIONS: For greetings, casual chat, or general questions, respond directly without delegating.
-//
-// 2. SINGLE TASKS: For requests requiring specific capabilities:
-//    - Analyze what capabilities are needed
-//    - Delegate to the appropriate specialized agent
-//    - Synthesize their response for the user
-//
-// 3. COMPLEX WORKFLOWS: For requests with multiple interdependent tasks:
-//    - Identify all tasks and their dependencies
-//    - Create a workflow with a task DAG
-//    - Synthesize final results when workflow completes
-//
-// Available Capabilities & Agents:
-// `
-//
-// 	if len(capabilityMap) == 0 {
-// 		prompt += "(No specialized agents available - handle all tasks directly)\n"
-// 	} else {
-// 		for cap, agents := range capabilityMap {
-// 			prompt += fmt.Sprintf("- %s: %v\n", cap, agents)
-// 		}
-// 	}
-//
-// 	prompt += `
-// To delegate a single task, use the 'delegate_task' tool.
-// To create a workflow, use the 'create_workflow' tool.
-//
-// Remember: Only delegate when necessary. Simple questions should be answered directly.
-// `
-//
-// 	return prompt
-// }
 
 // ====================
 // Agent Finding Logic

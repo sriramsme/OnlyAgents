@@ -132,8 +132,9 @@ type ToolCallResultPayload struct {
 // AgentDelegatePayload: Delegate task to another agent
 type AgentDelegatePayload struct {
 	DelegationID string         `json:"delegation_id"` // Unique delegation ID
+	AgentID      string         `json:"agent_id"`      // Target agent ID (specified by executive)
 	Task         string         `json:"task"`          // Task description
-	Capabilities []Capability   `json:"capabilities"`  // Required capabilities
+	Capabilities []Capability   `json:"capabilities"`  // Required capabilities (for validation)
 	Context      map[string]any `json:"context,omitempty"`
 	Timeout      int            `json:"timeout,omitempty"` // Seconds
 }

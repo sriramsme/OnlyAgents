@@ -24,6 +24,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
@@ -39,6 +40,7 @@ type Kernel struct {
 	connectors *connectors.Registry
 	channels   *channels.Registry
 	workflow   *core.Engine
+	user       *config.UserConfig
 
 	// defaultAgentID is used when a channel message doesn't specify a target agent
 	defaultAgentID string
@@ -61,73 +63,33 @@ type Config struct {
 }
 
 func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Kernel, error) {
-	if cfg.BusBufferSize == 0 {
-		cfg.BusBufferSize = 256
-	}
-	if cfg.AgentConfigsDir == "" {
-		cfg.AgentConfigsDir = "configs/agents/"
-	}
-	if cfg.ConnectorConfigsDir == "" {
-		cfg.ConnectorConfigsDir = "configs/connectors/"
-	}
-	if cfg.ChannelConfigsDir == "" {
-		cfg.ChannelConfigsDir = "configs/channels/"
-	}
-	if cfg.SkillConfigsDir == "" {
-		cfg.SkillConfigsDir = "configs/skills/"
-	}
-	if cfg.VaultPath == "" {
-		cfg.VaultPath = "configs/vault.yaml"
-	}
+	cfg = applyConfigDefaults(cfg)
 
 	kernelBus := make(chan core.Event, cfg.BusBufferSize)
 
-	v, err := loadVault(cfg.VaultPath)
+	components, err := loadComponents(ctx, cfg, kernelBus)
 	if err != nil {
-		return nil, fmt.Errorf("load vault: %w", err)
+		return nil, err
 	}
 
-	agentsRegistry, err := loadAgents(ctx, v, cfg.AgentConfigsDir, kernelBus)
-	if err != nil {
-		return nil, fmt.Errorf("load agents: %w", err)
-	}
+	buildSystemPrompts(components.user, components.agents, components.capabilityMap)
 
-	connectorsRegistry, err := loadConnectors(ctx, v, cfg.ConnectorConfigsDir, kernelBus)
-	if err != nil {
-		return nil, fmt.Errorf("load connectors: %w", err)
-	}
-
-	channelsRegistry, err := loadChannels(ctx, v, cfg.ChannelConfigsDir, kernelBus)
-	if err != nil {
-		return nil, fmt.Errorf("load channels: %w", err)
-	}
-
-	skillsRegistry, err := loadSkills(ctx, cfg.SkillConfigsDir, kernelBus)
-	if err != nil {
-		return nil, fmt.Errorf("load skills: %w", err)
-	}
-
-	if err := validateAgentSkills(agentsRegistry, skillsRegistry); err != nil {
-		return nil, fmt.Errorf("validate agent skills: %w", err)
-	}
-
-	// Initialize workflow engine
 	db, err := sql.Open("sqlite", "workflows.db")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open workflow db: %w", err)
 	}
-
 	workflowEngine, err := core.NewEngine(db, kernelBus)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create workflow engine: %w", err)
 	}
 
 	return &Kernel{
 		bus:            kernelBus,
-		agents:         agentsRegistry,
-		skills:         skillsRegistry,
-		connectors:     connectorsRegistry,
-		channels:       channelsRegistry,
+		agents:         components.agents,
+		skills:         components.skills,
+		connectors:     components.connectors,
+		channels:       components.channels,
+		user:           components.user,
 		workflow:       workflowEngine,
 		defaultAgentID: cfg.DefaultAgentID,
 		ctx:            ctx,

@@ -1,7 +1,6 @@
 package soul
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -25,7 +24,7 @@ func (s *Soul) Save() error {
 }
 
 // SystemPrompt builds the complete system prompt from soul config
-func (s *Soul) SystemPrompt(ctx context.Context) string {
+func (s *Soul) SystemPrompt() string {
 	header := buildInstructionHeader()
 	body := formatSoulToPrompt(s.config)
 
