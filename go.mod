@@ -13,7 +13,7 @@ require (
 	github.com/hashicorp/vault/api v1.22.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mymmrac/telego v1.6.0
-	github.com/sashabaranov/go-openai v1.41.2
+	github.com/openai/openai-go/v3 v3.24.0
 	github.com/spf13/viper v1.21.0
 	golang.org/x/oauth2 v0.35.0
 	google.golang.org/api v0.247.0

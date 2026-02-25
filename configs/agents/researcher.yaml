@@ -12,9 +12,9 @@ security:
   credentials_path: "./credentials"
 
 llm:
-  provider: "gemini"  # anthropic, openai, gemini
-  model: "gemini-2.5-flash"
-  api_key_vault: "gemini/api_key"  # or "${vault:openai/api_key}"
+  provider: "openai"  # anthropic, openai, gemini
+  model: "gpt-5-nano"  # model name
+  api_key_vault: "openai/api_key"  # or "${vault:openai/api_key}"
   base_url: ""  # Optional, for custom endpoints
   options:
     max_tokens: "4096"

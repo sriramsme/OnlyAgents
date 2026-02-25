@@ -201,7 +201,7 @@ func TestOpenAIStreamingClient(t *testing.T) {
 		t.Skip("OPENAI_API_KEY not set")
 	}
 
-	client, err := openai.NewOpenAIStreamingClient(llm.ProviderConfig{
+	client, err := openai.NewOpenAIClient(llm.ProviderConfig{
 		Model: "gpt-3.5-turbo",
 	})
 	if err != nil {
@@ -209,21 +209,21 @@ func TestOpenAIStreamingClient(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	resp, err := client.Chat(ctx, &llm.Request{
+	resp := client.ChatStream(ctx, &llm.Request{
 		Messages: []llm.Message{
 			llm.UserMessage("Count from 1 to 5"),
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	if resp.Content == "" {
-		t.Error("Expected non-empty response")
+	for chunk := range resp {
+		if chunk.Error != nil {
+			t.Fatal(chunk.Error)
+		}
+		if chunk.Done {
+			break
+		}
+		t.Logf("Streaming response: %s", chunk.Content)
 	}
-
-	t.Logf("Streaming response: %s", resp.Content)
-	t.Logf("Tokens: %d", resp.Usage.TotalTokens)
 }
 
 func contains(s, substr string) bool {

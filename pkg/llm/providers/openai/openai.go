@@ -3,24 +3,22 @@ package openai
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
-	openai "github.com/sashabaranov/go-openai"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-// const (
-// 	openaiAPIBase    = "https://api.openai.com/v1"
-// 	openaiMaxRetries = 2
-// )
-
 func init() {
-	// Register OpenAI provider on package initialization
 	llm.RegisterProvider(llm.ProviderOpenAI, llm.ProviderRegistration{
 		Models: []string{
 			"gpt-5-nano",
+			"gpt-4o",
+			"gpt-4o-mini",
 		},
 		EnvKey: "OPENAI_API_KEY",
 		Constructor: func(cfg llm.ProviderConfig) (llm.Client, error) {
@@ -29,12 +27,14 @@ func init() {
 	})
 }
 
-// OpenAIClient implements Client for OpenAI's GPT models
+// OpenAIClient handles both streaming and non-streaming requests
 type OpenAIClient struct {
-	client      *openai.Client
-	model       string
-	maxTokens   int
-	temperature float64
+	client        *openai.Client
+	model         openai.ChatModel
+	maxTokens     int
+	temperature   float64
+	enableCaching bool
+	cacheKey      string
 }
 
 // NewOpenAIClient creates a new OpenAI client
@@ -48,191 +48,264 @@ func NewOpenAIClient(cfg llm.ProviderConfig) (*OpenAIClient, error) {
 		return nil, fmt.Errorf("openai: %w", err)
 	}
 
-	// Configure OpenAI client
-	config := openai.DefaultConfig(apiKey)
-
-	if cfg.BaseURL != "" {
-		config.BaseURL = cfg.BaseURL
+	opts := []option.RequestOption{
+		option.WithAPIKey(apiKey),
 	}
 
-	client := openai.NewClientWithConfig(config)
+	if cfg.BaseURL != "" {
+		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
+	}
+
+	client := openai.NewClient(opts...)
 
 	maxTokens := cfg.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = 4096
 	}
 
-	temperature := cfg.Temperature
-	if temperature == 0 {
-		temperature = 0.7 // OpenAI default
-	}
+	// temperature := cfg.Temperature
+	// if temperature == 0 {
+	// 	temperature = 0.7
+	// }
 
 	return &OpenAIClient{
-		client:      client,
-		model:       cfg.Model,
-		maxTokens:   maxTokens,
-		temperature: temperature,
+		client:    &client,
+		model:     openai.ChatModel(cfg.Model),
+		maxTokens: maxTokens,
+		// temperature:   temperature,
+		enableCaching: false,
+		cacheKey:      fmt.Sprintf("agent-%s-%d", cfg.Model, time.Now().Unix()/3600),
 	}, nil
 }
 
-// Chat sends a chat completion request to OpenAI
+// Chat sends a non-streaming chat completion request
 func (c *OpenAIClient) Chat(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	start := time.Now()
 
-	// Convert messages to OpenAI format
-	messages := c.toOpenAIMessages(req.Messages)
-
-	// Convert tools to OpenAI format
-	tools := c.toOpenAITools(req.Tools)
+	params := c.buildChatParams(req)
 
 	logger.Log.Debug("openai request",
 		"model", c.model,
 		"messages", len(req.Messages),
 		"tools", len(req.Tools),
-		"max_tokens", c.maxTokens)
+		"streaming", false)
 
-	// Build request
-	chatReq := openai.ChatCompletionRequest{
-		Model:    c.model,
-		Messages: messages,
-	}
-
-	// Set max tokens
-	maxTokens := req.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = c.maxTokens
-	}
-	chatReq.MaxCompletionTokens = int(maxTokens)
-
-	// // Set temperature
-	// temperature := req.Temperature
-	// if temperature == 0 {
-	// 	temperature = c.temperature
-	// }
-	// chatReq.Temperature = float32(temperature)
-
-	// Add tools if provided
-	if len(tools) > 0 {
-		chatReq.Tools = tools
-		// Auto mode: model decides when to use tools
-		chatReq.ToolChoice = "auto"
-	}
-
-	// Make the request
-	chatResp, err := c.client.CreateChatCompletion(ctx, chatReq)
+	completion, err := c.client.Chat.Completions.New(ctx, params)
 	if err != nil {
-		logger.Log.Error("openai api error",
-			"model", c.model,
-			"error", err)
+		logger.Log.Error("openai api error", "model", c.model, "error", err)
 		return nil, fmt.Errorf("openai api error: %w", err)
 	}
 
-	// Parse response
-	resp := c.parseResponse(&chatResp)
+	resp := c.parseResponse(completion)
 
 	logger.Log.Info("openai response",
 		"model", c.model,
 		"prompt_tokens", resp.Usage.InputTokens,
 		"completion_tokens", resp.Usage.OutputTokens,
-		"total_tokens", resp.Usage.TotalTokens,
+		// "cached_tokens", resp.Usage.CachedTokens,
 		"has_tool_calls", resp.HasToolCalls(),
-		"tool_call_count", len(resp.ToolCalls),
-		"finish_reason", resp.StopReason,
 		"latency_ms", time.Since(start).Milliseconds())
 
 	return resp, nil
 }
 
-// toOpenAIMessages converts our message format to OpenAI's format
-func (c *OpenAIClient) toOpenAIMessages(messages []llm.Message) []openai.ChatCompletionMessage {
-	result := make([]openai.ChatCompletionMessage, 0, len(messages))
+// StreamChunk represents a chunk of streaming response
+type StreamChunk struct {
+	Content   string
+	ToolCalls []tools.ToolCall
+	Done      bool
+	Error     error
+}
 
-	for _, msg := range messages {
-		oaiMsg := openai.ChatCompletionMessage{
-			Role:    string(msg.Role),
-			Content: msg.Content,
+// ChatStream sends a streaming chat completion request
+func (c *OpenAIClient) ChatStream(ctx context.Context, req *llm.Request) <-chan StreamChunk {
+	ch := make(chan StreamChunk)
+
+	go func() {
+		defer close(ch)
+
+		start := time.Now()
+		params := c.buildChatParams(req)
+
+		logger.Log.Debug("openai streaming request",
+			"model", c.model,
+			"messages", len(req.Messages),
+			"tools", len(req.Tools),
+			"streaming", true)
+
+		stream := c.client.Chat.Completions.NewStreaming(ctx, params)
+		acc := openai.ChatCompletionAccumulator{}
+
+		for stream.Next() {
+			chunk := stream.Current()
+			acc.AddChunk(chunk)
+
+			// Check for finished content
+			if _, ok := acc.JustFinishedContent(); ok {
+				// Content stream finished
+				logger.Log.Debug("openai streaming complete",
+					"model", c.model,
+					"total_tokens", acc.Usage.TotalTokens,
+					"latency_ms", time.Since(start).Milliseconds())
+			}
+
+			// Check for finished tool call
+			if tool, ok := acc.JustFinishedToolCall(); ok {
+				// Convert to our format
+				tc := tools.ToolCall{
+					ID:   tool.ID,
+					Type: "function",
+					Function: tools.FunctionCall{
+						Name:      tool.Name,
+						Arguments: tool.Arguments,
+					},
+				}
+				ch <- StreamChunk{ToolCalls: []tools.ToolCall{tc}}
+			}
+
+			// Send content delta
+			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+				ch <- StreamChunk{Content: chunk.Choices[0].Delta.Content}
+			}
 		}
 
+		if err := stream.Err(); err != nil && err != io.EOF {
+			logger.Log.Error("stream error", "error", err)
+			ch <- StreamChunk{Error: err, Done: true}
+		} else {
+			ch <- StreamChunk{Done: true}
+		}
+
+		logger.Log.Info("openai streaming complete",
+			"model", c.model,
+			"total_tokens", acc.Usage.TotalTokens,
+			"latency_ms", time.Since(start).Milliseconds())
+	}()
+
+	return ch
+}
+
+// buildChatParams creates the parameters for both streaming and non-streaming
+func (c *OpenAIClient) buildChatParams(req *llm.Request) openai.ChatCompletionNewParams {
+	messages := c.toOpenAIMessages(req.Messages)
+	toolParams := c.toOpenAITools(req.Tools)
+
+	params := openai.ChatCompletionNewParams{
+		Model:    c.model,
+		Messages: messages,
+	}
+
+	// Max tokens
+	maxTokens := req.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = c.maxTokens
+	}
+	params.MaxCompletionTokens = openai.Int(int64(maxTokens))
+
+	// Temperature
+	if req.Temperature > 0 {
+		params.Temperature = openai.Float(req.Temperature)
+	} else if c.temperature > 0 {
+		params.Temperature = openai.Float(c.temperature)
+	}
+
+	// Tools
+	if len(toolParams) > 0 {
+		params.Tools = toolParams
+	}
+
+	// Prompt caching
+	if c.enableCaching {
+		params.PromptCacheKey = openai.String(c.cacheKey)
+		params.PromptCacheRetention = openai.ChatCompletionNewParamsPromptCacheRetention("24h")
+	}
+
+	return params
+}
+
+// toOpenAIMessages converts messages to OpenAI format
+func (c *OpenAIClient) toOpenAIMessages(messages []llm.Message) []openai.ChatCompletionMessageParamUnion {
+	result := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
+
+	for _, msg := range messages {
 		switch msg.Role {
 		case llm.RoleSystem:
-			oaiMsg.Role = openai.ChatMessageRoleSystem
+			result = append(result, openai.SystemMessage(msg.Content))
 
 		case llm.RoleUser:
-			oaiMsg.Role = openai.ChatMessageRoleUser
+			result = append(result, openai.UserMessage(msg.Content))
 
 		case llm.RoleAssistant:
-			oaiMsg.Role = openai.ChatMessageRoleAssistant
-
-			// Add tool calls if present
 			if len(msg.ToolCalls) > 0 {
-				toolCalls := make([]openai.ToolCall, 0, len(msg.ToolCalls))
+				// Create assistant message with tool calls
+				toolCalls := make([]openai.ChatCompletionMessageToolCallUnionParam, 0, len(msg.ToolCalls))
 				for _, tc := range msg.ToolCalls {
-					toolCalls = append(toolCalls, openai.ToolCall{
+
+					toolCall := openai.ChatCompletionMessageFunctionToolCallParam{
 						ID:   tc.ID,
-						Type: openai.ToolTypeFunction,
-						Function: openai.FunctionCall{
+						Type: "function",
+						Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
 							Name:      tc.Function.Name,
 							Arguments: tc.Function.Arguments,
 						},
-					})
+					}
+
+					toolCalls = append(toolCalls, openai.ChatCompletionMessageToolCallUnionParam{OfFunction: &toolCall})
 				}
-				oaiMsg.ToolCalls = toolCalls
+				assistant := openai.ChatCompletionAssistantMessageParam{}
+				assistant.Content.OfString = openai.String(msg.Content)
+				assistant.ToolCalls = toolCalls
+				result = append(result, openai.ChatCompletionMessageParamUnion{OfAssistant: &assistant})
+			} else {
+				result = append(result, openai.AssistantMessage(msg.Content))
 			}
 
 		case llm.RoleTool:
-			oaiMsg.Role = openai.ChatMessageRoleTool
-			oaiMsg.ToolCallID = msg.ToolCallID
-			oaiMsg.Name = msg.Name
+			result = append(result, openai.ToolMessage(msg.Content, msg.ToolCallID))
 		}
-
-		result = append(result, oaiMsg)
 	}
 
 	return result
 }
 
-// toOpenAITools converts our tool format to OpenAI's format
-func (c *OpenAIClient) toOpenAITools(tools []tools.ToolDef) []openai.Tool {
+// toOpenAITools converts tools to OpenAI format
+func (c *OpenAIClient) toOpenAITools(tools []tools.ToolDef) []openai.ChatCompletionToolUnionParam {
 	if len(tools) == 0 {
 		return nil
 	}
 
-	result := make([]openai.Tool, 0, len(tools))
+	result := make([]openai.ChatCompletionToolUnionParam, 0, len(tools))
 	for _, t := range tools {
-		tool := openai.Tool{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  t.Parameters,
-			},
-		}
-
+		tool := openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
+			Name:        t.Name,
+			Description: openai.String(t.Description),
+			Parameters:  openai.FunctionParameters(t.Parameters),
+		})
 		result = append(result, tool)
 	}
 
 	return result
 }
 
-// parseResponse extracts content and tool calls from the response
-func (c *OpenAIClient) parseResponse(chatResp *openai.ChatCompletionResponse) *llm.Response {
-	if len(chatResp.Choices) == 0 {
+// parseResponse extracts content and tool calls
+func (c *OpenAIClient) parseResponse(completion *openai.ChatCompletion) *llm.Response {
+	if len(completion.Choices) == 0 {
 		return &llm.Response{
 			Content:   "",
 			ToolCalls: []tools.ToolCall{},
 			Usage: llm.Usage{
-				InputTokens:  chatResp.Usage.PromptTokens,
-				OutputTokens: chatResp.Usage.CompletionTokens,
-				TotalTokens:  chatResp.Usage.TotalTokens,
+				InputTokens:  int(completion.Usage.PromptTokens),
+				OutputTokens: int(completion.Usage.CompletionTokens),
+				TotalTokens:  int(completion.Usage.TotalTokens),
+				// CachedTokens: int(completion.Usage.PromptTokensCached),
 			},
-			Model: chatResp.Model,
+			Model: string(completion.Model),
 		}
 	}
 
-	choice := chatResp.Choices[0]
+	choice := completion.Choices[0]
 	message := choice.Message
 
-	// Extract tool calls
 	var toolCalls []tools.ToolCall
 	if len(message.ToolCalls) > 0 {
 		toolCalls = make([]tools.ToolCall, 0, len(message.ToolCalls))
@@ -253,11 +326,12 @@ func (c *OpenAIClient) parseResponse(chatResp *openai.ChatCompletionResponse) *l
 		ToolCalls:  toolCalls,
 		StopReason: string(choice.FinishReason),
 		Usage: llm.Usage{
-			InputTokens:  chatResp.Usage.PromptTokens,
-			OutputTokens: chatResp.Usage.CompletionTokens,
-			TotalTokens:  chatResp.Usage.TotalTokens,
+			InputTokens:  int(completion.Usage.PromptTokens),
+			OutputTokens: int(completion.Usage.CompletionTokens),
+			TotalTokens:  int(completion.Usage.TotalTokens),
+			// CachedTokens: int(completion.Usage.PromptTokensCached),
 		},
-		Model: chatResp.Model,
+		Model: string(completion.Model),
 	}
 }
 
@@ -268,5 +342,15 @@ func (c *OpenAIClient) Provider() llm.Provider {
 
 // Model returns the model name
 func (c *OpenAIClient) Model() string {
-	return c.model
+	return string(c.model)
+}
+
+// SetCaching controls prompt caching
+func (c *OpenAIClient) SetCaching(enabled bool) {
+	c.enableCaching = enabled
+}
+
+// SetCacheKey sets a custom cache key
+func (c *OpenAIClient) SetCacheKey(key string) {
+	c.cacheKey = key
 }
