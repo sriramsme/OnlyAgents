@@ -14,12 +14,11 @@ import (
 )
 
 func init() {
+	// Register with all available models
+	modelNames := llm.GetSupportedModels(ModelRegistry)
+
 	llm.RegisterProvider(llm.ProviderOpenAI, llm.ProviderRegistration{
-		Models: []string{
-			"gpt-5-nano",
-			"gpt-4o",
-			"gpt-4o-mini",
-		},
+		Models: modelNames,
 		EnvKey: "OPENAI_API_KEY",
 		Constructor: func(cfg llm.ProviderConfig) (llm.Client, error) {
 			return NewOpenAIClient(cfg)
@@ -29,8 +28,11 @@ func init() {
 
 // OpenAIClient handles both streaming and non-streaming requests
 type OpenAIClient struct {
-	client        *openai.Client
-	model         openai.ChatModel
+	client       *openai.Client
+	model        openai.ChatModel
+	capabilities llm.ModelCapabilities
+
+	// Resolved configuration
 	maxTokens     int
 	temperature   float64
 	enableCaching bool
@@ -41,6 +43,12 @@ type OpenAIClient struct {
 func NewOpenAIClient(cfg llm.ProviderConfig) (*OpenAIClient, error) {
 	if cfg.Model == "" {
 		return nil, fmt.Errorf("model is required")
+	}
+
+	// Get model capabilities from registry
+	caps, err := llm.GetModelCapabilities(cfg.Model, ModelRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("openai: %w", err)
 	}
 
 	apiKey, err := llm.GetAPIKeyFromVault(cfg.Vault, cfg.KeyPath)
@@ -56,24 +64,37 @@ func NewOpenAIClient(cfg llm.ProviderConfig) (*OpenAIClient, error) {
 		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}
 
-	client := openai.NewClient(opts...)
-
 	maxTokens := cfg.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 4096
+		maxTokens = caps.DefaultMaxTokens
 	}
 
-	// temperature := cfg.Temperature
-	// if temperature == 0 {
-	// 	temperature = 0.7
-	// }
+	temperature := cfg.Temperature
+	if temperature == 0 {
+		temperature = caps.DefaultTemperature
+	}
+
+	// Validate the final configuration
+	if maxTokens > caps.MaxTokens {
+		return nil, fmt.Errorf("max_tokens %d exceeds model limit %d", maxTokens, caps.MaxTokens)
+	}
+
+	if caps.SupportsTemperature {
+		if temperature < caps.MinTemperature || temperature > caps.MaxTemperature {
+			return nil, fmt.Errorf("temperature %.2f outside valid range [%.2f, %.2f]",
+				temperature, caps.MinTemperature, caps.MaxTemperature)
+		}
+	}
+
+	client := openai.NewClient(opts...)
 
 	return &OpenAIClient{
-		client:    &client,
-		model:     openai.ChatModel(cfg.Model),
-		maxTokens: maxTokens,
-		// temperature:   temperature,
-		enableCaching: false,
+		client:        &client,
+		model:         openai.ChatModel(cfg.Model),
+		capabilities:  caps,
+		maxTokens:     maxTokens,
+		temperature:   temperature,
+		enableCaching: caps.SupportsPromptCaching,
 		cacheKey:      fmt.Sprintf("agent-%s-%d", cfg.Model, time.Now().Unix()/3600),
 	}, nil
 }
@@ -81,6 +102,11 @@ func NewOpenAIClient(cfg llm.ProviderConfig) (*OpenAIClient, error) {
 // Chat sends a non-streaming chat completion request
 func (c *OpenAIClient) Chat(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	start := time.Now()
+
+	// Runtime validation
+	if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
+		return nil, fmt.Errorf("model %s does not support tool calling", c.model)
+	}
 
 	params := c.buildChatParams(req)
 
@@ -123,6 +149,23 @@ func (c *OpenAIClient) ChatStream(ctx context.Context, req *llm.Request) <-chan 
 
 	go func() {
 		defer close(ch)
+
+		// Capability checks
+		if !c.capabilities.SupportsStreaming {
+			ch <- StreamChunk{
+				Error: fmt.Errorf("model %s does not support streaming", c.model),
+				Done:  true,
+			}
+			return
+		}
+
+		if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
+			ch <- StreamChunk{
+				Error: fmt.Errorf("model %s does not support tool calling", c.model),
+				Done:  true,
+			}
+			return
+		}
 
 		start := time.Now()
 		params := c.buildChatParams(req)
@@ -195,31 +238,42 @@ func (c *OpenAIClient) buildChatParams(req *llm.Request) openai.ChatCompletionNe
 		Messages: messages,
 	}
 
-	// Max tokens
+	// Max tokens (capped by model limits)
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = c.maxTokens
 	}
+	if maxTokens > c.capabilities.MaxTokens {
+		maxTokens = c.capabilities.MaxTokens
+	}
 	params.MaxCompletionTokens = openai.Int(int64(maxTokens))
 
-	// Temperature
-	if req.Temperature > 0 {
-		params.Temperature = openai.Float(req.Temperature)
-	} else if c.temperature > 0 {
-		params.Temperature = openai.Float(c.temperature)
+	// Temperature (constrained by model)
+	if c.capabilities.SupportsTemperature {
+		temp := req.Temperature
+		if temp == 0 {
+			temp = c.temperature
+		}
+		// Clamp to model's valid range
+		if temp < c.capabilities.MinTemperature {
+			temp = c.capabilities.MinTemperature
+		}
+		if temp > c.capabilities.MaxTemperature {
+			temp = c.capabilities.MaxTemperature
+		}
+		params.Temperature = openai.Float(temp)
 	}
 
-	// Tools
-	if len(toolParams) > 0 {
+	// Tools (only if supported)
+	if len(toolParams) > 0 && c.capabilities.SupportsToolCalling {
 		params.Tools = toolParams
 	}
 
-	// Prompt caching
-	if c.enableCaching {
+	// Prompt caching (only if supported)
+	if c.enableCaching && c.capabilities.SupportsPromptCaching {
 		params.PromptCacheKey = openai.String(c.cacheKey)
 		params.PromptCacheRetention = openai.ChatCompletionNewParamsPromptCacheRetention("24h")
 	}
-
 	return params
 }
 
@@ -347,10 +401,16 @@ func (c *OpenAIClient) Model() string {
 
 // SetCaching controls prompt caching
 func (c *OpenAIClient) SetCaching(enabled bool) {
-	c.enableCaching = enabled
+	if c.capabilities.SupportsPromptCaching {
+		c.enableCaching = enabled
+	}
 }
 
 // SetCacheKey sets a custom cache key
 func (c *OpenAIClient) SetCacheKey(key string) {
 	c.cacheKey = key
+}
+
+func (c *OpenAIClient) Capabilities() llm.ModelCapabilities {
+	return c.capabilities
 }

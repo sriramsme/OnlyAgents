@@ -22,15 +22,10 @@ const (
 )
 
 func init() {
-	// Register Anthropic provider on package initialization
+	modelNames := llm.GetSupportedModels(ModelRegistry)
+
 	llm.RegisterProvider(llm.ProviderAnthropic, llm.ProviderRegistration{
-		Models: []string{
-			"claude-sonnet-4-20250514",
-			"claude-sonnet-4-5-20250929",
-			"claude-opus-4-5-20251101",
-			"claude-opus-4-6",
-			"claude-haiku-4-5-20251001",
-		},
+		Models: modelNames,
 		EnvKey: "ANTHROPIC_API_KEY",
 		Constructor: func(cfg llm.ProviderConfig) (llm.Client, error) {
 			return NewAnthropicClient(cfg)
@@ -38,23 +33,34 @@ func init() {
 	})
 }
 
-// AnthropicClient implements Client for Anthropic's Claude
+// AnthropicClient implements llm.Client for Anthropic's Claude
 type AnthropicClient struct {
-	client      *anthropic.Client
-	model       string
-	maxTokens   int
-	temperature float64
+	client       *anthropic.Client
+	model        string
+	capabilities llm.ModelCapabilities
+
+	// Resolved configuration
+	maxTokens     int
+	temperature   float64
+	enableCaching bool
+	cacheKey      string
 }
 
 // NewAnthropicClient creates a new Anthropic client
 func NewAnthropicClient(cfg llm.ProviderConfig) (*AnthropicClient, error) {
 	if cfg.Model == "" {
-		return nil, fmt.Errorf("model is required")
+		return nil, fmt.Errorf("anthropic: model is required")
+	}
+
+	// Get model capabilities from registry
+	caps, err := llm.GetModelCapabilities(cfg.Model, ModelRegistry)
+	if err != nil {
+		return nil, fmt.Errorf("anthropic: %w", err)
 	}
 
 	apiKey, err := llm.GetAPIKeyFromVault(cfg.Vault, cfg.KeyPath)
 	if err != nil {
-		return nil, fmt.Errorf("openai: %w", err)
+		return nil, fmt.Errorf("anthropic: %w", err)
 	}
 
 	opts := []option.RequestOption{
@@ -68,49 +74,276 @@ func NewAnthropicClient(cfg llm.ProviderConfig) (*AnthropicClient, error) {
 	}
 	opts = append(opts, option.WithBaseURL(baseURL))
 
-	client := anthropic.NewClient(opts...)
-
 	maxTokens := cfg.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 4096
+		maxTokens = caps.DefaultMaxTokens
 	}
 
 	temperature := cfg.Temperature
 	if temperature == 0 {
-		temperature = 1.0
+		temperature = caps.DefaultTemperature
 	}
 
+	// Validate the final configuration
+	if maxTokens > caps.MaxTokens {
+		return nil, fmt.Errorf("max_tokens %d exceeds model limit %d", maxTokens, caps.MaxTokens)
+	}
+
+	if caps.SupportsTemperature {
+		if temperature < caps.MinTemperature || temperature > caps.MaxTemperature {
+			return nil, fmt.Errorf("temperature %.2f outside valid range [%.2f, %.2f]",
+				temperature, caps.MinTemperature, caps.MaxTemperature)
+		}
+	}
+
+	client := anthropic.NewClient(opts...)
+
 	return &AnthropicClient{
-		client:      &client,
-		model:       cfg.Model,
-		maxTokens:   maxTokens,
-		temperature: temperature,
+		client:        &client,
+		model:         cfg.Model,
+		capabilities:  caps,
+		maxTokens:     maxTokens,
+		temperature:   temperature,
+		enableCaching: caps.SupportsPromptCaching,
+		cacheKey:      fmt.Sprintf("agent-%s-%d", cfg.Model, time.Now().Unix()/3600),
 	}, nil
 }
 
-// Chat sends a chat completion request to Claude
+// Chat sends a non-streaming chat completion request
 func (c *AnthropicClient) Chat(ctx context.Context, req *llm.Request) (*llm.Response, error) {
 	start := time.Now()
 
+	// Runtime validation
+	if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
+		return nil, fmt.Errorf("model %s does not support tool calling", c.model)
+	}
+
+	params, err := c.buildMessageParams(req)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Log.Debug("anthropic request",
+		"model", c.model,
+		"messages", len(req.Messages),
+		"tools", len(req.Tools),
+		"streaming", false)
+
+	message, err := c.client.Messages.New(ctx, *params)
+	if err != nil {
+		logger.Log.Error("anthropic api error", "model", c.model, "error", err)
+		return nil, fmt.Errorf("anthropic api error: %w", err)
+	}
+
+	resp := c.parseResponse(message)
+
+	logger.Log.Info("anthropic response",
+		"model", c.model,
+		"input_tokens", resp.Usage.InputTokens,
+		"output_tokens", resp.Usage.OutputTokens,
+		"has_tool_calls", resp.HasToolCalls(),
+		"has_reasoning", resp.ReasoningContent != "",
+		"latency_ms", time.Since(start).Milliseconds())
+
+	return resp, nil
+}
+
+// StreamChunk represents a chunk of streaming response
+type StreamChunk struct {
+	Content   string
+	ToolCalls []tools.ToolCall
+	Done      bool
+	Error     error
+}
+
+// ChatStream sends a streaming chat completion request
+func (c *AnthropicClient) ChatStream(ctx context.Context, req *llm.Request) <-chan StreamChunk {
+	ch := make(chan StreamChunk)
+
+	go func() {
+		defer close(ch)
+
+		// Validate capabilities
+		if err := c.validateStreamingCapabilities(req); err != nil {
+			ch <- StreamChunk{Error: err, Done: true}
+			return
+		}
+
+		start := time.Now()
+
+		params, err := c.buildMessageParams(req)
+		if err != nil {
+			ch <- StreamChunk{Error: fmt.Errorf("anthropic: %w", err), Done: true}
+			return
+		}
+
+		logger.Log.Debug("anthropic streaming request",
+			"model", c.model,
+			"messages", len(req.Messages),
+			"tools", len(req.Tools),
+			"streaming", true)
+
+		// Create streaming request
+		stream := c.client.Messages.NewStreaming(ctx, *params)
+
+		// Process stream
+		message := anthropic.Message{}
+		var currentToolCall *tools.ToolCall
+		var currentToolJSON strings.Builder
+
+		for stream.Next() {
+			event := stream.Current()
+
+			// Accumulate into message
+			if err := message.Accumulate(event); err != nil {
+				logger.Log.Error("failed to accumulate message", "error", err)
+				ch <- StreamChunk{Error: err, Done: true}
+				return
+			}
+
+			// Handle event
+			c.handleStreamEvent(event, ch, &currentToolCall, &currentToolJSON)
+		}
+
+		if err := stream.Err(); err != nil {
+			logger.Log.Error("anthropic stream error", "error", err)
+			ch <- StreamChunk{Error: err, Done: true}
+			return
+		}
+
+		// Send completion signal
+		ch <- StreamChunk{Done: true}
+
+		logger.Log.Info("anthropic streaming complete",
+			"model", c.model,
+			"input_tokens", message.Usage.InputTokens,
+			"output_tokens", message.Usage.OutputTokens,
+			"latency_ms", time.Since(start).Milliseconds())
+	}()
+
+	return ch
+}
+
+// validateStreamingCapabilities checks if the model supports required features
+func (c *AnthropicClient) validateStreamingCapabilities(req *llm.Request) error {
+	if !c.capabilities.SupportsStreaming {
+		return fmt.Errorf("model %s does not support streaming", c.model)
+	}
+	if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
+		return fmt.Errorf("model %s does not support tool calling", c.model)
+	}
+	return nil
+}
+
+// handleStreamEvent processes individual stream events
+func (c *AnthropicClient) handleStreamEvent(event anthropic.MessageStreamEventUnion, ch chan<- StreamChunk, currentToolCall **tools.ToolCall, currentToolJSON *strings.Builder) {
+	switch ev := event.AsAny().(type) {
+	case anthropic.MessageStartEvent:
+		// Message started, nothing to emit yet
+
+	case anthropic.ContentBlockStartEvent:
+		c.handleContentBlockStart(ev, currentToolCall, currentToolJSON)
+
+	case anthropic.ContentBlockDeltaEvent:
+		c.handleContentBlockDelta(ev, ch, *currentToolCall, currentToolJSON)
+
+	case anthropic.ContentBlockStopEvent:
+		c.handleContentBlockStop(ch, currentToolCall, currentToolJSON)
+
+	case anthropic.MessageDeltaEvent:
+		// Message delta (usage updates)
+
+	case anthropic.MessageStopEvent:
+		// Message complete
+	}
+}
+
+// handleContentBlockStart handles the start of a new content block
+func (c *AnthropicClient) handleContentBlockStart(ev anthropic.ContentBlockStartEvent, currentToolCall **tools.ToolCall, currentToolJSON *strings.Builder) {
+	if ev.ContentBlock.Type == "tool_use" {
+		*currentToolCall = &tools.ToolCall{
+			ID:   ev.ContentBlock.ID,
+			Type: "function",
+			Function: tools.FunctionCall{
+				Name: ev.ContentBlock.Name,
+			},
+		}
+		currentToolJSON.Reset()
+	}
+}
+
+// handleContentBlockDelta handles delta events within a content block
+func (c *AnthropicClient) handleContentBlockDelta(ev anthropic.ContentBlockDeltaEvent, ch chan<- StreamChunk, currentToolCall *tools.ToolCall, currentToolJSON *strings.Builder) {
+	switch delta := ev.Delta.AsAny().(type) {
+	case anthropic.TextDelta:
+		ch <- StreamChunk{Content: delta.Text}
+
+	case anthropic.InputJSONDelta:
+		if currentToolCall != nil {
+			currentToolJSON.WriteString(delta.PartialJSON)
+		}
+	}
+}
+
+// handleContentBlockStop handles the completion of a content block
+func (c *AnthropicClient) handleContentBlockStop(ch chan<- StreamChunk, currentToolCall **tools.ToolCall, currentToolJSON *strings.Builder) {
+	if *currentToolCall != nil {
+		(*currentToolCall).Function.Arguments = currentToolJSON.String()
+		ch <- StreamChunk{ToolCalls: []tools.ToolCall{**currentToolCall}}
+		*currentToolCall = nil
+		currentToolJSON.Reset()
+	}
+}
+
+// buildMessageParams creates the parameters for both streaming and non-streaming
+func (c *AnthropicClient) buildMessageParams(req *llm.Request) (*anthropic.MessageNewParams, error) {
 	// Convert messages to Anthropic format
 	systemPrompt, messages, err := c.toAnthropicMessages(req.Messages)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert messages: %w", err)
 	}
 
-	// Convert tools to Anthropic format
-	tools := c.toAnthropicTools(req.Tools)
+	maxTokens := c.calculateMaxTokens(req.MaxTokens)
+	thinkingEnabled := c.isThinkingModel()
 
-	// Determine max tokens
-	maxTokens := req.MaxTokens
+	// Build base params
+	params := &anthropic.MessageNewParams{
+		Model:     anthropic.Model(c.model),
+		Messages:  messages,
+		MaxTokens: int64(maxTokens),
+	}
+
+	// Add system prompt
+	c.addSystemPrompt(params, systemPrompt)
+
+	// Add tools
+	c.addTools(params, req.Tools)
+
+	// Set temperature
+	c.setTemperature(params, req.Temperature, thinkingEnabled)
+
+	// Enable thinking if applicable
+	if thinkingEnabled {
+		if budget, ok := c.calculateThinkingBudget(maxTokens); ok {
+			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
+			logger.Log.Debug("enabled extended thinking", "budget", budget)
+		}
+	}
+
+	return params, nil
+}
+
+// calculateMaxTokens determines and validates the max tokens value
+func (c *AnthropicClient) calculateMaxTokens(requestedTokens int) int {
+	maxTokens := requestedTokens
 	if maxTokens == 0 {
 		maxTokens = c.maxTokens
 	}
+	if maxTokens > c.capabilities.MaxTokens {
+		maxTokens = c.capabilities.MaxTokens
+	}
 
-	// Check if this is a thinking-enabled model
 	thinkingEnabled := c.isThinkingModel()
-
-	// Adjust max tokens for thinking models if needed
 	if thinkingEnabled && maxTokens <= anthropicThinkingMinBudget {
 		logger.Log.Warn("adjusting max_tokens for thinking model",
 			"model", c.model,
@@ -119,78 +352,73 @@ func (c *AnthropicClient) Chat(ctx context.Context, req *llm.Request) (*llm.Resp
 		maxTokens = anthropicDefaultBudget
 	}
 
-	logger.Log.Debug("anthropic request",
-		"model", c.model,
-		"messages", len(req.Messages),
-		"tools", len(req.Tools),
-		"thinking_enabled", thinkingEnabled,
-		"max_tokens", maxTokens)
+	return maxTokens
+}
 
-	// Build request params
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(c.model),
-		Messages:  messages,
-		MaxTokens: int64(maxTokens),
+// addSystemPrompt adds the system prompt to params with optional caching
+func (c *AnthropicClient) addSystemPrompt(params *anthropic.MessageNewParams, systemPrompt string) {
+	if systemPrompt == "" {
+		return
 	}
 
-	// Add system prompt if provided
-	if systemPrompt != "" {
+	if c.enableCaching && c.capabilities.SupportsPromptCaching {
+		params.System = []anthropic.TextBlockParam{
+			{
+				Text: systemPrompt,
+				CacheControl: anthropic.CacheControlEphemeralParam{
+					Type: "ephemeral",
+				},
+			},
+		}
+	} else {
 		params.System = []anthropic.TextBlockParam{{Text: systemPrompt}}
 	}
+}
 
-	// Add tools if provided
-	if len(tools) > 0 {
-		params.Tools = tools
+// addTools adds tool definitions to params with optional caching
+func (c *AnthropicClient) addTools(params *anthropic.MessageNewParams, requestTools []tools.ToolDef) {
+	if len(requestTools) == 0 || !c.capabilities.SupportsToolCalling {
+		return
 	}
 
-	// Set temperature (thinking models require temperature = 1)
-	temperature := req.Temperature
+	tools := c.toAnthropicTools(requestTools)
+	params.Tools = tools
+
+	// Add cache control to tools if caching is enabled
+	if c.enableCaching && c.capabilities.SupportsPromptCaching && len(tools) > 0 {
+		if lastTool := tools[len(tools)-1].OfTool; lastTool != nil {
+			lastTool.CacheControl = anthropic.CacheControlEphemeralParam{
+				Type: "ephemeral",
+			}
+		}
+	}
+}
+
+// setTemperature sets the temperature parameter with validation
+func (c *AnthropicClient) setTemperature(params *anthropic.MessageNewParams, requestedTemp float64, thinkingEnabled bool) {
+	temperature := requestedTemp
 	if temperature == 0 {
 		temperature = c.temperature
 	}
+
 	if thinkingEnabled {
 		if temperature != 1.0 {
 			logger.Log.Debug("overriding temperature for thinking model",
 				"requested", temperature,
 				"required", 1.0)
 		}
-		temperature = 1.0 // Required for thinking models
-	}
-	params.Temperature = anthropic.Float(temperature)
-
-	// Enable extended thinking if applicable
-	if thinkingEnabled {
-		if budget, ok := c.calculateThinkingBudget(maxTokens); ok {
-			params.Thinking = anthropic.ThinkingConfigParamOfEnabled(budget)
-			logger.Log.Debug("enabled extended thinking",
-				"budget", budget)
+		temperature = 1.0
+	} else if c.capabilities.SupportsTemperature {
+		// Clamp temperature to valid range
+		if temperature < c.capabilities.MinTemperature {
+			temperature = c.capabilities.MinTemperature
+		}
+		if temperature > c.capabilities.MaxTemperature {
+			temperature = c.capabilities.MaxTemperature
 		}
 	}
 
-	// Make the request
-	message, err := c.client.Messages.New(ctx, params)
-	if err != nil {
-		logger.Log.Error("anthropic api error",
-			"model", c.model,
-			"error", err)
-		return nil, fmt.Errorf("anthropic api error: %w", err)
-	}
-
-	// Parse response
-	resp := c.parseResponse(message)
-
-	logger.Log.Info("anthropic response",
-		"model", c.model,
-		"input_tokens", resp.Usage.InputTokens,
-		"output_tokens", resp.Usage.OutputTokens,
-		"total_tokens", resp.Usage.TotalTokens,
-		"has_tool_calls", resp.HasToolCalls(),
-		"tool_call_count", len(resp.ToolCalls),
-		"has_reasoning", resp.ReasoningContent != "",
-		"stop_reason", resp.StopReason,
-		"latency_ms", time.Since(start).Milliseconds())
-
-	return resp, nil
+	params.Temperature = anthropic.Float(temperature)
 }
 
 // toAnthropicMessages converts our message format to Anthropic's format
@@ -209,14 +437,29 @@ func (c *AnthropicClient) toAnthropicMessages(messages []llm.Message) (string, [
 		pendingToolResults = nil
 	}
 
-	for _, m := range messages {
+	for i, m := range messages {
 		switch m.Role {
 		case llm.RoleSystem:
 			systemPrompt = m.Content
 
 		case llm.RoleUser:
 			flushPendingToolResults()
-			msgList = append(msgList, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content)))
+
+			// Add cache control to last user message if caching is enabled
+			if c.enableCaching && c.capabilities.SupportsPromptCaching && i == len(messages)-1 {
+				msgList = append(msgList, anthropic.NewUserMessage(
+					anthropic.ContentBlockParamUnion{
+						OfText: &anthropic.TextBlockParam{
+							Text: m.Content,
+							CacheControl: anthropic.CacheControlEphemeralParam{
+								Type: "ephemeral",
+							},
+						},
+					},
+				))
+			} else {
+				msgList = append(msgList, anthropic.NewUserMessage(anthropic.NewTextBlock(m.Content)))
+			}
 
 		case llm.RoleAssistant:
 			flushPendingToolResults()
@@ -344,6 +587,7 @@ func (c *AnthropicClient) parseResponse(message *anthropic.Message) *llm.Respons
 			InputTokens:  int(message.Usage.InputTokens),
 			OutputTokens: int(message.Usage.OutputTokens),
 			TotalTokens:  int(message.Usage.InputTokens + message.Usage.OutputTokens),
+			CachedTokens: int(message.Usage.CacheReadInputTokens),
 		},
 		Model: string(message.Model),
 	}
@@ -414,4 +658,22 @@ func (c *AnthropicClient) Provider() llm.Provider {
 // Model returns the model name
 func (c *AnthropicClient) Model() string {
 	return c.model
+}
+
+// SetCaching controls prompt caching
+func (c *AnthropicClient) SetCaching(enabled bool) {
+	if c.capabilities.SupportsPromptCaching {
+		c.enableCaching = enabled
+		logger.Log.Debug("anthropic prompt caching", "enabled", enabled)
+	}
+}
+
+// SetCacheKey sets a custom cache key (for compatibility, not used by Anthropic)
+func (c *AnthropicClient) SetCacheKey(key string) {
+	c.cacheKey = key
+}
+
+// Capabilities returns the model capabilities
+func (c *AnthropicClient) Capabilities() llm.ModelCapabilities {
+	return c.capabilities
 }

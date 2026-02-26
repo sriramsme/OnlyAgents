@@ -52,6 +52,9 @@ type Message struct {
 	// For tool result messages
 	ToolCallID string `json:"tool_call_id,omitempty"`
 	Name       string `json:"name,omitempty"` // tool name
+
+	// Required for Gemini 3 stateful multi-turn tool use
+	ThoughtSignature string `json:"thought_signature,omitempty"`
 }
 
 // Role represents the message sender
@@ -69,9 +72,11 @@ type Response struct {
 
 // Usage represents token usage information
 type Usage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	InputTokens     int `json:"input_tokens"`
+	OutputTokens    int `json:"output_tokens"`
+	CachedTokens    int `json:"cached_tokens,omitempty"`
+	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	TotalTokens     int `json:"total_tokens"`
 }
 
 // ProviderConfig is the configuration passed to provider constructors

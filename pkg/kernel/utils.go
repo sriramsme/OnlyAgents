@@ -12,7 +12,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
@@ -295,12 +294,6 @@ func buildSystemPrompts(user *config.UserConfig, agentsReg *agents.Registry, cap
 			extra = buildCapabilitySection(capabilityMap)
 		}
 		agent.SetSystemPrompt(userSection, extra)
-
-		// Log agent system prompt
-		logger.Log.Info("agent system prompt",
-			"agent_id", agent.ID(),
-			"system_prompt", agent.GetSystemPrompt(),
-		)
 	}
 }
 

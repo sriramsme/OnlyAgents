@@ -3,11 +3,11 @@ package logger
 import (
 	"log/slog"
 	"os"
+	"time"
 )
 
 var Log = slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-// Initialize sets up the global logger
 func Initialize(level string, format string) {
 	var logLevel slog.Level
 	switch level {
@@ -25,6 +25,18 @@ func Initialize(level string, format string) {
 
 	opts := &slog.HandlerOptions{
 		Level: logLevel,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			// Shorten timestamp
+			if a.Key == slog.TimeKey {
+				if t, ok := a.Value.Any().(time.Time); ok {
+					a.Value = slog.StringValue(t.Format("15:04:05"))
+				}
+			}
+			if a.Key == "correlation_id" {
+				return slog.Attr{}
+			}
+			return a
+		},
 	}
 
 	var handler slog.Handler
@@ -38,7 +50,6 @@ func Initialize(level string, format string) {
 	slog.SetDefault(Log)
 }
 
-// With creates a logger with additional context
 func With(args ...any) *slog.Logger {
 	return Log.With(args...)
 }

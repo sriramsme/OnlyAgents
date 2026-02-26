@@ -217,6 +217,7 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 		a.sendTaskResult(evt.ReplyTo, evt.CorrelationID, response)
 
 	default:
+
 		// Regular user message - send to channel
 		if evt.ReplyTo != nil {
 			// Sync response (HTTP)
@@ -271,6 +272,16 @@ func (a *Agent) Execute(ctx context.Context, userMessage string) (string, error)
 
 // execute is the internal LLM loop, shared by both sync and async paths.
 func (a *Agent) execute(ctx context.Context, userMessage string, correlationID string) (string, error) {
+	start := time.Now()
+	usage := llm.Usage{}
+	defer func() {
+		a.logger.Info("final cumulative response",
+			"model", a.llmClient.Model(),
+			"prompt_tokens", usage.InputTokens,
+			"completion_tokens", usage.OutputTokens,
+			"cached_tokens", usage.CachedTokens,
+			"latency_ms", time.Since(start).Milliseconds())
+	}()
 	a.logger.Debug("executing with meta-tools",
 		"message_length", len(userMessage),
 		"correlation_id", correlationID,
@@ -302,7 +313,12 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 			return "", fmt.Errorf("llm request failed: %w", err)
 		}
 
+		usage.InputTokens += resp.Usage.InputTokens
+		usage.OutputTokens += resp.Usage.OutputTokens
+		usage.CachedTokens += resp.Usage.CachedTokens
+
 		a.logger.Debug("llm response",
+			"msg", truncate(userMessage, 100),
 			"stop_reason", resp.StopReason,
 			"tool_calls", len(resp.ToolCalls),
 			"tokens", resp.Usage.TotalTokens,
@@ -381,6 +397,7 @@ func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc to
 
 	a.logger.Debug("requesting tool call",
 		"tool", tc.Function.Name,
+		"args", tc.Function.Arguments,
 		"correlation_id", correlationID)
 
 	// Safe send with timeout and context checks
@@ -441,7 +458,7 @@ func (a *Agent) AskLLM(ctx context.Context, system, prompt string) (string, erro
 
 func (a *Agent) healthCheck() {
 	defer a.wg.Done()
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(3 * time.Minute)
 	defer ticker.Stop()
 	for {
 		select {
@@ -462,4 +479,12 @@ func skillNameFromTool(toolName string) string {
 		return parts[0]
 	}
 	return toolName
+}
+
+func truncate(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "..."
 }

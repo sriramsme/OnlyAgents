@@ -14,6 +14,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mymmrac/telego v1.6.0
 	github.com/openai/openai-go/v3 v3.24.0
+	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	golang.org/x/oauth2 v0.35.0
 	google.golang.org/api v0.247.0
@@ -65,6 +66,7 @@ require (
 	github.com/hashicorp/go-secure-stdlib/strutil v0.1.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-7 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
