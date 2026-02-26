@@ -17,10 +17,6 @@ llm:
   model: "gpt-5-nano"  # model name
 # Vault key path - will lookup from vault
   api_key_vault: "openai/api_key"  # or "${vault:openai/api_key}"
-  base_url: ""  # Optional, for custom endpoints
-  options:
-    max_tokens: "4096"
-    temperature: "0.7"
 
 connectors:
 
