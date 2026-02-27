@@ -115,4 +115,11 @@ func setAgentDefaults(v *viper.Viper) {
 	v.SetDefault("vault.prefix", "ONLYAGENTS_")
 	v.SetDefault("vault.enable_cache", true)
 	v.SetDefault("vault.audit_log", false)
+	v.SetDefault("max_iterations", 10)
+	v.SetDefault("max_tool_calls_per_iteration", 3)
+	v.SetDefault("max_cumulative_tool_calls", 15)
+	v.SetDefault("max_tool_result_tokens", 2000)
+	v.SetDefault("max_execution_time", 3*time.Minute)
+	v.SetDefault("enable_early_stopping", true)
+	v.SetDefault("similar_call_threshold", 3)
 }
