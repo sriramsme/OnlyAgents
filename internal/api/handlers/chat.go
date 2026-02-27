@@ -70,7 +70,7 @@ func (h *ChatHandler) send(w http.ResponseWriter, r *http.Request, agentID strin
 		AgentID:       agentID,
 		ReplyTo:       replyCh,
 		Payload: core.AgentExecutePayload{
-			UserMessage: req.Message,
+			Message: req.Message,
 		},
 	}
 

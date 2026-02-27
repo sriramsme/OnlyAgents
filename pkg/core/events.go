@@ -74,6 +74,15 @@ const (
 	AgentMessage EventType = "agent_message"
 )
 
+type MessageType string
+
+const (
+	MessageTypeUser         MessageType = "user"
+	MessageTypeDelegation   MessageType = "delegation"
+	MessageTypeWorkflowTask MessageType = "workflow_task"
+	MessageTypeAgentMessage MessageType = "agent"
+)
+
 // Event represents a message passed through the event bus
 type Event struct {
 	Type          EventType    `json:"type"`
@@ -108,9 +117,34 @@ type OutboundMessagePayload struct {
 
 // AgentExecutePayload: Execute agent with message
 type AgentExecutePayload struct {
-	UserMessage string            `json:"user_message"`
-	ChatID      string            `json:"chat_id,omitempty"`
-	Metadata    map[string]string `json:"metadata"`
+	Message     string              `json:"user_message"`
+	MessageType MessageType         `json:"message_type"`
+	Channel     *ChannelMetadata    `json:"channel,omitempty"`
+	Delegation  *DelegationMetadata `json:"delegation,omitempty"`
+	Workflow    *WorkflowMetadata   `json:"workflow,omitempty"`
+	Agent       *AgentMetadata      `json:"agent,omitempty"`
+}
+
+type ChannelMetadata struct {
+	ChatID   string `json:"chat_id"`
+	Name     string `json:"name"`
+	UserID   string `json:"user_id"`
+	Username string `json:"username"`
+}
+
+type DelegationMetadata struct {
+	DelegationID       string `json:"delegation_id"`
+	SendDirectlyToUser bool   `json:"send_directly_to_user"`
+}
+
+type WorkflowMetadata struct {
+	WorkflowID string `json:"workflow_id"`
+	TaskID     string `json:"task_id"`
+	TaskName   string `json:"task_name"`
+}
+
+type AgentMetadata struct {
+	FromAgent string `json:"from_agent"`
 }
 
 // ToolCallRequestPayload: Tool execution request
@@ -140,7 +174,7 @@ type AgentDelegatePayload struct {
 	Timeout            int            `json:"timeout,omitempty"` // Seconds
 
 	// In case is sending directly to user, sub-agent needs chatID, channelName etc
-	Metadata map[string]string `json:"metadata,omitempty"`
+	Channel *ChannelMetadata `json:"channel,omitempty"`
 }
 
 // DelegationResultPayload: Result of delegated task

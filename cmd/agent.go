@@ -31,6 +31,9 @@ var agentRunCmd = &cobra.Command{
 var (
 	agentLogLevel            string
 	agentLogFormat           string
+	agentLogDetailed         bool
+	agentLogDetailedLLM      bool
+	agentLogDetailedTools    bool
 	agentBusBufferSize       int
 	agentDefaultID           string
 	agentAgentConfigsDir     string
@@ -47,7 +50,9 @@ func init() {
 	// Logging flags
 	agentRunCmd.Flags().StringVar(&agentLogLevel, "log-level", "debug", "Log level (debug, info, warn, error)")
 	agentRunCmd.Flags().StringVar(&agentLogFormat, "log-format", "json", "Log format (json, text)")
-
+	agentRunCmd.Flags().BoolVar(&agentLogDetailed, "log-detailed", false, "Detailed logging for both LLM and tools")
+	agentRunCmd.Flags().BoolVar(&agentLogDetailedLLM, "log-detailed-llm", false, "Detailed LLM calls")
+	agentRunCmd.Flags().BoolVar(&agentLogDetailedTools, "log-detailed-tools", false, "Detailed tool calls")
 	// Kernel flags
 	agentRunCmd.Flags().IntVar(&agentBusBufferSize, "bus-buffer", 100, "Event bus buffer size")
 	agentRunCmd.Flags().StringVar(&agentDefaultID, "default-agent", "default", "Default agent ID")
@@ -60,6 +65,11 @@ func init() {
 
 func runAgent(cmd *cobra.Command, args []string) error {
 	logger.Initialize(agentLogLevel, agentLogFormat)
+	if agentLogDetailed {
+		logger.SetTimingDetail(true, true)
+	} else {
+		logger.SetTimingDetail(agentLogDetailedLLM, agentLogDetailedTools)
+	}
 
 	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())

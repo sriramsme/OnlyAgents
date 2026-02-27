@@ -22,6 +22,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/soul"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
@@ -180,17 +181,20 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 			"correlation_id", evt.CorrelationID)
 		return
 	}
+	agentPhase := fmt.Sprintf("%s_execution", a.id)
+	logger.Timing.StartPhase(evt.CorrelationID, agentPhase)
 
 	requestCtx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
 	defer cancel()
 
 	a.logger.Debug("processing agent execute event",
 		"correlation_id", evt.CorrelationID,
-		"message_type", payload.Metadata["message_type"],
-		"message_length", len(payload.UserMessage))
+		"message_type", payload.MessageType,
+		"message_length", len(payload.Message))
 
 	// Regular agent uses standard execute
 	response, err := a.execute(requestCtx, payload, evt.CorrelationID)
+	logger.Timing.EndPhase(evt.CorrelationID, agentPhase)
 
 	if err != nil {
 		a.logger.Error("execute failed",
@@ -204,17 +208,15 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 	}
 
 	// Determine how to respond based on message type
-	messageType := payload.Metadata["message_type"]
+	messageType := payload.MessageType
 
 	switch messageType {
 
-	case "delegation":
+	case core.MessageTypeDelegation:
 		// Check if this is a delegation with direct user response
 		sendDirectlyToUser := false
-		if payload.Metadata != nil {
-			if val, ok := payload.Metadata["send_directly_to_user"]; ok {
-				sendDirectlyToUser = val == "true"
-			}
+		if payload.Delegation != nil {
+			sendDirectlyToUser = payload.Delegation.SendDirectlyToUser
 		}
 		if sendDirectlyToUser {
 			// Task was delegated to this agent - send result back
@@ -224,7 +226,7 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 			a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response)
 		}
 
-	case "workflow_task":
+	case core.MessageTypeWorkflowTask:
 		// Task from workflow engine - send result back
 		a.sendTaskResult(evt.ReplyTo, evt.CorrelationID, response)
 
@@ -284,25 +286,18 @@ func (a *Agent) safeSend(evt core.Event, description string) {
 
 // execute is the internal LLM loop, shared by both sync and async paths.
 func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, correlationID string) (string, error) {
-	start := time.Now()
-	usage := llm.Usage{}
-	defer func() {
-		a.logger.Info("final cumulative response",
-			"model", a.llmClient.Model(),
-			"prompt_tokens", usage.InputTokens,
-			"completion_tokens", usage.OutputTokens,
-			"cached_tokens", usage.CachedTokens,
-			"latency_ms", time.Since(start).Milliseconds())
-	}()
+
 	a.logger.Debug("executing with meta-tools",
-		"message_length", len(payload.UserMessage),
+		"message_length", len(payload.Message),
 		"correlation_id", correlationID,
 		"is_executive", a.isExecutive)
 
 	messages := []llm.Message{
 		llm.SystemMessage(a.systemPrompt),
-		llm.UserMessage(payload.UserMessage),
+		llm.UserMessage(payload.Message),
 	}
+
+	llmCallCount := 0
 
 	for {
 		// Check context
@@ -311,6 +306,10 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			return "", fmt.Errorf("request cancelled: %w", ctx.Err())
 		default:
 		}
+
+		llmCallCount++
+		llmPhase := fmt.Sprintf("%s_llm_%d", a.id, llmCallCount)
+		logger.Timing.StartPhase(correlationID, llmPhase)
 
 		// Make LLM call
 		resp, err := a.llmClient.Chat(ctx, &llm.Request{
@@ -322,15 +321,22 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			},
 		})
 		if err != nil {
+			logger.Timing.EndPhaseWithMetadata(correlationID, llmPhase, map[string]any{
+				"error": "failed",
+			})
 			return "", fmt.Errorf("llm request failed: %w", err)
 		}
-
-		usage.InputTokens += resp.Usage.InputTokens
-		usage.OutputTokens += resp.Usage.OutputTokens
-		usage.CachedTokens += resp.Usage.CachedTokens
-
+		logger.Timing.EndPhaseWithMetadata(correlationID, llmPhase, map[string]any{
+			"model":            a.llmClient.Model(),
+			"input_tokens":     resp.Usage.InputTokens,
+			"output_tokens":    resp.Usage.OutputTokens,
+			"cached_tokens":    resp.Usage.CachedTokens,
+			"total_tokens":     resp.Usage.TotalTokens,
+			"stop_reason":      resp.StopReason,
+			"tool_calls_count": len(resp.ToolCalls),
+		})
 		a.logger.Debug("llm response",
-			"msg", truncate(payload.UserMessage, 100),
+			"msg", truncate(payload.Message, 100),
 			"stop_reason", resp.StopReason,
 			"tool_calls", len(resp.ToolCalls),
 			"tokens", resp.Usage.TotalTokens,
@@ -346,15 +352,6 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			resp.Content, resp.ReasoningContent, resp.ToolCalls,
 		))
 
-		// metadata sub-agent might need in case of sending directly to user via delegate
-		metadata := map[string]string{}
-		if a.isExecutive && payload.Metadata != nil {
-			metadata["channel"] = payload.Metadata["channel"]
-			metadata["user_id"] = payload.Metadata["user_id"]
-			metadata["username"] = payload.Metadata["username"]
-			metadata["chat_id"] = payload.ChatID
-		}
-
 		// Execute tool calls
 		for _, tc := range resp.ToolCalls {
 			var result any
@@ -362,7 +359,7 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 
 			// Check if it's a meta-tool (executive only)
 			if a.isExecutive && isMetaTool(tc.Function.Name) {
-				result, err = a.handleMetaTool(ctx, correlationID, tc, metadata)
+				result, err = a.handleMetaTool(ctx, correlationID, tc, payload.Channel)
 			} else {
 				// Regular tool call via skill
 				result, err = a.requestToolCall(ctx, correlationID, tc)

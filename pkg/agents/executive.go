@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -16,7 +17,7 @@ import (
 
 // requestDelegation delegates a task to another agent and waits for result
 func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
-	tc tools.ToolCall, metadata map[string]string) (any, error) {
+	tc tools.ToolCall, channelMetadata *core.ChannelMetadata) (any, error) {
 	var input tools.DelegateInput
 	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
 		return nil, fmt.Errorf("invalid delegation args: %w", err)
@@ -33,6 +34,10 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 	replyCh := make(chan core.Event, 1)
 
 	delegationID := uuid.NewString()
+
+	delegationPhase := fmt.Sprintf("delegation_%s", input.AgentID)
+	logger.Timing.StartPhase(correlationID, delegationPhase)
+
 	event := core.Event{
 		Type:          core.AgentDelegate,
 		CorrelationID: correlationID,
@@ -45,8 +50,8 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 			Capabilities:       input.Capabilities,
 			Context:            input.Context,
 			SendDirectlyToUser: input.SendDirectlyToUser,
-			Timeout:            300,      // 5 minutes default
-			Metadata:           metadata, // In case is sending directly to user, sub-agent needs chatID, channelName etc
+			Timeout:            300,             // 5 minutes default
+			Channel:            channelMetadata, // In case is sending directly to user, sub-agent needs chatID, channelName etc
 		},
 	}
 
@@ -55,16 +60,22 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 	case a.outbox <- event:
 		a.logger.Debug("delegation request sent", "delegation_id", delegationID)
 	case <-ctx.Done():
+		logger.Timing.EndPhase(correlationID, delegationPhase)
 		return nil, fmt.Errorf("request cancelled")
 	case <-a.ctx.Done():
+		logger.Timing.EndPhase(correlationID, delegationPhase)
 		return nil, fmt.Errorf("agent shutting down")
 	case <-time.After(5 * time.Second):
+		logger.Timing.EndPhase(correlationID, delegationPhase)
 		return nil, fmt.Errorf("failed to send delegation request")
 	}
 
 	// If sending directly to user, return immediately
 	// Executive doesn't wait for response
 	if input.SendDirectlyToUser {
+		logger.Timing.EndPhaseWithMetadata(correlationID, delegationPhase, map[string]any{
+			"direct_response": true,
+		})
 		return map[string]any{
 			"status":                "delegated",
 			"message":               fmt.Sprintf("Task delegated to %s. Response will be sent directly to user.", input.AgentID),
@@ -78,13 +89,20 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 	case resultEvt := <-replyCh:
 		result, ok := resultEvt.Payload.(core.DelegationResultPayload)
 		if !ok {
+			logger.Timing.EndPhase(correlationID, delegationPhase)
 			return nil, fmt.Errorf("invalid delegation result payload")
 		}
 
 		if result.Error != "" {
+			logger.Timing.EndPhaseWithMetadata(correlationID, delegationPhase, map[string]any{
+				"error": "failed",
+			})
 			return nil, fmt.Errorf("delegation error: %s", result.Error)
 		}
 
+		logger.Timing.EndPhaseWithMetadata(correlationID, delegationPhase, map[string]any{
+			"agent": input.AgentID,
+		})
 		a.logger.Info("delegation completed",
 			"delegation_id", delegationID,
 			"correlation_id", correlationID)
@@ -92,20 +110,25 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		return result.Result, nil
 
 	case <-ctx.Done():
+		logger.Timing.EndPhase(correlationID, delegationPhase)
 		return nil, fmt.Errorf("request cancelled")
 	case <-a.ctx.Done():
+		logger.Timing.EndPhase(correlationID, delegationPhase)
 		return nil, fmt.Errorf("agent shutting down")
 	case <-time.After(5 * time.Minute):
+		logger.Timing.EndPhase(correlationID, delegationPhase)
 		return nil, fmt.Errorf("delegation timeout")
 	}
 }
 
 // requestWorkflow creates a workflow and waits for completion
 func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
+	logger.Timing.StartPhase(correlationID, "workflow_creation")
 	wf, err := a.parseWorkflow(correlationID, tc)
 	if err != nil {
 		return nil, err
 	}
+	logger.Timing.EndPhase(correlationID, "workflow_creation")
 	return a.submitAndWait(ctx, correlationID, wf)
 }
 
@@ -208,14 +231,14 @@ func (a *Agent) requestAgentSelection(ctx context.Context, correlationID string,
 }
 
 // handleMetaTool routes meta-tool calls to appropriate handlers
-func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, metadata map[string]string) (any, error) {
+func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, channelMetadata *core.ChannelMetadata) (any, error) {
 	a.logger.Debug("handling meta-tool",
 		"tool", tc.Function.Name,
 		"correlation_id", correlationID)
 
 	switch tc.Function.Name {
 	case "delegate_to_agent":
-		return a.requestDelegation(ctx, correlationID, tc, metadata)
+		return a.requestDelegation(ctx, correlationID, tc, channelMetadata)
 
 	case "create_workflow":
 		return a.requestWorkflow(ctx, correlationID, tc)
@@ -293,8 +316,8 @@ func (a *Agent) sendOutboundMessage(payload core.AgentExecutePayload, correlatio
 		Type:          core.OutboundMessage,
 		CorrelationID: correlationID,
 		Payload: core.OutboundMessagePayload{
-			ChannelName: payload.Metadata["channel"],
-			ChatID:      payload.ChatID,
+			ChannelName: payload.Channel.Name,
+			ChatID:      payload.Channel.ChatID,
 			Content:     response,
 		},
 	}

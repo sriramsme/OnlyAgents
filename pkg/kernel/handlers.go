@@ -3,13 +3,13 @@ package kernel
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
 // ====================
@@ -35,6 +35,8 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 	if correlationID == "" {
 		correlationID = uuid.NewString()
 	}
+	logger.Timing.StartPhase(correlationID, "end_to_end")
+	logger.Timing.StartPhase(correlationID, "executive_routing")
 
 	// Create agent execution event
 	agentEvent := core.Event{
@@ -42,13 +44,13 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 		CorrelationID: correlationID,
 		AgentID:       executive.ID(),
 		Payload: core.AgentExecutePayload{
-			UserMessage: payload.Content,
-			ChatID:      payload.ChatID,
-			Metadata: map[string]string{
-				"channel":      payload.ChannelName,
-				"user_id":      payload.UserID,
-				"username":     payload.Username,
-				"message_type": "user_message", // Track message origin
+			Message:     payload.Content,
+			MessageType: core.MessageTypeUser,
+			Channel: &core.ChannelMetadata{
+				ChatID:   payload.ChatID,
+				Name:     payload.ChannelName,
+				UserID:   payload.UserID,
+				Username: payload.Username,
 			},
 		},
 	}
@@ -56,16 +58,19 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 	// Send to executive
 	select {
 	case executive.Inbox() <- agentEvent:
+		logger.Timing.EndPhase(correlationID, "executive_routing")
 		k.logger.Debug("message routed to executive",
 			"correlation_id", correlationID,
 			"executive_id", executive.ID())
 
 	case <-time.After(5 * time.Second):
+		logger.Timing.EndPhase(correlationID, "executive_routing")
 		k.logger.Error("executive inbox full - message dropped",
 			"correlation_id", correlationID)
 		// TODO: Send error response back to channel
 
 	case <-k.ctx.Done():
+		logger.Timing.EndPhase(correlationID, "executive_routing")
 		k.logger.Info("shutdown in progress - message not delivered")
 	}
 }
@@ -77,6 +82,9 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 		k.logger.Error("invalid AgentDelegate payload")
 		return
 	}
+
+	delegationPhase := fmt.Sprintf("delegation_%s", payload.AgentID)
+	logger.Timing.StartPhase(evt.CorrelationID, delegationPhase)
 
 	var targetAgent *agents.Agent
 	var err error
@@ -112,6 +120,7 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 	}
 
 	if targetAgent == nil {
+		logger.Timing.EndPhase(evt.CorrelationID, delegationPhase)
 		k.logger.Error("no agent found for delegation",
 			"agent_id", payload.AgentID,
 			"capabilities", payload.Capabilities)
@@ -131,16 +140,12 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 		CorrelationID: evt.CorrelationID,
 		AgentID:       targetAgent.ID(),
 		Payload: core.AgentExecutePayload{
-			UserMessage: payload.Task,
-			ChatID:      payload.Metadata["chat_id"],
-			Metadata: map[string]string{
-				"delegated_by":          evt.AgentID,
-				"delegation_id":         payload.DelegationID,
-				"message_type":          "delegation",
-				"send_directly_to_user": strconv.FormatBool(payload.SendDirectlyToUser),
-				"channel":               payload.Metadata["channel"],
-				"user_id":               payload.Metadata["user_id"],
-				"username":              payload.Metadata["username"],
+			Message:     payload.Task,
+			MessageType: core.MessageTypeDelegation,
+			Channel:     payload.Channel,
+			Delegation: &core.DelegationMetadata{
+				DelegationID:       payload.DelegationID,
+				SendDirectlyToUser: payload.SendDirectlyToUser,
 			},
 		},
 		ReplyTo: evt.ReplyTo, // Result goes back to delegating agent
@@ -152,13 +157,16 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 		k.logger.Debug("delegation sent",
 			"to_agent", targetAgent.ID(),
 			"correlation_id", evt.CorrelationID)
+		// Note: We don't end the phase here - it ends when delegation completes
 
 	case <-time.After(5 * time.Second):
+		logger.Timing.EndPhase(evt.CorrelationID, delegationPhase)
 		k.logger.Error("failed to delegate - agent inbox full",
 			"agent_id", targetAgent.ID())
 		k.sendDelegationError(evt, "Target agent busy")
 
 	case <-k.ctx.Done():
+		logger.Timing.EndPhase(evt.CorrelationID, delegationPhase)
 		k.logger.Info("shutdown in progress - delegation not sent")
 	}
 }
@@ -170,8 +178,11 @@ func (k *Kernel) handleWorkflowSubmitted(evt core.Event) {
 		k.logger.Error("invalid WorkflowSubmitted payload")
 		return
 	}
+	workflowPhase := fmt.Sprintf("workflow_%s", payload.Workflow.ID)
+	logger.Timing.StartPhase(evt.CorrelationID, workflowPhase)
 
 	if k.workflow == nil {
+		logger.Timing.EndPhase(evt.CorrelationID, workflowPhase)
 		k.logger.Error("workflow engine not initialized")
 		k.sendWorkflowError(evt, "Workflow engine unavailable")
 		return
@@ -185,6 +196,7 @@ func (k *Kernel) handleWorkflowSubmitted(evt core.Event) {
 	// Submit to workflow engine
 	// Engine handles the DAG internally - no executive roundtrips per task
 	if err := k.workflow.SubmitWorkflow(k.ctx, &payload.Workflow); err != nil {
+		logger.Timing.EndPhase(evt.CorrelationID, workflowPhase)
 		k.logger.Error("workflow submission failed",
 			"workflow_id", payload.Workflow.ID,
 			"error", err)
@@ -194,6 +206,7 @@ func (k *Kernel) handleWorkflowSubmitted(evt core.Event) {
 
 	// Workflow engine now owns execution
 	// It will fire WorkflowCompleted when ALL tasks done
+	// Note: Phase ends when workflow completes
 	k.logger.Debug("workflow accepted by engine",
 		"workflow_id", payload.Workflow.ID)
 }
@@ -205,6 +218,12 @@ func (k *Kernel) handleWorkflowCompleted(evt core.Event) {
 		k.logger.Error("invalid WorkflowCompleted payload")
 		return
 	}
+
+	workflowPhase := fmt.Sprintf("workflow_%s", payload.WorkflowID)
+	logger.Timing.EndPhaseWithMetadata(evt.CorrelationID, workflowPhase, map[string]any{
+		"status": payload.Status,
+		"tasks":  len(payload.Results),
+	})
 
 	// Get the executive agent (who created the workflow)
 	executive, err := k.agents.Get(payload.CreatedBy)
@@ -293,12 +312,12 @@ func (k *Kernel) handleTaskAssigned(evt core.Event) {
 		CorrelationID: evt.CorrelationID,
 		AgentID:       agent.ID(),
 		Payload: core.AgentExecutePayload{
-			UserMessage: payload.Task,
-			Metadata: map[string]string{
-				"message_type": "workflow_task",
-				"workflow_id":  payload.WorkflowID,
-				"task_id":      payload.TaskID,
-				"task_name":    payload.TaskName,
+			Message:     payload.Task,
+			MessageType: core.MessageTypeWorkflowTask,
+			Workflow: &core.WorkflowMetadata{
+				WorkflowID: payload.WorkflowID,
+				TaskID:     payload.TaskID,
+				TaskName:   payload.TaskName,
 			},
 		},
 		ReplyTo: evt.ReplyTo, // Result goes back to workflow engine
@@ -348,10 +367,10 @@ func (k *Kernel) handleAgentMessage(evt core.Event) {
 		CorrelationID: evt.CorrelationID,
 		AgentID:       targetAgent.ID(),
 		Payload: core.AgentExecutePayload{
-			UserMessage: payload.Content,
-			Metadata: map[string]string{
-				"message_type": "agent_message",
-				"from_agent":   payload.FromAgent,
+			Message:     payload.Content,
+			MessageType: core.MessageTypeAgentMessage,
+			Agent: &core.AgentMetadata{
+				FromAgent: payload.FromAgent,
 			},
 		},
 	}
@@ -388,6 +407,9 @@ func (k *Kernel) handleToolCallRequest(evt core.Event) {
 	go func() {
 		defer k.wg.Done()
 
+		toolPhase := fmt.Sprintf("%s_tool_%s", evt.AgentID, payload.ToolName)
+		logger.Timing.StartPhase(evt.CorrelationID, toolPhase)
+
 		// Create timeout context for skill execution
 		ctx, cancel := context.WithTimeout(k.ctx, 30*time.Second)
 		defer cancel()
@@ -398,6 +420,15 @@ func (k *Kernel) handleToolCallRequest(evt core.Event) {
 			"correlation_id", evt.CorrelationID)
 
 		result, err := skill.Execute(ctx, payload.ToolName, payload.Arguments)
+
+		metadata := map[string]any{
+			"tool":  payload.ToolName,
+			"skill": payload.SkillName,
+		}
+		if err != nil {
+			metadata["error"] = "failed"
+		}
+		logger.Timing.EndPhaseWithMetadata(evt.CorrelationID, toolPhase, metadata)
 
 		resultEvt := core.Event{
 			Type:          core.ToolCallResult,
@@ -461,14 +492,15 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 		return
 	}
 
+	logger.Timing.StartPhase(evt.CorrelationID, "outbound_send")
 	ch, err := k.channels.Get(payload.ChannelName)
 	if err != nil {
+		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
 		k.logger.Error("channel not found",
 			"channel", payload.ChannelName,
 			"correlation_id", evt.CorrelationID)
 		return
 	}
-
 	// Create timeout context for channel send
 	ctx, cancel := context.WithTimeout(k.ctx, 10*time.Second)
 	defer cancel()
@@ -479,15 +511,20 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 		ReplyToID: payload.ReplyToID,
 		ParseMode: payload.ParseMode,
 	}); err != nil {
+		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
 		k.logger.Error("failed to send outbound message",
 			"channel", payload.ChannelName,
 			"correlation_id", evt.CorrelationID,
 			"error", err)
 	} else {
+		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
 		k.logger.Debug("outbound message sent",
 			"channel", payload.ChannelName,
 			"correlation_id", evt.CorrelationID)
 	}
+
+	logger.Timing.EndPhase(evt.CorrelationID, "end_to_end")
+	logger.Timing.LogSummary(evt.CorrelationID)
 }
 
 // sendToolError: Helper to send tool error back to agent

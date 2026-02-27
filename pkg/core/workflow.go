@@ -515,10 +515,11 @@ func (e *TaskExecutor) executeViaAgent(ctx context.Context, task *Task) error {
 		CorrelationID: task.ID,
 		AgentID:       task.AssignedAgentID,
 		Payload: AgentExecutePayload{
-			UserMessage: payload.Message,
-			Metadata: map[string]string{
-				"task_id":     task.ID,
-				"workflow_id": task.WorkflowID,
+			Message: payload.Message,
+			Workflow: &WorkflowMetadata{
+				WorkflowID: task.WorkflowID,
+				TaskID:     task.ID,
+				TaskName:   task.Name,
 			},
 		},
 	}
