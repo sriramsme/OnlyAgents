@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -69,7 +70,7 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 	}
 }
 
-// handleAgentDelegate: Executive or agent wants to delegate a task
+// handleAgentDelegate: Executive wants to delegate a task
 func (k *Kernel) handleAgentDelegate(evt core.Event) {
 	payload, ok := evt.Payload.(core.AgentDelegatePayload)
 	if !ok {
@@ -131,10 +132,15 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 		AgentID:       targetAgent.ID(),
 		Payload: core.AgentExecutePayload{
 			UserMessage: payload.Task,
+			ChatID:      payload.Metadata["chat_id"],
 			Metadata: map[string]string{
-				"delegated_by":  evt.AgentID,
-				"delegation_id": payload.DelegationID,
-				"message_type":  "delegation",
+				"delegated_by":          evt.AgentID,
+				"delegation_id":         payload.DelegationID,
+				"message_type":          "delegation",
+				"send_directly_to_user": strconv.FormatBool(payload.SendDirectlyToUser),
+				"channel":               payload.Metadata["channel"],
+				"user_id":               payload.Metadata["user_id"],
+				"username":              payload.Metadata["username"],
 			},
 		},
 		ReplyTo: evt.ReplyTo, // Result goes back to delegating agent

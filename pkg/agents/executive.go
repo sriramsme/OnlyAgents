@@ -15,7 +15,8 @@ import (
 // They're called from the agent's execute() loop when LLM calls meta-tools
 
 // requestDelegation delegates a task to another agent and waits for result
-func (a *Agent) requestDelegation(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
+func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
+	tc tools.ToolCall, metadata map[string]string) (any, error) {
 	var input tools.DelegateInput
 	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
 		return nil, fmt.Errorf("invalid delegation args: %w", err)
@@ -24,6 +25,7 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string, tc 
 	a.logger.Info("delegating task",
 		"agent_id", input.AgentID,
 		"task", input.Task,
+		"send_directly_to_user", input.SendDirectlyToUser,
 		"capabilities", input.Capabilities,
 		"correlation_id", correlationID)
 
@@ -37,12 +39,14 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string, tc 
 		AgentID:       a.id,
 		ReplyTo:       replyCh,
 		Payload: core.AgentDelegatePayload{
-			DelegationID: delegationID,
-			AgentID:      input.AgentID, // ← Executive specifies target agent
-			Task:         input.Task,
-			Capabilities: input.Capabilities,
-			Context:      input.Context,
-			Timeout:      300, // 5 minutes default
+			DelegationID:       delegationID,
+			AgentID:            input.AgentID, // ← Executive specifies target agent
+			Task:               input.Task,
+			Capabilities:       input.Capabilities,
+			Context:            input.Context,
+			SendDirectlyToUser: input.SendDirectlyToUser,
+			Timeout:            300,      // 5 minutes default
+			Metadata:           metadata, // In case is sending directly to user, sub-agent needs chatID, channelName etc
 		},
 	}
 
@@ -56,6 +60,17 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string, tc 
 		return nil, fmt.Errorf("agent shutting down")
 	case <-time.After(5 * time.Second):
 		return nil, fmt.Errorf("failed to send delegation request")
+	}
+
+	// If sending directly to user, return immediately
+	// Executive doesn't wait for response
+	if input.SendDirectlyToUser {
+		return map[string]any{
+			"status":                "delegated",
+			"message":               fmt.Sprintf("Task delegated to %s. Response will be sent directly to user.", input.AgentID),
+			"delegation_id":         delegationID,
+			"send_directly_to_user": true,
+		}, nil
 	}
 
 	// Wait for result
@@ -193,14 +208,14 @@ func (a *Agent) requestAgentSelection(ctx context.Context, correlationID string,
 }
 
 // handleMetaTool routes meta-tool calls to appropriate handlers
-func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
+func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, metadata map[string]string) (any, error) {
 	a.logger.Debug("handling meta-tool",
 		"tool", tc.Function.Name,
 		"correlation_id", correlationID)
 
 	switch tc.Function.Name {
 	case "delegate_to_agent":
-		return a.requestDelegation(ctx, correlationID, tc)
+		return a.requestDelegation(ctx, correlationID, tc, metadata)
 
 	case "create_workflow":
 		return a.requestWorkflow(ctx, correlationID, tc)

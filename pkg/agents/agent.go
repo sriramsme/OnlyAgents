@@ -19,7 +19,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
@@ -191,7 +190,7 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 		"message_length", len(payload.UserMessage))
 
 	// Regular agent uses standard execute
-	response, err := a.execute(requestCtx, payload.UserMessage, evt.CorrelationID)
+	response, err := a.execute(requestCtx, payload, evt.CorrelationID)
 
 	if err != nil {
 		a.logger.Error("execute failed",
@@ -208,9 +207,22 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 	messageType := payload.Metadata["message_type"]
 
 	switch messageType {
+
 	case "delegation":
-		// Task was delegated to this agent - send result back
-		a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response)
+		// Check if this is a delegation with direct user response
+		sendDirectlyToUser := false
+		if payload.Metadata != nil {
+			if val, ok := payload.Metadata["send_directly_to_user"]; ok {
+				sendDirectlyToUser = val == "true"
+			}
+		}
+		if sendDirectlyToUser {
+			// Task was delegated to this agent - send result back
+			a.sendOutboundMessage(payload, evt.CorrelationID, response)
+		} else {
+			// Task was delegated to this agent - send result back
+			a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response)
+		}
 
 	case "workflow_task":
 		// Task from workflow engine - send result back
@@ -266,12 +278,12 @@ func (a *Agent) safeSend(evt core.Event, description string) {
 // --- Sync HTTP path ---
 
 // Execute is called directly by HTTP handlers (sync request/response).
-func (a *Agent) Execute(ctx context.Context, userMessage string) (string, error) {
-	return a.execute(ctx, userMessage, uuid.NewString())
-}
+// func (a *Agent) Execute(ctx context.Context, userMessage string) (string, error) {
+// 	return a.execute(ctx, userMessage, uuid.NewString())
+// }
 
 // execute is the internal LLM loop, shared by both sync and async paths.
-func (a *Agent) execute(ctx context.Context, userMessage string, correlationID string) (string, error) {
+func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, correlationID string) (string, error) {
 	start := time.Now()
 	usage := llm.Usage{}
 	defer func() {
@@ -283,13 +295,13 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 			"latency_ms", time.Since(start).Milliseconds())
 	}()
 	a.logger.Debug("executing with meta-tools",
-		"message_length", len(userMessage),
+		"message_length", len(payload.UserMessage),
 		"correlation_id", correlationID,
 		"is_executive", a.isExecutive)
 
 	messages := []llm.Message{
 		llm.SystemMessage(a.systemPrompt),
-		llm.UserMessage(userMessage),
+		llm.UserMessage(payload.UserMessage),
 	}
 
 	for {
@@ -318,7 +330,7 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 		usage.CachedTokens += resp.Usage.CachedTokens
 
 		a.logger.Debug("llm response",
-			"msg", truncate(userMessage, 100),
+			"msg", truncate(payload.UserMessage, 100),
 			"stop_reason", resp.StopReason,
 			"tool_calls", len(resp.ToolCalls),
 			"tokens", resp.Usage.TotalTokens,
@@ -334,6 +346,15 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 			resp.Content, resp.ReasoningContent, resp.ToolCalls,
 		))
 
+		// metadata sub-agent might need in case of sending directly to user via delegate
+		metadata := map[string]string{}
+		if a.isExecutive && payload.Metadata != nil {
+			metadata["channel"] = payload.Metadata["channel"]
+			metadata["user_id"] = payload.Metadata["user_id"]
+			metadata["username"] = payload.Metadata["username"]
+			metadata["chat_id"] = payload.ChatID
+		}
+
 		// Execute tool calls
 		for _, tc := range resp.ToolCalls {
 			var result any
@@ -341,7 +362,7 @@ func (a *Agent) execute(ctx context.Context, userMessage string, correlationID s
 
 			// Check if it's a meta-tool (executive only)
 			if a.isExecutive && isMetaTool(tc.Function.Name) {
-				result, err = a.handleMetaTool(ctx, correlationID, tc)
+				result, err = a.handleMetaTool(ctx, correlationID, tc, metadata)
 			} else {
 				// Regular tool call via skill
 				result, err = a.requestToolCall(ctx, correlationID, tc)

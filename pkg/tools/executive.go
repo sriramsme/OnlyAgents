@@ -11,6 +11,7 @@ type AgentInfo struct {
 	Name         string            `json:"name"`
 	Capabilities []core.Capability `json:"capabilities"`
 }
+
 type FindBestAgentFunc func(ctx context.Context, task string, capabilities []core.Capability) (AgentInfo, error)
 
 // ====================
@@ -23,6 +24,19 @@ type DelegateInput struct {
 	Task         string            `json:"task" desc:"Clear description of the task to delegate"`
 	Capabilities []core.Capability `json:"capabilities,omitempty" desc:"Required capabilities for this task (for validation)"`
 	Context      map[string]any    `json:"context,omitempty" desc:"Additional context for the delegated task (optional)"`
+
+	// SendDirectlyToUser controls response routing:
+	// - true: Sub-agent sends response directly to user (faster, for simple requests)
+	// - false (default): Sub-agent returns to executive for synthesis/further processing
+	// Use true when:
+	//   - User asked a single question requiring one capability
+	//   - No further processing needed by executive
+	//   - Response can go directly to user
+	// Use false when:
+	//   - Executive needs the response for multi-step orchestration
+	//   - Response will be used as context for next delegation
+	//   - Executive needs to synthesize results from multiple agents
+	SendDirectlyToUser bool `json:"send_directly_to_user,omitempty" desc:"If true, sub-agent sends response directly to user. If false (default), returns to executive for synthesis."`
 }
 
 // CreateWorkflowInput is the input schema for the create_workflow tool.
@@ -69,14 +83,23 @@ func GetExecutiveTools() []ToolDef {
 			"delegate_to_agent",
 			"Delegate a task to a specialized agent. Use when a request requires specific capabilities "+
 				"(calendar, email, web_search, etc.) that you don't handle directly. "+
-				"Pick the agent_id from the Available Capabilities & Agents section in your context.",
+				"Pick the agent_id from the Available Capabilities & Agents section in your context.\n\n"+
+				"RESPONSE ROUTING:\n"+
+				"- Set send_directly_to_user=true for simple, single-task requests where the sub-agent's response can go directly to the user\n"+
+				"- Set send_directly_to_user=false (or omit) when you need the response for further processing or synthesis\n\n"+
+				"Examples:\n"+
+				"- 'Search for news on X' → send_directly_to_user=true (simple request, direct answer)\n"+
+				"- 'Check my calendar' (as part of planning) → send_directly_to_user=false (you need this info to plan next steps)\n"+
+				"- 'Send email to Bob' → send_directly_to_user=true (single action, user just needs confirmation)\n"+
+				"- 'Get weather then suggest activities' → send_directly_to_user=false (you need weather data to suggest activities)",
 			delegateSchema,
 		),
 		NewToolDef(
 			"create_workflow",
 			"Create a workflow with multiple interdependent tasks. Use when a request requires several steps "+
 				"with dependencies (e.g. 'Check Bob's availability, then email him'). "+
-				"Each task is delegated to an agent with matching capabilities.",
+				"Each task is delegated to an agent with matching capabilities. "+
+				"Workflow results are ALWAYS returned to you for final synthesis - you cannot send task results directly to user.",
 			workflowSchema,
 		),
 		NewToolDef(
