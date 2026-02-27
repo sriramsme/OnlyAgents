@@ -90,7 +90,7 @@ jobs:
           if [ "${{ matrix.goos }}" = "windows" ]; then
             OUTPUT_NAME="${OUTPUT_NAME}.exe"
           fi
-          go build -v -ldflags="-s -w -X 'github.com/sriramsme/OnlyAgents/cmd.version=$(git describe --tags --always --dirty)'" -o $OUTPUT_NAME .
+          go build -v -ldflags="-s -w -X 'github.com/sriramsme/OnlyAgents/cmd.version=$(git describe --tags --always --dirty)'" -o $OUTPUT_NAME ./cmd/onlyagents
 
       - name: Test CLI commands
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
