@@ -10,7 +10,6 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         go-version: ['1.25']
@@ -25,7 +24,7 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
@@ -39,16 +38,15 @@ jobs:
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           files: ./coverage.txt
           flags: unittests
           name: codecov-umbrella
 
-  build:
-    name: Build
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -58,8 +56,86 @@ jobs:
         with:
           go-version: '1.25'
 
-      - name: Build
-        run: go build -v ./cmd/agent
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          args: --timeout=5m
 
-      - name: Build CLI (future)
-        run: go build -v ./cmd/cli || echo "CLI not ready yet"
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          OUTPUT_NAME=onlyagents-${{ matrix.goos }}-${{ matrix.goarch }}
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            OUTPUT_NAME="${OUTPUT_NAME}.exe"
+          fi
+          go build -v -ldflags="-s -w -X 'github.com/sriramsme/OnlyAgents/cmd.version=$(git describe --tags --always --dirty)'" -o $OUTPUT_NAME .
+
+      - name: Test CLI commands
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          ./onlyagents-linux-amd64 --help
+          ./onlyagents-linux-amd64 models --help
+          ./onlyagents-linux-amd64 agent --help
+          ./onlyagents-linux-amd64 server --help
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: onlyagents-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: onlyagents-*
+          retention-days: 7
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: onlyagents-linux-amd64
+
+      - name: Make binary executable
+        run: chmod +x onlyagents-linux-amd64
+
+      - name: Test models command
+        run: |
+          ./onlyagents-linux-amd64 models list --provider openai
+          ./onlyagents-linux-amd64 models info gpt-4o --provider openai
+
+      - name: Test help commands
+        run: |
+          ./onlyagents-linux-amd64 --help
+          ./onlyagents-linux-amd64 models --help
+          ./onlyagents-linux-amd64 agent --help
+          ./onlyagents-linux-amd64 server --help
