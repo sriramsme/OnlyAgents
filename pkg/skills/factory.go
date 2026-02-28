@@ -14,9 +14,13 @@ type Factory func(
 	eventBus chan<- core.Event,
 ) (Skill, error)
 
+// SkillLoader loads multiple skills from external sources (files, directories, etc.)
+type SkillLoader func(ctx context.Context, configDir string, executor interface{}) ([]Skill, error)
+
 var (
 	factoryMu sync.RWMutex
 	factories = make(map[string]Factory)
+	loaders   = make(map[string]SkillLoader) // ex: SKILL.md files
 )
 
 // Register registers a connector factory for a platform
@@ -57,4 +61,25 @@ func ListRegistered() []string {
 		platforms = append(platforms, platform)
 	}
 	return platforms
+}
+
+// RegisterLoader registers a skill loader (for file-based skills)
+func RegisterLoader(name string, loader SkillLoader) {
+	factoryMu.Lock()
+	defer factoryMu.Unlock()
+	if loader == nil {
+		panic("skills: RegisterLoader loader is nil for " + name)
+	}
+	loaders[name] = loader
+}
+
+// GetLoaders returns all registered loaders
+func GetLoaders() map[string]SkillLoader {
+	factoryMu.RLock()
+	defer factoryMu.RUnlock()
+	result := make(map[string]SkillLoader, len(loaders))
+	for k, v := range loaders {
+		result[k] = v
+	}
+	return result
 }

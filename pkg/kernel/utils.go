@@ -12,7 +12,10 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
+	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
+	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -22,12 +25,15 @@ type AgentInfo struct {
 }
 
 type kernelComponents struct {
-	agents        *agents.Registry
-	connectors    *connectors.Registry
-	channels      *channels.Registry
-	skills        *skills.Registry
-	user          *config.UserConfig
-	capabilityMap map[core.Capability][]AgentInfo
+	agents                  *agents.Registry
+	connectors              *connectors.Registry
+	channels                *channels.Registry
+	skills                  *skills.Registry
+	user                    *config.UserConfig
+	capabilityMap           map[core.Capability][]AgentInfo
+	skillMarketplaceManager *marketplace.Manager
+	cliExecutor             *cli.CLIExecutor
+	capabilities            *core.CapabilityRegistry
 }
 
 // mustLoadVault loads vault config or exits
@@ -75,9 +81,12 @@ func loadChannels(ctx context.Context, v vault.Vault, configDir string, kernelBu
 	return registry, nil
 }
 
-func loadSkills(ctx context.Context, configDir string, kernelBus chan<- core.Event) (*skills.Registry, error) {
+func loadSkills(ctx context.Context, configDir string, kernelBus chan<- core.Event,
+	capabilityRegistry *core.CapabilityRegistry,
+	cliExecutor *cli.CLIExecutor) (*skills.Registry, error) {
+
 	// Create connector registr
-	registry, err := skills.NewRegistry(ctx, configDir, kernelBus)
+	registry, err := skills.NewRegistry(ctx, configDir, kernelBus, capabilityRegistry, cliExecutor)
 	if err != nil {
 		return nil, fmt.Errorf("create skills registry: %w", err)
 	}
@@ -127,6 +136,15 @@ func (k *Kernel) assignAgentTools() error {
 				"agent_id", agent.ID(),
 				"tools", len(execTools),
 				"role", "orchestrator")
+			continue
+		}
+		if agent.IsGeneral() {
+			agent.SetFindSkill(k.findSkillByCapability)
+			agent.SetUseSkillTool(k.useSkillTool)
+			k.logger.Info("general agent configured",
+				"agent_id", agent.ID(),
+				"tools", len(agent.GetSkillNames()),
+				"role", "general")
 			continue
 		}
 
@@ -209,8 +227,35 @@ func applyConfigDefaults(cfg Config) Config {
 
 func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kernelComponents, error) {
 	var c kernelComponents
-
 	v, err := loadVault(cfg.VaultPath)
+
+	c.capabilities = core.NewCapabilityRegistry()
+	cliConfig := &cli.ExecutorConfig{
+		AllowedShells:    []string{"bash", "sh"},
+		MaxOutputSize:    1024 * 1024,
+		MaxExecutionTime: 60,
+		WorkingDir:       "/tmp",
+	}
+	c.cliExecutor = cli.NewCLIExecutor(ctx, cliConfig)
+
+	// 3. Setup marketplace manager
+	c.skillMarketplaceManager = marketplace.NewManager(cfg.SkillCacheDir)
+
+	// Register ClawHub marketplace
+	if cfg.ClawHubEnabled {
+		key, err := v.GetSecret(ctx, cfg.ClawHubTokenVaultKey)
+		if err == nil {
+			clawHub := marketplace.NewClawHubMarketplace(
+				cfg.ClawHubURL,
+				key,
+			)
+			c.skillMarketplaceManager.RegisterMarketplace(clawHub)
+		} else {
+			logger.Log.Warn("failed to load ClawHub auth token",
+				"error", err)
+		}
+	}
+
 	if err != nil {
 		return c, fmt.Errorf("load vault: %w", err)
 	}
@@ -226,7 +271,7 @@ func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kerne
 	if err != nil {
 		return c, fmt.Errorf("load channels: %w", err)
 	}
-	c.skills, err = loadSkills(ctx, cfg.SkillConfigsDir, bus)
+	c.skills, err = loadSkills(ctx, cfg.SkillConfigsDir, bus, c.capabilities, c.cliExecutor)
 	if err != nil {
 		return c, fmt.Errorf("load skills: %w", err)
 	}
@@ -292,6 +337,16 @@ func buildSystemPrompts(user *config.UserConfig, agentsReg *agents.Registry, cap
 		extra := ""
 		if agent.IsExecutive() {
 			extra = buildCapabilitySection(capabilityMap)
+
+			generalAgentInfo := AgentInfo{
+				ID:   agentsReg.GetGeneral().ID(),
+				Name: agentsReg.GetGeneral().Name(),
+			}
+			generalJSON, err := json.MarshalIndent(generalAgentInfo, "", "  ")
+			if err != nil {
+				return
+			}
+			extra += "\n\n=== GENERAL AGENT ===\n" + string(generalJSON)
 		}
 		agent.SetSystemPrompt(userSection, extra)
 	}
@@ -312,4 +367,109 @@ Values: %s`,
 		user.DailyRoutine,
 		strings.Join(user.Preferences.WhatIValue, ", "),
 	)
+}
+
+// FindByCapability searches for skills by capability
+// Tries local first, then searches marketplaces and auto-installs
+func (k *Kernel) findSkillByCapability(ctx context.Context, cap core.Capability) (interface{}, error) {
+	// 1. Check local skills first
+	skill, err := k.skills.FindByCapability(ctx, cap)
+	if err != nil {
+		return map[string]interface{}{
+			"skill_name":      skill.Name(),
+			"status":          "loaded",
+			"available_tools": skill.Tools(),
+			"usage_hint":      fmt.Sprintf("Use use_skill_tool with skill_name='%s' and choose from the tools above", skill.Name()),
+		}, nil
+
+	}
+
+	// 2. Not found locally - search marketplaces
+	results, err := k.skillMarketplaceManager.FindByCapability(ctx, string(cap))
+	if err != nil || len(results) == 0 {
+		return nil, fmt.Errorf("no skill found for capability: %s", cap)
+	}
+
+	// Pick best result (first one, already sorted by score)
+	best := results[0]
+
+	logger.Log.Info("found skill in marketplace",
+		"capability", cap,
+		"skill", best.Slug,
+		"marketplace", best.Marketplace)
+
+	// 3. Download the skill (gets SKILL.md file)
+	skillPath, err := k.skillMarketplaceManager.DownloadSkill(ctx, best.Slug, best.Version, best.Marketplace)
+	if err != nil {
+		return nil, fmt.Errorf("download skill failed: %w", err)
+	}
+
+	// 4. Load it using CLI skill loader (SAME PIPELINE!)
+	logger.Log.Info("loading downloaded skill",
+		"path", skillPath)
+
+	skill, loadErr := cli.LoadCLISkill(skillPath, k.cliExecutor)
+	if err != nil {
+		return nil, fmt.Errorf("load skill failed: %w", loadErr)
+	}
+
+	// 5. Register it
+	err = k.skills.Register(skill)
+	if err != nil {
+		return nil, fmt.Errorf("register skill failed: %w", err)
+	}
+
+	logger.Log.Info("downloaded skill registered",
+		"skill", skill.Name(),
+		"capability", cap,
+		"source", best.Marketplace)
+
+	// Return skill info with full tool definitions
+	return map[string]interface{}{
+		"skill_name":      skill.Name(),
+		"status":          "loaded",
+		"available_tools": skill.Tools(), // Already []ToolDef with full schema!
+		"usage_hint":      fmt.Sprintf("Use use_skill_tool with skill_name='%s' and choose from the tools above", skill.Name()),
+	}, nil
+}
+
+// useSkillTool executes a tool from a dynamically discovered skill
+func (k *Kernel) useSkillTool(ctx context.Context, skillName, toolName string, params map[string]interface{}) (interface{}, error) {
+	// Get the skill
+	skill, ok := k.skills.Get(skillName)
+	if !ok {
+		return nil, fmt.Errorf("skill not found: %s (did you call find_skill first?)", skillName)
+	}
+
+	// Find the tool in the skill
+	found := false
+	for _, t := range skill.Tools() {
+		if t.Name == toolName {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("tool '%s' not found in skill '%s'", toolName, skillName)
+	}
+
+	// Marshal params to JSON
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		return nil, fmt.Errorf("invalid parameters: %w", err)
+	}
+
+	// Execute the tool
+	result, err := skill.Execute(ctx, toolName, paramsJSON)
+	if err != nil {
+		return nil, fmt.Errorf("tool execution failed: %w", err)
+	}
+
+	k.logger.Info("executed skill tool",
+		"skill", skillName,
+		"tool", toolName,
+		"success", true)
+
+	return result, nil
 }

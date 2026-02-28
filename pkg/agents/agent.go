@@ -120,6 +120,14 @@ func (a *Agent) SetFindBestAgent(fn tools.FindBestAgentFunc) {
 	a.findBestAgent = fn
 }
 
+func (a *Agent) SetFindSkill(fn findSkillFunc) {
+	a.findSkill = fn
+}
+
+func (a *Agent) SetUseSkillTool(fn useSkillToolFunc) {
+	a.useSkillTool = fn
+}
+
 func (a *Agent) SetSystemPrompt(userSection string, availableAgents string) {
 	parts := []string{
 		a.soul.SystemPrompt(availableAgents),

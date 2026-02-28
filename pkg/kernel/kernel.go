@@ -30,6 +30,8 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
+	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
+	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
 )
 
 // Kernel is the central router. It wires everything together and owns the event bus.
@@ -41,6 +43,10 @@ type Kernel struct {
 	channels   *channels.Registry
 	workflow   *core.Engine
 	user       *config.UserConfig
+
+	skillMarketplaceManager *marketplace.Manager
+	cliExecutor             *cli.CLIExecutor
+	capabilities            *core.CapabilityRegistry
 
 	// defaultAgentID is used when a channel message doesn't specify a target agent
 	defaultAgentID string
@@ -60,6 +66,11 @@ type Config struct {
 	ChannelConfigsDir   string
 	SkillConfigsDir     string
 	VaultPath           string
+
+	SkillCacheDir        string
+	ClawHubEnabled       bool
+	ClawHubTokenVaultKey string
+	ClawHubURL           string
 }
 
 func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Kernel, error) {
@@ -84,17 +95,20 @@ func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Ker
 	}
 
 	return &Kernel{
-		bus:            kernelBus,
-		agents:         components.agents,
-		skills:         components.skills,
-		connectors:     components.connectors,
-		channels:       components.channels,
-		user:           components.user,
-		workflow:       workflowEngine,
-		defaultAgentID: cfg.DefaultAgentID,
-		ctx:            ctx,
-		cancel:         cancel,
-		logger:         slog.Default().With("component", "kernel"),
+		bus:                     kernelBus,
+		agents:                  components.agents,
+		skills:                  components.skills,
+		connectors:              components.connectors,
+		channels:                components.channels,
+		user:                    components.user,
+		workflow:                workflowEngine,
+		capabilities:            components.capabilities,
+		skillMarketplaceManager: components.skillMarketplaceManager,
+		cliExecutor:             components.cliExecutor,
+		defaultAgentID:          cfg.DefaultAgentID,
+		ctx:                     ctx,
+		cancel:                  cancel,
+		logger:                  slog.Default().With("component", "kernel"),
 	}, nil
 }
 

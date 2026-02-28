@@ -38,7 +38,9 @@ type Agent struct {
 	inbox chan core.Event
 
 	systemPrompt  string
-	findBestAgent tools.FindBestAgentFunc // injected by kernel
+	findBestAgent tools.FindBestAgentFunc // injected by kernel only for executive agents
+	findSkill     findSkillFunc           // injected by kernel only for general agents
+	useSkillTool  useSkillToolFunc        // injected by kernel only for general agents
 
 	// Lifecycle
 	ctx    context.Context
@@ -54,3 +56,6 @@ type Registry struct {
 	general   *Agent
 	mu        sync.RWMutex
 }
+
+type findSkillFunc func(ctx context.Context, capability core.Capability) (interface{}, error)
+type useSkillToolFunc func(ctx context.Context, skillName, toolName string, params map[string]interface{}) (interface{}, error)
