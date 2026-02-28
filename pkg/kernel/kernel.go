@@ -29,6 +29,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
@@ -50,6 +51,11 @@ type Kernel struct {
 
 	// defaultAgentID is used when a channel message doesn't specify a target agent
 	defaultAgentID string
+
+	// helperClient is used for skill installation
+	helperClient llm.Client
+
+	cfg Config
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -94,6 +100,11 @@ func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Ker
 		return nil, fmt.Errorf("create workflow engine: %w", err)
 	}
 
+	fmt.Println("kernel created")
+	fmt.Println("skills: ", components.skills.ListAll())
+	fmt.Println("agents: ", components.agents.ListAll())
+	fmt.Println("capabilities: ", components.capabilities.ListAll())
+
 	return &Kernel{
 		bus:                     kernelBus,
 		agents:                  components.agents,
@@ -106,9 +117,11 @@ func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Ker
 		skillMarketplaceManager: components.skillMarketplaceManager,
 		cliExecutor:             components.cliExecutor,
 		defaultAgentID:          cfg.DefaultAgentID,
-		ctx:                     ctx,
-		cancel:                  cancel,
-		logger:                  slog.Default().With("component", "kernel"),
+		// helperClient:            components.helperClient,
+		cfg:    cfg,
+		ctx:    ctx,
+		cancel: cancel,
+		logger: slog.Default().With("component", "kernel"),
 	}, nil
 }
 

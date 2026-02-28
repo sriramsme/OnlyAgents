@@ -124,6 +124,16 @@ func (r *Registry) GetAll() []Skill {
 	return out
 }
 
+func (r *Registry) ListAll() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]string, 0, len(r.skills))
+	for name := range r.skills {
+		out = append(out, name)
+	}
+	return out
+}
+
 // AllToolDefs returns all tool definitions
 func (r *Registry) AllToolDefs() []tools.ToolDef {
 	r.mu.RLock()

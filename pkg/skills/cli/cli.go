@@ -12,30 +12,36 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-// CLISkill represents a skill loaded from a SKILL.md file
+// CLISkill represents a skill loaded from a SKILL.md file.
 type CLISkill struct {
 	*skills.BaseSkill
 
-	// From SKILL.md
 	capabilities []core.Capability
 	toolDefs     []tools.ToolDef
-	commands     map[string]*Command // toolName -> command
+	commands     map[string]*Command // toolName → command
 
-	// Runtime
 	executor *CLIExecutor
 }
 
-// Command represents a CLI command from SKILL.md
+// Command represents a CLI command parsed from a SKILL.md tool section.
 type Command struct {
-	Name        string           // Tool name
-	Description string           // What it does
-	Template    string           // Command template with {{param}} placeholders
-	Parameters  []string         // Required parameters
-	Validation  *ValidationRules // Optional validation
-	Timeout     int              // Seconds, default 30
+	Name        string           // Tool name  (### heading)
+	Description string           // **Description:**
+	Template    string           // **Command:** (bash code block)
+	ParamDefs   []ParamDef       // **Parameters:** bullet list (authoritative)
+	Parameters  []string         // Derived from ParamDefs for backward-compat
+	Validation  *ValidationRules // **Validation:** yaml block (optional)
+	Timeout     int              // **Timeout:** (seconds, default 30)
 }
 
-// ValidationRules for command execution
+// ParamDef holds the name, explicit type, and description of a single parameter.
+type ParamDef struct {
+	Name        string // e.g. "location"
+	Type        string // e.g. "string", "number", "integer", "boolean", "array"
+	Description string // e.g. "City name, airport code, or coordinates"
+}
+
+// ValidationRules for command execution.
 type ValidationRules struct {
 	AllowedCommands []string // Whitelist of allowed base commands
 	DeniedPatterns  []string // Blacklist patterns (regex)
@@ -43,9 +49,12 @@ type ValidationRules struct {
 	RequireConfirm  bool     // Require user confirmation
 }
 
-// NewCLISkill creates a CLI skill from parsed definition
+// ──────────────────────────────────────────────────────────────
+// Constructor
+// ──────────────────────────────────────────────────────────────
+
+// NewCLISkill creates a CLISkill from a ParsedSkill definition.
 func NewCLISkill(definition *ParsedSkill, executor *CLIExecutor) *CLISkill {
-	// Create base skill
 	base := skills.NewBaseSkill(
 		definition.Name,
 		definition.Description,
@@ -53,24 +62,13 @@ func NewCLISkill(definition *ParsedSkill, executor *CLIExecutor) *CLISkill {
 		skills.SkillTypeCLI,
 	)
 
-	// Build tools from commands
 	toolDefs := make([]tools.ToolDef, 0, len(definition.Commands))
-	commandMap := make(map[string]*Command)
+	commandMap := make(map[string]*Command, len(definition.Commands))
 
 	for _, cmd := range definition.Commands {
-		// Build tool parameters
-		params := tools.BuildParams(
-			buildParamProps(cmd.Parameters),
-			cmd.Parameters,
-		)
-
-		toolDef := tools.NewToolDef(
-			cmd.Name,
-			cmd.Description,
-			params,
-		)
-
-		toolDefs = append(toolDefs, toolDef)
+		props := buildParamProps(cmd.ParamDefs)
+		params := tools.BuildParams(props, cmd.Parameters)
+		toolDefs = append(toolDefs, tools.NewToolDef(cmd.Name, cmd.Description, params))
 		commandMap[cmd.Name] = cmd
 	}
 
@@ -83,50 +81,39 @@ func NewCLISkill(definition *ParsedSkill, executor *CLIExecutor) *CLISkill {
 	}
 }
 
-// Initialize implements Skill interface
+// ──────────────────────────────────────────────────────────────
+// Skill interface
+// ──────────────────────────────────────────────────────────────
+
 func (s *CLISkill) Initialize(deps skills.SkillDeps) error {
 	s.SetOutbox(deps.Outbox)
 	return nil
 }
 
-// Shutdown implements Skill interface
-func (s *CLISkill) Shutdown() error {
-	return nil
-}
+func (s *CLISkill) Shutdown() error { return nil }
 
-// RequiredCapabilities implements Skill interface
-func (s *CLISkill) RequiredCapabilities() []core.Capability {
-	return s.capabilities
-}
+func (s *CLISkill) RequiredCapabilities() []core.Capability { return s.capabilities }
 
-// Tools implements Skill interface
-func (s *CLISkill) Tools() []tools.ToolDef {
-	return s.toolDefs
-}
+func (s *CLISkill) Tools() []tools.ToolDef { return s.toolDefs }
 
-// Execute implements Skill interface
+// Execute runs the CLI command corresponding to toolName.
 func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {
-	// Parse JSON args
 	var params map[string]any
 	if err := json.Unmarshal(args, &params); err != nil {
 		return nil, fmt.Errorf("parse args: %w", err)
 	}
 
-	// Get command definition
 	cmd, ok := s.commands[toolName]
 	if !ok {
 		return nil, fmt.Errorf("tool not found: %s", toolName)
 	}
 
-	// Build command from template
 	command := s.buildCommand(cmd.Template, params)
 
-	// Validate command
 	if err := s.validateCommand(command, cmd.Validation); err != nil {
 		return nil, fmt.Errorf("command validation failed: %w", err)
 	}
 
-	// Execute via executor
 	result, err := s.executor.Execute(ctx, command, cmd.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("command execution failed: %w", err)
@@ -140,127 +127,114 @@ func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) (a
 	}, nil
 }
 
-// buildCommand replaces {{param}} placeholders with actual values
+// ──────────────────────────────────────────────────────────────
+// Internal helpers
+// ──────────────────────────────────────────────────────────────
+
+// buildCommand replaces {{param}} placeholders with actual values.
 func (s *CLISkill) buildCommand(template string, params map[string]any) string {
-	command := template
-
 	re := regexp.MustCompile(`\{\{(\w+)\}\}`)
-	command = re.ReplaceAllStringFunc(command, func(match string) string {
-		// Extract parameter name
+	return re.ReplaceAllStringFunc(template, func(match string) string {
 		paramName := strings.Trim(match, "{}")
-
 		if val, ok := params[paramName]; ok {
-			// TODO: Proper shell escaping here!
+			// TODO: proper shell escaping
 			return fmt.Sprintf("%v", val)
 		}
-
-		return match // Keep placeholder if param not found
+		return match // leave placeholder if param missing
 	})
-
-	return command
 }
 
-// validateCommand validates command before execution
+// validateCommand checks the command against the supplied rules and a hardcoded
+// set of dangerous patterns.
 func (s *CLISkill) validateCommand(command string, rules *ValidationRules) error {
-	if rules == nil {
-		return nil
-	}
-
-	// Check allowed commands whitelist
-	if len(rules.AllowedCommands) > 0 {
-		allowed := false
-		for _, allowedCmd := range rules.AllowedCommands {
-			if strings.HasPrefix(command, allowedCmd) {
-				allowed = true
-				break
+	if rules != nil {
+		// Allowed-commands whitelist
+		if len(rules.AllowedCommands) > 0 {
+			allowed := false
+			for _, a := range rules.AllowedCommands {
+				if strings.HasPrefix(command, a) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return fmt.Errorf("command not in whitelist: %s", command)
 			}
 		}
-		if !allowed {
-			return fmt.Errorf("command not in whitelist: %s", command)
+
+		// Denied patterns from the skill definition
+		for _, pattern := range rules.DeniedPatterns {
+			matched, err := regexp.MatchString(pattern, command)
+			if err != nil {
+				return fmt.Errorf("invalid denied pattern %q: %w", pattern, err)
+			}
+			if matched {
+				return fmt.Errorf("command matches denied pattern: %s", pattern)
+			}
 		}
 	}
 
-	// Check denied patterns blacklist
-	for _, pattern := range rules.DeniedPatterns {
-		matched, err := regexp.MatchString(pattern, command)
-		if err != nil {
-			return fmt.Errorf("invalid pattern: %w", err)
-		}
-		if matched {
-			return fmt.Errorf("command matches denied pattern: %s", pattern)
-		}
-	}
-
-	// Check for dangerous commands
+	// Hard-coded dangerous patterns (always enforced)
 	dangerousPatterns := []string{
 		`rm\s+-rf`,
 		`dd\s+if=`,
 		`mkfs`,
-		`:\(\)\{.*\}`,  // Fork bomb
-		`curl.*\|.*sh`, // Piping to shell
+		`:\(\)\{.*\}`,  // fork bomb
+		`curl.*\|.*sh`, // pipe to shell
 		`wget.*\|.*sh`,
 	}
-
 	for _, pattern := range dangerousPatterns {
 		matched, err := regexp.MatchString(pattern, command)
 		if err == nil && matched {
-			return fmt.Errorf("dangerous command detected: %s", command)
+			return fmt.Errorf("dangerous command pattern detected: %s", command)
 		}
 	}
 
 	return nil
 }
 
-// buildParamProps builds tool parameter properties with type inference
-func buildParamProps(params []string) map[string]tools.Property {
-	props := make(map[string]tools.Property)
-	for _, param := range params {
-		props[param] = inferParamType(param)
+// buildParamProps converts a []ParamDef into the property map expected by
+// tools.BuildParams. Types declared in the skill file are used directly;
+// unknown types fall back to "string".
+func buildParamProps(defs []ParamDef) map[string]tools.Property {
+	props := make(map[string]tools.Property, len(defs))
+	for _, d := range defs {
+		props[d.Name] = paramDefToProperty(d)
 	}
 	return props
 }
 
-// inferParamType infers parameter type from name
-func inferParamType(paramName string) tools.Property {
-	lower := strings.ToLower(paramName)
-
-	// Integers
-	if strings.Contains(lower, "count") ||
-		strings.Contains(lower, "limit") ||
-		strings.Contains(lower, "port") ||
-		strings.Contains(lower, "timeout") ||
-		strings.Contains(lower, "size") {
-		return tools.Property{
-			Type:        "integer",
-			Description: fmt.Sprintf("Parameter: %s", paramName),
-		}
+// paramDefToProperty converts a single ParamDef to a tools.Property.
+// The Type field uses the explicit type from the SKILL.md file, mapping
+// JSON-Schema / OpenAPI style names to the tools package constants.
+func paramDefToProperty(d ParamDef) tools.Property {
+	description := d.Description
+	if description == "" {
+		description = fmt.Sprintf("Parameter: %s", d.Name)
 	}
 
-	// Booleans
-	if strings.HasPrefix(lower, "is_") ||
-		strings.HasPrefix(lower, "enable_") ||
-		strings.HasPrefix(lower, "disable_") ||
-		strings.Contains(lower, "flag") {
-		return tools.Property{
-			Type:        "boolean",
-			Description: fmt.Sprintf("Parameter: %s", paramName),
-		}
-	}
+	switch d.Type {
+	case "integer", "int":
+		return tools.Property{Type: "integer", Description: description}
 
-	// Arrays (very basic heuristic)
-	if strings.HasSuffix(paramName, "s") &&
-		!strings.HasSuffix(lower, "status") &&
-		!strings.HasSuffix(lower, "class") {
+	case "number", "float", "double":
+		return tools.Property{Type: "number", Description: description}
+
+	case "boolean", "bool":
+		return tools.Property{Type: "boolean", Description: description}
+
+	case "array":
 		return tools.Property{
 			Type:        "array",
 			Items:       &tools.Property{Type: "string"},
-			Description: fmt.Sprintf("Parameter: %s", paramName),
+			Description: description,
 		}
-	}
 
-	// Default: string
-	return tools.Property{
-		Type:        "string",
-		Description: fmt.Sprintf("Parameter: %s", paramName),
+	case "string", "":
+		return tools.Property{Type: "string", Description: description}
+
+	default:
+		// Unknown type – default to string and log nothing; caller warned at load time.
+		return tools.Property{Type: "string", Description: description}
 	}
 }

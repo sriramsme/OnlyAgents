@@ -4,7 +4,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
@@ -23,11 +22,8 @@ func LoadCLISkillsFromConfig(ctx context.Context, configDir string, executor int
 		return nil, fmt.Errorf("invalid executor type for CLI skills")
 	}
 
-	// Build path to CLI skills directory
-	cliSkillsDir := filepath.Join(configDir, "skills")
-
 	// Load all .md files
-	cliSkills, err := LoadCLISkillsFromDirectory(cliSkillsDir, cliExecutor)
+	cliSkills, err := LoadCLISkillsFromDirectory(configDir, cliExecutor)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +36,7 @@ func LoadCLISkillsFromConfig(ctx context.Context, configDir string, executor int
 
 	logger.Log.Info("CLI loader registered skills",
 		"count", len(result),
-		"directory", cliSkillsDir)
+		"directory", configDir)
 
 	return result, nil
 }

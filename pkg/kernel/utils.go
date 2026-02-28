@@ -239,7 +239,7 @@ func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kerne
 	c.cliExecutor = cli.NewCLIExecutor(ctx, cliConfig)
 
 	// 3. Setup marketplace manager
-	c.skillMarketplaceManager = marketplace.NewManager(cfg.SkillCacheDir)
+	c.skillMarketplaceManager = marketplace.NewManager(cfg.SkillCacheDir, cfg.SkillConfigsDir)
 
 	// Register ClawHub marketplace
 	if cfg.ClawHubEnabled {
@@ -399,7 +399,8 @@ func (k *Kernel) findSkillByCapability(ctx context.Context, cap core.Capability)
 		"marketplace", best.Marketplace)
 
 	// 3. Download the skill (gets SKILL.md file)
-	skillPath, err := k.skillMarketplaceManager.DownloadSkill(ctx, best.Slug, best.Version, best.Marketplace)
+	skillPath, err := k.skillMarketplaceManager.DownloadAndInstall(
+		ctx, best.Slug, best.Version, best.Marketplace, k.helperClient)
 	if err != nil {
 		return nil, fmt.Errorf("download skill failed: %w", err)
 	}

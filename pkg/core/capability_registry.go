@@ -107,3 +107,15 @@ func (r *CapabilityRegistry) ListBySource(source string) []Capability {
 	}
 	return caps
 }
+
+// ListAll returns all capabilities
+func (r *CapabilityRegistry) ListAll() []Capability {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	caps := make([]Capability, 0, len(r.capabilities))
+	for cap := range r.capabilities {
+		caps = append(caps, cap)
+	}
+	return caps
+}
