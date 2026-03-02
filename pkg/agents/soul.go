@@ -1,4 +1,4 @@
-package soul
+package agents
 
 import (
 	"fmt"

@@ -8,91 +8,12 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
-	"github.com/sriramsme/OnlyAgents/pkg/channels"
-	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
-	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
-
-type AgentInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-type kernelComponents struct {
-	agents                  *agents.Registry
-	connectors              *connectors.Registry
-	channels                *channels.Registry
-	skills                  *skills.Registry
-	user                    *config.UserConfig
-	capabilityMap           map[core.Capability][]AgentInfo
-	skillMarketplaceManager *marketplace.Manager
-	cliExecutor             *cli.CLIExecutor
-	capabilities            *core.CapabilityRegistry
-}
-
-// mustLoadVault loads vault config or exits
-func loadVault(path string) (vault.Vault, error) {
-	v, err := config.LoadVault(path)
-	if err != nil {
-		return nil, fmt.Errorf("load vault: %w", err)
-	}
-	return v, nil
-}
-
-// bootstrap.go
-func loadAgents(ctx context.Context, v vault.Vault, configDir string, kernelBus chan<- core.Event) (*agents.Registry, error) {
-	registry, err := agents.NewRegistry(ctx, configDir, v, kernelBus)
-	if err != nil {
-		return nil, fmt.Errorf("create agents registry: %w", err)
-	}
-	return registry, nil
-}
-
-func loadConnectors(ctx context.Context, v vault.Vault, configDir string, kernelBus chan<- core.Event) (*connectors.Registry, error) {
-	registry, err := connectors.NewRegistry(ctx, configDir, v, kernelBus)
-	if err != nil {
-		return nil, fmt.Errorf("create connector registry: %w", err)
-	}
-	if err := registry.ConnectAll(); err != nil {
-		return nil, fmt.Errorf("connect connectors: %w", err)
-	}
-	return registry, nil
-}
-
-func loadChannels(ctx context.Context, v vault.Vault, configDir string, kernelBus chan<- core.Event) (*channels.Registry, error) {
-	// Create connector registry
-	registry, err := channels.NewRegistry(ctx, configDir, v, kernelBus)
-
-	if err != nil {
-		return nil, fmt.Errorf("create channel registry: %w", err)
-	}
-
-	// Connect all
-	if err := registry.ConnectAll(); err != nil {
-		return nil, fmt.Errorf("connect channels: %w", err)
-	}
-
-	return registry, nil
-}
-
-func loadSkills(ctx context.Context, configDir string, kernelBus chan<- core.Event,
-	capabilityRegistry *core.CapabilityRegistry,
-	cliExecutor *cli.CLIExecutor) (*skills.Registry, error) {
-
-	// Create connector registr
-	registry, err := skills.NewRegistry(ctx, configDir, kernelBus, capabilityRegistry, cliExecutor)
-	if err != nil {
-		return nil, fmt.Errorf("create skills registry: %w", err)
-	}
-
-	return registry, nil
-}
 
 func (k *Kernel) initializeSkills() error {
 	for _, skill := range k.skills.GetAll() {
@@ -161,21 +82,6 @@ func (k *Kernel) assignAgentTools() error {
 	return nil
 }
 
-func (k *Kernel) findBestAgentToolDep(ctx context.Context, task string, capabilities []core.Capability) (tools.AgentInfo, error) {
-	agent, capabilities, found := k.findSpecializedAgent(capabilities)
-	if !found {
-		agent = k.agents.GetGeneral()
-	}
-	if agent == nil {
-		return tools.AgentInfo{}, fmt.Errorf("no agent found for capabilities %v", capabilities)
-	}
-	return tools.AgentInfo{
-		ID:           agent.ID(),
-		Name:         agent.Name(),
-		Capabilities: capabilities,
-	}, nil
-}
-
 // getToolsForAgent returns all tools from the given skill names
 func (k *Kernel) getToolsForAgent(skillNames []string) []tools.ToolDef {
 	var agentTools []tools.ToolDef
@@ -201,90 +107,6 @@ func IsExecutiveTool(toolName string) bool {
 		"query_capabilities": true,
 	}
 	return metaTools[toolName]
-}
-
-func applyConfigDefaults(cfg Config) Config {
-	if cfg.BusBufferSize == 0 {
-		cfg.BusBufferSize = 256
-	}
-	if cfg.AgentConfigsDir == "" {
-		cfg.AgentConfigsDir = "configs/agents/"
-	}
-	if cfg.ConnectorConfigsDir == "" {
-		cfg.ConnectorConfigsDir = "configs/connectors/"
-	}
-	if cfg.ChannelConfigsDir == "" {
-		cfg.ChannelConfigsDir = "configs/channels/"
-	}
-	if cfg.SkillConfigsDir == "" {
-		cfg.SkillConfigsDir = "configs/skills/"
-	}
-	if cfg.VaultPath == "" {
-		cfg.VaultPath = "configs/vault.yaml"
-	}
-	return cfg
-}
-
-func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kernelComponents, error) {
-	var c kernelComponents
-	v, err := loadVault(cfg.VaultPath)
-
-	c.capabilities = core.NewCapabilityRegistry()
-	cliConfig := &cli.ExecutorConfig{
-		AllowedShells:    []string{"bash", "sh"},
-		MaxOutputSize:    1024 * 1024,
-		MaxExecutionTime: 60,
-		WorkingDir:       "/tmp",
-	}
-	c.cliExecutor = cli.NewCLIExecutor(ctx, cliConfig)
-
-	// 3. Setup marketplace manager
-	c.skillMarketplaceManager = marketplace.NewManager(cfg.SkillCacheDir, cfg.SkillConfigsDir)
-
-	// Register ClawHub marketplace
-	if cfg.ClawHubEnabled {
-		key, err := v.GetSecret(ctx, cfg.ClawHubTokenVaultKey)
-		if err == nil {
-			clawHub := marketplace.NewClawHubMarketplace(
-				cfg.ClawHubURL,
-				key,
-			)
-			c.skillMarketplaceManager.RegisterMarketplace(clawHub)
-		} else {
-			logger.Log.Warn("failed to load ClawHub auth token",
-				"error", err)
-		}
-	}
-
-	if err != nil {
-		return c, fmt.Errorf("load vault: %w", err)
-	}
-	c.agents, err = loadAgents(ctx, v, cfg.AgentConfigsDir, bus)
-	if err != nil {
-		return c, fmt.Errorf("load agents: %w", err)
-	}
-	c.connectors, err = loadConnectors(ctx, v, cfg.ConnectorConfigsDir, bus)
-	if err != nil {
-		return c, fmt.Errorf("load connectors: %w", err)
-	}
-	c.channels, err = loadChannels(ctx, v, cfg.ChannelConfigsDir, bus)
-	if err != nil {
-		return c, fmt.Errorf("load channels: %w", err)
-	}
-	c.skills, err = loadSkills(ctx, cfg.SkillConfigsDir, bus, c.capabilities, c.cliExecutor)
-	if err != nil {
-		return c, fmt.Errorf("load skills: %w", err)
-	}
-	c.user, err = config.LoadUserConfig("configs/user.yaml")
-	if err != nil {
-		return c, fmt.Errorf("load user config: %w", err)
-	}
-	c.capabilityMap, err = validateAndBuildCapabilityMap(c.agents, c.skills)
-	if err != nil {
-		return c, fmt.Errorf("validate agent skills: %w", err)
-	}
-
-	return c, nil
 }
 
 // validateAndBuildCapabilityMap validates that all assigned skills exist in skill registry
@@ -367,6 +189,23 @@ Values: %s`,
 		user.DailyRoutine,
 		strings.Join(user.Preferences.WhatIValue, ", "),
 	)
+}
+
+// Dependencies
+
+func (k *Kernel) findBestAgentToolDep(ctx context.Context, task string, capabilities []core.Capability) (tools.AgentInfo, error) {
+	agent, capabilities, found := k.findSpecializedAgent(capabilities)
+	if !found {
+		agent = k.agents.GetGeneral()
+	}
+	if agent == nil {
+		return tools.AgentInfo{}, fmt.Errorf("no agent found for capabilities %v", capabilities)
+	}
+	return tools.AgentInfo{
+		ID:           agent.ID(),
+		Name:         agent.Name(),
+		Capabilities: capabilities,
+	}, nil
 }
 
 // FindByCapability searches for skills by capability

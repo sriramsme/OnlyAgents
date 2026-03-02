@@ -121,7 +121,7 @@ func (r *Registry) ListAll() []string {
 	return agents
 }
 
-// FIXED: Release lock before I/O operations
+// Release lock before I/O operations
 func (r *Registry) StartAll() error {
 	// Get snapshot without holding lock during I/O
 	r.mu.RLock()

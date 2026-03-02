@@ -23,7 +23,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
-	"github.com/sriramsme/OnlyAgents/pkg/soul"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -39,7 +38,7 @@ func NewAgent(
 		return nil, fmt.Errorf("llm client is required")
 	}
 
-	agentSoul := soul.NewSoul(cfg.Soul)
+	agentSoul := NewSoul(cfg.Soul)
 
 	// Create agent context from parent - ties agent lifecycle to kernel
 	agentCtx, cancel := context.WithCancel(ctx)
