@@ -1,5 +1,7 @@
 //go:build vault_hashicorp
 
+// Untested
+
 package providers
 
 import (

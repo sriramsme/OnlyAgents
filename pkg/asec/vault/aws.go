@@ -1,5 +1,7 @@
 //go:build vault_aws
 
+// Untested
+
 package vault
 
 import (

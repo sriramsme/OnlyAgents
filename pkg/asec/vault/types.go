@@ -1,4 +1,3 @@
-// Package vault provides unified secrets management for OnlyAgents
 package vault
 
 import (

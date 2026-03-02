@@ -19,10 +19,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
-// const (
-// 	version = "1.0.0"
-// )
-
 // init registers the Gmail connector factory
 // Kernel will call this factory to create instances
 func init() {

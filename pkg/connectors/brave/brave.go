@@ -15,10 +15,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
-const (
-// version = "1.0.0"
-)
-
 func init() {
 	// Register factory with connectors package
 	connectors.Register("brave", NewConnector)

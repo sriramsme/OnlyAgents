@@ -1,5 +1,7 @@
 //go:build vault_gcp
 
+// Untested
+
 package providers
 
 import (
