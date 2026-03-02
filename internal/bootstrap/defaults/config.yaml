@@ -1,0 +1,6 @@
+bus_buffer_size: 256
+default_agent_id: "general"
+
+clawhub_enabled: true
+clawhub_token_vault_key: "clawhub_token"
+clawhub_url: "https://clawhub.dev"

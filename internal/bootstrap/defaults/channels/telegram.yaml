@@ -3,6 +3,7 @@
 
 platform: telegram
 enabled: true  # Set to true when ready
+priority: 1
 
 # Vault credentials (required)
 credentials:
