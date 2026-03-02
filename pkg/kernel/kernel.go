@@ -30,6 +30,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
@@ -48,6 +49,7 @@ type Kernel struct {
 	skillMarketplaceManager *marketplace.Manager
 	cliExecutor             *cli.CLIExecutor
 	capabilities            *core.CapabilityRegistry
+	cm                      *memory.ConversationManager
 
 	// defaultAgentID is used when a channel message doesn't specify a target agent
 	defaultAgentID string
@@ -116,6 +118,7 @@ func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Ker
 		capabilities:            components.capabilities,
 		skillMarketplaceManager: components.skillMarketplaceManager,
 		cliExecutor:             components.cliExecutor,
+		cm:                      components.cm,
 		defaultAgentID:          cfg.DefaultAgentID,
 		// helperClient:            components.helperClient,
 		cfg:    cfg,
@@ -357,6 +360,9 @@ func (k *Kernel) route(evt core.Event) {
 
 	case core.TaskAssigned:
 		k.handleTaskAssigned(evt)
+
+	case core.NewSession:
+		k.handleNewSession(evt)
 
 	// Future
 	case core.AgentMessage:

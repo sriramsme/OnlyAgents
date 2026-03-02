@@ -23,6 +23,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -33,6 +34,7 @@ func NewAgent(
 	llmClient llm.Client,
 	tools []tools.ToolDef,
 	outbox chan<- core.Event,
+	cm *memory.ConversationManager,
 ) (*Agent, error) {
 	if llmClient == nil {
 		return nil, fmt.Errorf("llm client is required")
@@ -54,6 +56,7 @@ func NewAgent(
 		soul:           agentSoul,
 		tools:          tools,
 		outbox:         outbox,
+		cm:             cm,
 		inbox:          make(chan core.Event, cfg.BufferSize),
 		ctx:            agentCtx,
 		cancel:         cancel,
@@ -291,23 +294,33 @@ func (a *Agent) safeSend(evt core.Event, description string) {
 // 	return a.execute(ctx, userMessage, uuid.NewString())
 // }
 
+// nolint:gocyclo
 // execute is the internal LLM loop, shared by both sync and async paths.
 func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, correlationID string) (string, error) {
-
 	a.logger.Debug("executing with meta-tools",
 		"message_length", len(payload.Message),
 		"correlation_id", correlationID,
 		"is_executive", a.isExecutive)
 
-	messages := []llm.Message{
-		llm.SystemMessage(a.systemPrompt),
-		llm.UserMessage(payload.Message),
+	//persist incoming user message
+	if err := a.cm.SaveUserMessage(ctx, a.id, payload.Message); err != nil {
+		// Non-fatal: log and continue. Losing one message is better than
+		// crashing the entire request.
+		a.logger.Warn("failed to save user message", "err", err, "correlation_id", correlationID)
 	}
 
-	llmCallCount := 0
+	// build messages from history instead of scratch
+	history, err := a.cm.GetHistory(ctx, a.id, memory.DefaultHistoryLimit)
+	if err != nil {
+		a.logger.Warn("failed to load history, falling back to empty", "err", err)
+		history = []llm.Message{}
+	}
+	messages := make([]llm.Message, 0, len(history)+1)
+	messages = append(messages, llm.SystemMessage(a.systemPrompt))
+	messages = append(messages, history...)
 
+	llmCallCount := 0
 	for {
-		// Check context
 		select {
 		case <-ctx.Done():
 			return "", fmt.Errorf("request cancelled: %w", ctx.Err())
@@ -318,7 +331,6 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 		llmPhase := fmt.Sprintf("%s_llm_%d", a.id, llmCallCount)
 		logger.Timing.StartPhase(correlationID, llmPhase)
 
-		// Make LLM call
 		resp, err := a.llmClient.Chat(ctx, &llm.Request{
 			Messages: messages,
 			Tools:    a.tools,
@@ -328,9 +340,7 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			},
 		})
 		if err != nil {
-			logger.Timing.EndPhaseWithMetadata(correlationID, llmPhase, map[string]any{
-				"error": "failed",
-			})
+			logger.Timing.EndPhaseWithMetadata(correlationID, llmPhase, map[string]any{"error": "failed"})
 			return "", fmt.Errorf("llm request failed: %w", err)
 		}
 		logger.Timing.EndPhaseWithMetadata(correlationID, llmPhase, map[string]any{
@@ -349,52 +359,62 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			"tokens", resp.Usage.TotalTokens,
 			"correlation_id", correlationID)
 
-		// No tool calls - return final response
+		// No tool calls — final response.
 		if !resp.HasToolCalls() {
+			// persist final assistant response
+			if err := a.cm.SaveAssistantMessage(ctx, a.id, resp.Content, resp.ReasoningContent, nil); err != nil {
+				a.logger.Warn("failed to save assistant message", "err", err, "correlation_id", correlationID)
+			}
 			return resp.Content, nil
 		}
 
-		// Add assistant turn
+		// Has tool calls — persist assistant turn and add to local slice.
+		//persist assistant turn with tool calls
+		if err := a.cm.SaveAssistantMessage(ctx, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
+			a.logger.Warn("failed to save assistant tool-call message", "err", err, "correlation_id", correlationID)
+		}
+
 		messages = append(messages, llm.AssistantMessageWithTools(
 			resp.Content, resp.ReasoningContent, resp.ToolCalls,
 		))
 
-		// Execute tool calls
 		for _, tc := range resp.ToolCalls {
 			var result any
-			var err error
+			var toolErr error
 
-			// Check if it's a meta-tool (executive only)
 			if a.isExecutive && isMetaTool(tc.Function.Name) {
-				result, err = a.handleMetaTool(ctx, correlationID, tc, payload.Channel)
+				result, toolErr = a.handleMetaTool(ctx, correlationID, tc, payload.Channel)
 			} else {
-				// Regular tool call via skill
-				result, err = a.requestToolCall(ctx, correlationID, tc)
+				result, toolErr = a.requestToolCall(ctx, correlationID, tc)
 			}
 
-			if err != nil {
-				// Add error to conversation - let LLM handle it
+			if toolErr != nil {
 				a.logger.Warn("tool call failed",
 					"tool", tc.Function.Name,
-					"error", err,
+					"error", toolErr,
 					"correlation_id", correlationID)
+				errContent := fmt.Sprintf(`{"error": "%s"}`, toolErr.Error())
 
-				messages = append(messages, llm.ToolResultMessage(
-					tc.ID, tc.Function.Name, fmt.Sprintf(`{"error": "%s"}`, err.Error()),
-				))
+				if err := a.cm.SaveToolResult(ctx, a.id, tc.ID, tc.Function.Name, toolErr.Error(), true); err != nil {
+					a.logger.Warn("failed to save tool error result", "err", err)
+				}
+
+				messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, errContent))
 				continue
 			}
 
-			// Add successful result
 			resultJSON, err := json.Marshal(result)
 			if err != nil {
 				return "", fmt.Errorf("marshal tool result: %w", err)
 			}
-			messages = append(messages, llm.ToolResultMessage(
-				tc.ID, tc.Function.Name, string(resultJSON),
-			))
-		}
+			resultStr := string(resultJSON)
 
+			if err := a.cm.SaveToolResult(ctx, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
+				a.logger.Warn("failed to save tool result", "err", err)
+			}
+
+			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, resultStr))
+		}
 		// Loop: LLM will see tool results and continue
 	}
 }

@@ -3,6 +3,8 @@ package kernel
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
@@ -11,9 +13,12 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
+	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/storage/sqlite"
 )
 
 type AgentInfo struct {
@@ -31,6 +36,7 @@ type kernelComponents struct {
 	skillMarketplaceManager *marketplace.Manager
 	cliExecutor             *cli.CLIExecutor
 	capabilities            *core.CapabilityRegistry
+	cm                      *memory.ConversationManager
 }
 
 func applyConfigDefaults(cfg Config) Config {
@@ -57,9 +63,24 @@ func applyConfigDefaults(cfg Config) Config {
 
 func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kernelComponents, error) {
 	var c kernelComponents
+
+	store, err := loadStore(ctx, cfg)
+	if err != nil {
+		return c, fmt.Errorf("load store: %w", err)
+	}
+
+	c.cm, err = loadConversationManager(ctx, cfg, store)
+	if err != nil {
+		return c, fmt.Errorf("load conversation manager: %w", err)
+	}
+
 	v, err := loadVault(cfg.VaultPath)
+	if err != nil {
+		return c, fmt.Errorf("load vault: %w", err)
+	}
 
 	c.capabilities = core.NewCapabilityRegistry()
+
 	cliConfig := &cli.ExecutorConfig{
 		AllowedShells:    []string{"bash", "sh"},
 		MaxOutputSize:    1024 * 1024,
@@ -86,10 +107,7 @@ func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kerne
 		}
 	}
 
-	if err != nil {
-		return c, fmt.Errorf("load vault: %w", err)
-	}
-	c.agents, err = loadAgents(ctx, v, cfg.AgentConfigsDir, bus)
+	c.agents, err = loadAgents(ctx, v, cfg.AgentConfigsDir, bus, c.cm)
 	if err != nil {
 		return c, fmt.Errorf("load agents: %w", err)
 	}
@@ -117,6 +135,32 @@ func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kerne
 	return c, nil
 }
 
+// loadStore loads the SQLite storage.
+func loadStore(ctx context.Context, cfg Config) (storage.Storage, error) {
+	store, err := sqlite.New(filepath.Join(os.Getenv("HOME"), ".onlyagents", "onlyagents.db"))
+	if err != nil {
+		logger.Log.Error("storage init failed", "err", err)
+		return nil, fmt.Errorf("storage init failed: %w", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			logger.Log.Error("storage close failed", "err", err)
+		}
+	}()
+
+	return store, nil
+}
+
+// loadConversationManager loads the ConversationManager.
+// It is shared by all agents, so they can persist messages and tool results.
+func loadConversationManager(ctx context.Context, cfg Config, store storage.Storage) (*memory.ConversationManager, error) {
+	cm, err := memory.New(ctx, store)
+	if err != nil {
+		return nil, fmt.Errorf("create conversation manager: %w", err)
+	}
+	return cm, nil
+}
+
 // mustLoadVault loads vault config or exits
 func loadVault(path string) (vault.Vault, error) {
 	v, err := config.LoadVault(path)
@@ -127,8 +171,12 @@ func loadVault(path string) (vault.Vault, error) {
 }
 
 // bootstrap.go
-func loadAgents(ctx context.Context, v vault.Vault, configDir string, kernelBus chan<- core.Event) (*agents.Registry, error) {
-	registry, err := agents.NewRegistry(ctx, configDir, v, kernelBus)
+func loadAgents(
+	ctx context.Context, v vault.Vault,
+	configDir string, kernelBus chan<- core.Event,
+	cm *memory.ConversationManager,
+) (*agents.Registry, error) {
+	registry, err := agents.NewRegistry(ctx, configDir, v, kernelBus, cm)
 	if err != nil {
 		return nil, fmt.Errorf("create agents registry: %w", err)
 	}

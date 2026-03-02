@@ -527,6 +527,30 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	logger.Timing.LogSummary(evt.CorrelationID)
 }
 
+// handleNewSession ends the current conversation and starts a fresh one.
+// Triggered by a NewSession event, typically from a /newsession channel command.
+func (k *Kernel) handleNewSession(evt core.Event) {
+	correlationID := evt.CorrelationID
+	if correlationID == "" {
+		correlationID = uuid.NewString()
+	}
+
+	newConvID, err := k.cm.StartNewSession(k.ctx)
+	if err != nil {
+		k.logger.Error("failed to start new session",
+			"err", err,
+			"correlation_id", correlationID)
+		return
+	}
+
+	// All agents share the same ConversationManager pointer, so they pick up
+	// the new convID automatically on their next GetHistory call.
+	// Nothing further to broadcast.
+	k.logger.Info("new session started",
+		"conv_id", newConvID,
+		"correlation_id", correlationID)
+}
+
 // sendToolError: Helper to send tool error back to agent
 func (k *Kernel) sendToolError(evt core.Event, errorMsg string) {
 	if evt.ReplyTo == nil {

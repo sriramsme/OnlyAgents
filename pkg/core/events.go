@@ -65,6 +65,10 @@ const (
 	// Note: NOT routed through executive - engine manages DAG internally
 	TaskAssigned EventType = "task_assigned"
 
+	// NewSession: Start a new session
+	// Flow: Kernel → Agent
+	NewSession EventType = "new_session"
+
 	// =====================================
 	// Future: Agent-to-Agent Communication
 	// =====================================

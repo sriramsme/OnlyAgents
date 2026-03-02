@@ -7,6 +7,7 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -35,6 +36,8 @@ type Agent struct {
 
 	// Inbox — kernel sends events here (execute requests, tool results)
 	inbox chan core.Event
+
+	cm *memory.ConversationManager // shared across all agents, injected by kernel
 
 	systemPrompt  string
 	findBestAgent tools.FindBestAgentFunc // injected by kernel only for executive agents
