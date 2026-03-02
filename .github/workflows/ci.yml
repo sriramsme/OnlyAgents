@@ -101,7 +101,7 @@ jobs:
           ./onlyagents-linux-amd64 server --help
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: onlyagents-${{ matrix.goos }}-${{ matrix.goarch }}
           path: onlyagents-*
