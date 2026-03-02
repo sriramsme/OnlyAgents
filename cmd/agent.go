@@ -90,15 +90,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	fmt.Println("========================")
 
 	// Initialize kernel
-	k, err := kernel.NewKernel(kernel.Config{
-		BusBufferSize:       agentBusBufferSize,
-		DefaultAgentID:      agentDefaultID,
-		AgentConfigsDir:     agentAgentConfigsDir,
-		ConnectorConfigsDir: agentConnectorConfigsDir,
-		ChannelConfigsDir:   agentChannelConfigsDir,
-		SkillConfigsDir:     agentSkillConfigsDir,
-		VaultPath:           agentVaultPath,
-	}, ctx, cancel)
+	k, err := kernel.NewKernel(ctx, cancel)
 
 	if err != nil {
 		logger.Log.Error("failed to initialize kernel", "error", err)

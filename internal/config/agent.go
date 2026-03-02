@@ -14,30 +14,28 @@ import (
 
 // load reads an agent config file into a Config struct.
 // It does not validate or attach a vault — callers do that.
-func load(configPath string) (*Config, error) {
-	v := viper.New()
-	setAgentDefaults(v)
-
-	if configPath != "" {
-		v.SetConfigFile(configPath)
-	} else {
-		v.SetConfigName("agent")
-		v.SetConfigType("yaml")
-		v.AddConfigPath(".")
-		v.AddConfigPath("$HOME/.onlyagents")
-		v.AddConfigPath("/etc/onlyagents")
+func load(configPath string) (*AgentConfig, error) {
+	if configPath == "" {
+		return nil, fmt.Errorf("config path empty")
 	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("agent config not found: %s", configPath)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configPath)
+
+	setAgentDefaults(v)
 
 	v.SetEnvPrefix("ONLYAGENTS")
 	v.AutomaticEnv()
 
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("read config: %w", err)
-		}
+		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg Config
+	var cfg AgentConfig
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
@@ -53,7 +51,7 @@ func load(configPath string) (*Config, error) {
 
 // LoadAgentConfig loads a single agent config and attaches the provided vault.
 // The vault must already be initialised and validated by the caller (entry point).
-func LoadAgentConfig(configPath string, v vault.Vault) (*Config, error) {
+func LoadAgentConfig(configPath string, v vault.Vault) (*AgentConfig, error) {
 	cfg, err := load(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("load agent config: %w", err)
@@ -65,13 +63,13 @@ func LoadAgentConfig(configPath string, v vault.Vault) (*Config, error) {
 // LoadAllAgentsConfig loads every *.yaml under dir, sharing a single vault
 // instance across all of them. Returns the configs and the vault so the
 // caller owns its lifecycle.
-func LoadAllAgentsConfig(dir string, v vault.Vault) ([]*Config, error) {
+func LoadAllAgentsConfig(dir string, v vault.Vault) ([]*AgentConfig, error) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read agents dir: %w", err)
 	}
 
-	var configs []*Config
+	var configs []*AgentConfig
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
 			continue

@@ -8,7 +8,7 @@ import (
 )
 
 // Config represents the complete agent configuration.
-type Config struct {
+type AgentConfig struct {
 	ID             string           `mapstructure:"id"`
 	Name           string           `mapstructure:"name"`
 	IsExecutive    bool             `mapstructure:"is_executive"`
@@ -237,13 +237,13 @@ type UserLearned struct {
 }
 
 // GetVault returns the vault instance attached to this config.
-func (c *Config) GetVault() vault.Vault { return c.v }
+func (c *AgentConfig) GetVault() vault.Vault { return c.v }
 
 // setVault attaches a vault instance (used by loaders only).
-func (c *Config) setVault(v vault.Vault) { c.v = v }
+func (c *AgentConfig) setVault(v vault.Vault) { c.v = v }
 
 // Close releases vault resources.
-func (c *Config) Close() error {
+func (c *AgentConfig) Close() error {
 	if c.v != nil {
 		return c.v.Close()
 	}
@@ -251,7 +251,7 @@ func (c *Config) Close() error {
 }
 
 // Validate checks required fields are present.
-func (c *Config) Validate() error {
+func (c *AgentConfig) Validate() error {
 	if c.ID == "" {
 		return fmt.Errorf("agent.id is required")
 	}

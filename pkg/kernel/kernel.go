@@ -15,7 +15,6 @@ package kernel
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -24,6 +23,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/sriramsme/OnlyAgents/internal/bootstrap"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
@@ -34,6 +34,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
+	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
 // Kernel is the central router. It wires everything together and owns the event bus.
@@ -43,7 +44,7 @@ type Kernel struct {
 	skills     *skills.Registry
 	connectors *connectors.Registry
 	channels   *channels.Registry
-	workflow   *core.Engine
+	workflow   *workflow.Engine
 	user       *config.UserConfig
 
 	skillMarketplaceManager *marketplace.Manager
@@ -57,7 +58,7 @@ type Kernel struct {
 	// helperClient is used for skill installation
 	helperClient llm.Client
 
-	cfg Config
+	cfg *config.KernelConfig
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -65,42 +66,26 @@ type Kernel struct {
 	logger *slog.Logger
 }
 
-// Config is passed to NewKernel to configure it.
-type Config struct {
-	BusBufferSize       int
-	DefaultAgentID      string
-	AgentConfigsDir     string
-	ConnectorConfigsDir string
-	ChannelConfigsDir   string
-	SkillConfigsDir     string
-	VaultPath           string
+func NewKernel(ctx context.Context, cancel context.CancelFunc) (*Kernel, error) {
 
-	SkillCacheDir        string
-	ClawHubEnabled       bool
-	ClawHubTokenVaultKey string
-	ClawHubURL           string
-}
+	paths, err := bootstrap.Init()
+	if err != nil {
+		return nil, fmt.Errorf("init paths: %w", err)
+	}
 
-func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Kernel, error) {
-	cfg = applyConfigDefaults(cfg)
+	cfg, err := config.LoadKernelConfig(paths.ConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("load kernel config: %w", err)
+	}
 
 	kernelBus := make(chan core.Event, cfg.BusBufferSize)
 
-	components, err := loadComponents(ctx, cfg, kernelBus)
+	components, err := loadComponents(ctx, paths, cfg, kernelBus)
 	if err != nil {
 		return nil, err
 	}
 
 	buildSystemPrompts(components.user, components.agents, components.capabilityMap)
-
-	db, err := sql.Open("sqlite", "workflows.db")
-	if err != nil {
-		return nil, fmt.Errorf("open workflow db: %w", err)
-	}
-	workflowEngine, err := core.NewEngine(db, kernelBus)
-	if err != nil {
-		return nil, fmt.Errorf("create workflow engine: %w", err)
-	}
 
 	fmt.Println("kernel created")
 	fmt.Println("skills: ", components.skills.ListAll())
@@ -114,7 +99,7 @@ func NewKernel(cfg Config, ctx context.Context, cancel context.CancelFunc) (*Ker
 		connectors:              components.connectors,
 		channels:                components.channels,
 		user:                    components.user,
-		workflow:                workflowEngine,
+		workflow:                components.workflow,
 		capabilities:            components.capabilities,
 		skillMarketplaceManager: components.skillMarketplaceManager,
 		cliExecutor:             components.cliExecutor,
@@ -182,6 +167,13 @@ func (k *Kernel) Start() error {
 	if err := k.initializeSkills(); err != nil {
 		return fmt.Errorf("failed to initialize skills: %w", err)
 	}
+
+	// Start workflow engine
+	if err := k.workflow.Start(); err != nil {
+		return fmt.Errorf("failed to start workflow engine: %w", err)
+	}
+
+	k.workflow.SetAgentFinder(k.findBestAgentToolDep)
 
 	// assign agent tools
 	if err := k.assignAgentTools(); err != nil {
@@ -360,6 +352,9 @@ func (k *Kernel) route(evt core.Event) {
 
 	case core.TaskAssigned:
 		k.handleTaskAssigned(evt)
+
+	case core.TaskCompleted:
+		k.handleTaskCompleted(evt)
 
 	case core.NewSession:
 		k.handleNewSession(evt)

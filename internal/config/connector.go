@@ -18,6 +18,15 @@ type ConnectorConfigFile struct {
 
 // LoadConnectorConfig loads a single connector config file
 func LoadConnectorConfig(configPath string) (*ConnectorConfigFile, error) {
+
+	if configPath == "" {
+		return nil, fmt.Errorf("config path empty")
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("connector config not found: %s", configPath)
+	}
+
 	v := viper.New()
 	v.SetConfigFile(configPath)
 

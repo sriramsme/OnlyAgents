@@ -23,6 +23,7 @@ func NewRegistry(
 		return nil, fmt.Errorf("load channel configs: %w", err)
 	}
 
+	var activePriority int
 	registry := &Registry{
 		channels: make(map[string]Channel),
 	}
@@ -44,6 +45,12 @@ func NewRegistry(
 		}
 
 		registry.channels[name] = channel
+
+		// Set active channel, keep the highest priority
+		if cfg.Priority > activePriority {
+			activePriority = cfg.Priority
+			registry.active = channel
+		}
 	}
 
 	return registry, nil
@@ -53,6 +60,18 @@ func (r *Registry) Register(c Channel) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.channels[c.PlatformName()] = c
+}
+
+func (r *Registry) GetActive() *Channel {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return &r.active
+}
+
+func (r *Registry) SetActive(c Channel) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.active = c
 }
 
 // Get returns a channel by name

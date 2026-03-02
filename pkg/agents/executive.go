@@ -10,6 +10,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
+	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
 // These methods are used by executive agents to delegate and create workflows
@@ -121,101 +122,108 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 	}
 }
 
-// requestWorkflow creates a workflow and waits for completion
-func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
-	logger.Timing.StartPhase(correlationID, "workflow_creation")
-	wf, err := a.parseWorkflow(correlationID, tc)
-	if err != nil {
-		return nil, err
-	}
-	logger.Timing.EndPhase(correlationID, "workflow_creation")
-	return a.submitAndWait(ctx, correlationID, wf)
-}
-
-func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall) (core.Workflow, error) {
-	var input tools.CreateWorkflowInput
-	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
-		return core.Workflow{}, fmt.Errorf("invalid workflow args: %w", err)
-	}
-
-	a.logger.Info("creating workflow", "name", input.Name, "tasks", len(input.Tasks), "correlation_id", correlationID)
-
-	tasks := make([]*core.Task, 0, len(input.Tasks))
-	for _, t := range input.Tasks {
-		taskID := t.ID
-		if taskID == "" {
-			taskID = uuid.NewString()
-		}
-		tasks = append(tasks, &core.Task{
-			ID:                   taskID,
-			Name:                 t.Name,
-			Description:          t.Description,
-			Type:                 core.TaskTypeAgentExecution,
-			DependsOn:            t.DependsOn,
-			RequiredCapabilities: t.RequiredCapabilities,
-			CreatedAt:            time.Now(),
-			Status:               core.TaskStatusPending,
-			MaxRetries:           3,
-		})
-	}
-
-	return core.Workflow{
-		ID:          uuid.NewString(),
-		Name:        input.Name,
-		Description: fmt.Sprintf("Workflow created by executive agent for: %s", input.Name),
-		Tasks:       tasks,
-		CreatedAt:   time.Now(),
-		CreatedBy:   a.id,
-		Status:      core.WorkflowStatusPending,
-	}, nil
-}
-
-func (a *Agent) submitAndWait(ctx context.Context, correlationID string, wf core.Workflow) (any, error) {
-	replyCh := make(chan core.Event, 1)
+// submitWorkflow sends workflow to kernel (non-blocking)
+func (a *Agent) submitWorkflow(ctx context.Context, correlationID string, wf *workflow.WorkflowDefinition) error {
 	event := core.Event{
 		Type:          core.WorkflowSubmitted,
 		CorrelationID: correlationID,
 		AgentID:       a.id,
-		ReplyTo:       replyCh,
-		Payload:       core.WorkflowPayload{Workflow: wf},
+		Payload: workflow.WorkflowPayload{
+			Workflow: *wf,
+		},
 	}
 
 	select {
 	case a.outbox <- event:
 		a.logger.Debug("workflow submitted", "workflow_id", wf.ID)
+		return nil
 	case <-ctx.Done():
-		return nil, fmt.Errorf("request cancelled")
+		return fmt.Errorf("request cancelled")
 	case <-a.ctx.Done():
-		return nil, fmt.Errorf("agent shutting down")
+		return fmt.Errorf("agent shutting down")
 	case <-time.After(5 * time.Second):
-		return nil, fmt.Errorf("failed to submit workflow")
-	}
-
-	select {
-	case resultEvt := <-replyCh:
-		return a.handleWorkflowResult(correlationID, resultEvt)
-	case <-ctx.Done():
-		return nil, fmt.Errorf("request cancelled")
-	case <-a.ctx.Done():
-		return nil, fmt.Errorf("agent shutting down")
-	case <-time.After(10 * time.Minute):
-		return nil, fmt.Errorf("workflow timeout")
+		return fmt.Errorf("failed to submit workflow")
 	}
 }
 
-func (a *Agent) handleWorkflowResult(correlationID string, evt core.Event) (any, error) {
-	result, ok := evt.Payload.(core.WorkflowResultPayload)
-	if !ok {
-		return nil, fmt.Errorf("invalid workflow result payload")
+// parseWorkflow - capture original user query and context
+func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalMessage string, channel *core.ChannelMetadata) (*workflow.WorkflowDefinition, error) {
+	var input tools.CreateWorkflowInput
+	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
+		return nil, fmt.Errorf("invalid workflow args: %w", err)
 	}
-	if result.Error != "" {
-		return nil, fmt.Errorf("workflow error: %s", result.Error)
+
+	a.logger.Info("creating workflow",
+		"name", input.Name,
+		"tasks", len(input.Tasks))
+
+	// Create tasks
+	tasks := make([]*workflow.TaskDefinition, 0, len(input.Tasks))
+	for _, t := range input.Tasks {
+		taskID := t.ID
+		if taskID == "" {
+			taskID = uuid.NewString()
+		}
+
+		caps := make([]core.Capability, len(t.RequiredCapabilities))
+		for i, capStr := range t.RequiredCapabilities {
+			caps[i] = core.Capability(capStr)
+		}
+
+		tasks = append(tasks, &workflow.TaskDefinition{
+			ID:                   taskID,
+			Name:                 t.Name,
+			Description:          t.Description,
+			Type:                 "agent_execution",
+			DependsOn:            t.DependsOn,
+			RequiredCapabilities: caps,
+			MaxRetries:           3,
+		})
 	}
-	a.logger.Info("workflow completed",
-		"workflow_id", result.WorkflowID,
-		"status", result.Status,
-		"correlation_id", correlationID)
-	return result.Results, nil
+
+	// Store original context in metadata for later synthesis
+	metadata := make(map[string]string)
+	metadata["original_message"] = originalMessage
+	metadata["correlation_id"] = correlationID
+
+	// Store channel metadata if available
+	if channel != nil {
+		channelJSON, err := json.Marshal(channel)
+		if err != nil {
+			a.logger.Warn("failed to marshal channel metadata", "err", err)
+		}
+		metadata["channel"] = string(channelJSON)
+	}
+
+	return &workflow.WorkflowDefinition{
+		ID:          uuid.NewString(),
+		Name:        input.Name,
+		Description: fmt.Sprintf("Workflow created by executive for: %s", input.Name),
+		Tasks:       tasks,
+		CreatedBy:   a.id,
+		Status:      "pending",
+		Metadata:    metadata, // Store context here
+	}, nil
+}
+
+// requestWorkflow - pass original message and channel
+func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channel *core.ChannelMetadata) (any, error) {
+	logger.Timing.StartPhase(correlationID, "workflow_creation")
+	wf, err := a.parseWorkflow(correlationID, tc, originalMessage, channel)
+	if err != nil {
+		return nil, err
+	}
+	logger.Timing.EndPhase(correlationID, "workflow_creation")
+
+	if err := a.submitWorkflow(ctx, correlationID, wf); err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"workflow_id": wf.ID,
+		"status":      "submitted",
+		"message":     fmt.Sprintf("Workflow '%s' with %d tasks has been submitted. You'll be notified when complete.", wf.Name, len(wf.Tasks)),
+	}, nil
 }
 
 // requestCapabilityQuery queries available capabilities from kernel
@@ -231,7 +239,7 @@ func (a *Agent) requestAgentSelection(ctx context.Context, correlationID string,
 }
 
 // handleMetaTool routes meta-tool calls to appropriate handlers
-func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, channelMetadata *core.ChannelMetadata) (any, error) {
+func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channelMetadata *core.ChannelMetadata) (any, error) {
 	a.logger.Debug("handling meta-tool",
 		"tool", tc.Function.Name,
 		"correlation_id", correlationID)
@@ -241,7 +249,7 @@ func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc too
 		return a.requestDelegation(ctx, correlationID, tc, channelMetadata)
 
 	case "create_workflow":
-		return a.requestWorkflow(ctx, correlationID, tc)
+		return a.requestWorkflow(ctx, correlationID, tc, originalMessage, channelMetadata)
 
 	case "find_best_agent":
 		return a.requestAgentSelection(ctx, correlationID, tc)
@@ -312,6 +320,11 @@ func (a *Agent) sendSyncResponse(replyCh chan<- core.Event, correlationID string
 }
 
 func (a *Agent) sendOutboundMessage(payload core.AgentExecutePayload, correlationID string, response string) {
+	if payload.Channel == nil {
+		a.logger.Error("no channel metadata available for outbound message",
+			"correlation_id", correlationID)
+		return
+	}
 	evt := core.Event{
 		Type:          core.OutboundMessage,
 		CorrelationID: correlationID,

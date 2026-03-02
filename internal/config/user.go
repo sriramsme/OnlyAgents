@@ -9,6 +9,14 @@ import (
 
 // LoadUserConfig loads the user profile
 func LoadUserConfig(configPath string) (*UserConfig, error) {
+	if configPath == "" {
+		return nil, fmt.Errorf("config path empty")
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("user config not found: %s", configPath)
+	}
+
 	v := viper.New()
 	v.SetConfigFile(configPath)
 

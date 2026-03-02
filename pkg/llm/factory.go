@@ -12,12 +12,12 @@ import (
 
 // Factory creates LLM clients from configuration
 type Factory struct {
-	config *config.Config
+	config *config.AgentConfig
 	vault  vault.Vault
 }
 
 // NewFactory creates a new LLM client factory
-func NewFactory(cfg *config.Config, vault vault.Vault) *Factory {
+func NewFactory(cfg *config.AgentConfig, vault vault.Vault) *Factory {
 	return &Factory{config: cfg, vault: vault}
 }
 

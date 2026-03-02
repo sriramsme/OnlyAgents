@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/viper"
@@ -18,26 +19,23 @@ func LoadServerConfig(configPath string) (*ServerConfig, error) {
 
 // loadServer reads a server config file into a ServerConfig struct.
 func loadServer(configPath string) (*ServerConfig, error) {
-	v := viper.New()
-	setServerDefaults(v)
-
-	if configPath != "" {
-		v.SetConfigFile(configPath)
-	} else {
-		v.SetConfigName("server")
-		v.SetConfigType("yaml")
-		v.AddConfigPath(".")
-		v.AddConfigPath("$HOME/.onlyagents")
-		v.AddConfigPath("/etc/onlyagents")
+	if configPath == "" {
+		return nil, fmt.Errorf("config path empty")
 	}
 
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("server config not found: %s", configPath)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configPath)
+
+	setServerDefaults(v)
 	v.SetEnvPrefix("ONLYAGENTS")
 	v.AutomaticEnv()
 
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("read server config: %w", err)
-		}
+		return nil, fmt.Errorf("read server config: %w", err)
 	}
 
 	var cfg ServerConfig

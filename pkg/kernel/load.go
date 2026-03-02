@@ -3,9 +3,8 @@ package kernel
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 
+	"github.com/sriramsme/OnlyAgents/internal/bootstrap"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
@@ -19,6 +18,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/storage/sqlite"
+	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
 type AgentInfo struct {
@@ -37,44 +37,23 @@ type kernelComponents struct {
 	cliExecutor             *cli.CLIExecutor
 	capabilities            *core.CapabilityRegistry
 	cm                      *memory.ConversationManager
+	workflow                *workflow.Engine
 }
 
-func applyConfigDefaults(cfg Config) Config {
-	if cfg.BusBufferSize == 0 {
-		cfg.BusBufferSize = 256
-	}
-	if cfg.AgentConfigsDir == "" {
-		cfg.AgentConfigsDir = "configs/agents/"
-	}
-	if cfg.ConnectorConfigsDir == "" {
-		cfg.ConnectorConfigsDir = "configs/connectors/"
-	}
-	if cfg.ChannelConfigsDir == "" {
-		cfg.ChannelConfigsDir = "configs/channels/"
-	}
-	if cfg.SkillConfigsDir == "" {
-		cfg.SkillConfigsDir = "configs/skills/"
-	}
-	if cfg.VaultPath == "" {
-		cfg.VaultPath = "configs/vault.yaml"
-	}
-	return cfg
-}
-
-func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kernelComponents, error) {
+func loadComponents(ctx context.Context, paths *bootstrap.Paths, cfg *config.KernelConfig, bus chan core.Event) (kernelComponents, error) {
 	var c kernelComponents
 
-	store, err := loadStore(ctx, cfg)
+	store, err := loadStore(ctx, paths.DBPath)
 	if err != nil {
 		return c, fmt.Errorf("load store: %w", err)
 	}
 
-	c.cm, err = loadConversationManager(ctx, cfg, store)
+	c.cm, err = loadConversationManager(ctx, store)
 	if err != nil {
 		return c, fmt.Errorf("load conversation manager: %w", err)
 	}
 
-	v, err := loadVault(cfg.VaultPath)
+	v, err := loadVault(paths.VaultPath)
 	if err != nil {
 		return c, fmt.Errorf("load vault: %w", err)
 	}
@@ -90,7 +69,7 @@ func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kerne
 	c.cliExecutor = cli.NewCLIExecutor(ctx, cliConfig)
 
 	// 3. Setup marketplace manager
-	c.skillMarketplaceManager = marketplace.NewManager(cfg.SkillCacheDir, cfg.SkillConfigsDir)
+	c.skillMarketplaceManager = marketplace.NewManager(paths.SkillCache, paths.Skills)
 
 	// Register ClawHub marketplace
 	if cfg.ClawHubEnabled {
@@ -107,23 +86,23 @@ func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kerne
 		}
 	}
 
-	c.agents, err = loadAgents(ctx, v, cfg.AgentConfigsDir, bus, c.cm)
+	c.agents, err = loadAgents(ctx, v, paths.Agents, bus, c.cm)
 	if err != nil {
 		return c, fmt.Errorf("load agents: %w", err)
 	}
-	c.connectors, err = loadConnectors(ctx, v, cfg.ConnectorConfigsDir, bus)
+	c.connectors, err = loadConnectors(ctx, v, paths.Connectors, bus)
 	if err != nil {
 		return c, fmt.Errorf("load connectors: %w", err)
 	}
-	c.channels, err = loadChannels(ctx, v, cfg.ChannelConfigsDir, bus)
+	c.channels, err = loadChannels(ctx, v, paths.Channels, bus)
 	if err != nil {
 		return c, fmt.Errorf("load channels: %w", err)
 	}
-	c.skills, err = loadSkills(ctx, cfg.SkillConfigsDir, bus, c.capabilities, c.cliExecutor)
+	c.skills, err = loadSkills(ctx, paths.Skills, bus, c.capabilities, c.cliExecutor)
 	if err != nil {
 		return c, fmt.Errorf("load skills: %w", err)
 	}
-	c.user, err = config.LoadUserConfig("configs/user.yaml")
+	c.user, err = config.LoadUserConfig(paths.UserPath)
 	if err != nil {
 		return c, fmt.Errorf("load user config: %w", err)
 	}
@@ -132,12 +111,17 @@ func loadComponents(ctx context.Context, cfg Config, bus chan core.Event) (kerne
 		return c, fmt.Errorf("validate agent skills: %w", err)
 	}
 
+	c.workflow = workflow.NewEngine(store, bus)
+	if err != nil {
+		return c, fmt.Errorf("create workflow engine: %w", err)
+	}
+
 	return c, nil
 }
 
 // loadStore loads the SQLite storage.
-func loadStore(ctx context.Context, cfg Config) (storage.Storage, error) {
-	store, err := sqlite.New(filepath.Join(os.Getenv("HOME"), ".onlyagents", "onlyagents.db"))
+func loadStore(ctx context.Context, path string) (storage.Storage, error) {
+	store, err := sqlite.New(path)
 	if err != nil {
 		logger.Log.Error("storage init failed", "err", err)
 		return nil, fmt.Errorf("storage init failed: %w", err)
@@ -153,7 +137,7 @@ func loadStore(ctx context.Context, cfg Config) (storage.Storage, error) {
 
 // loadConversationManager loads the ConversationManager.
 // It is shared by all agents, so they can persist messages and tool results.
-func loadConversationManager(ctx context.Context, cfg Config, store storage.Storage) (*memory.ConversationManager, error) {
+func loadConversationManager(ctx context.Context, store storage.Storage) (*memory.ConversationManager, error) {
 	cm, err := memory.New(ctx, store)
 	if err != nil {
 		return nil, fmt.Errorf("create conversation manager: %w", err)

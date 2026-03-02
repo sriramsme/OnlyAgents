@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/viper"
@@ -28,7 +29,16 @@ func LoadVault(configPath string) (vault.Vault, error) {
 
 // loadVaultConfig reads vault.yaml into a vault.Config.
 func loadVaultConfig(configPath string) (*vault.Config, error) {
+	if configPath == "" {
+		return nil, fmt.Errorf("config path empty")
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("vault config not found: %s", configPath)
+	}
+
 	v := viper.New()
+	v.SetConfigFile(configPath)
 
 	// sensible defaults so vault.yaml can stay minimal
 	v.SetDefault("type", "env")
@@ -36,22 +46,11 @@ func loadVaultConfig(configPath string) (*vault.Config, error) {
 	v.SetDefault("enable_cache", true)
 	v.SetDefault("audit_log", false)
 
-	if configPath != "" {
-		v.SetConfigFile(configPath)
-	} else {
-		v.SetConfigName("vault")
-		v.SetConfigType("yaml")
-		v.AddConfigPath("configs")
-		v.AddConfigPath(".")
-	}
-
 	v.SetEnvPrefix("ONLYAGENTS")
 	v.AutomaticEnv()
 
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("read vault config: %w", err)
-		}
+		return nil, fmt.Errorf("read vault config: %w", err)
 	}
 
 	var vc vault.Config
@@ -87,7 +86,7 @@ func LoadVaultAndValidate(vaultPath, agentConfigPath string) (vault.Vault, error
 
 // validateVaultPaths probes vault to confirm required secrets are reachable.
 // It does not return the secret values — that happens on-demand at runtime.
-func validateVaultPaths(ctx context.Context, cfg *Config, v vault.Vault) error {
+func validateVaultPaths(ctx context.Context, cfg *AgentConfig, v vault.Vault) error {
 	if _, err := v.GetSecret(ctx, cfg.LLM.APIKeyVault); err != nil {
 		return fmt.Errorf("llm api key not found in vault at %q: %w", cfg.LLM.APIKeyVault, err)
 	}

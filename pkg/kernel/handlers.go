@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
 // ====================
@@ -173,7 +175,7 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 
 // handleWorkflowSubmitted: Executive creates a multi-task workflow
 func (k *Kernel) handleWorkflowSubmitted(evt core.Event) {
-	payload, ok := evt.Payload.(core.WorkflowPayload)
+	payload, ok := evt.Payload.(workflow.WorkflowPayload)
 	if !ok {
 		k.logger.Error("invalid WorkflowSubmitted payload")
 		return
@@ -213,7 +215,7 @@ func (k *Kernel) handleWorkflowSubmitted(evt core.Event) {
 
 // handleWorkflowCompleted: Workflow engine finished all tasks
 func (k *Kernel) handleWorkflowCompleted(evt core.Event) {
-	payload, ok := evt.Payload.(core.WorkflowResultPayload)
+	payload, ok := evt.Payload.(workflow.WorkflowResultPayload)
 	if !ok {
 		k.logger.Error("invalid WorkflowCompleted payload")
 		return
@@ -225,6 +227,12 @@ func (k *Kernel) handleWorkflowCompleted(evt core.Event) {
 		"tasks":  len(payload.Results),
 	})
 
+	k.logger.Info("workflow completed",
+		"workflow_id", payload.WorkflowID,
+		"status", payload.Status,
+		"tasks", len(payload.Results),
+		"correlation_id", evt.CorrelationID)
+
 	// Get the executive agent (who created the workflow)
 	executive, err := k.agents.Get(payload.CreatedBy)
 	if err != nil {
@@ -232,25 +240,53 @@ func (k *Kernel) handleWorkflowCompleted(evt core.Event) {
 		return
 	}
 
-	k.logger.Info("workflow completed",
-		"workflow_id", payload.WorkflowID,
-		"status", payload.Status,
-		"correlation_id", evt.CorrelationID)
+	// Extract original context from metadata
+	originalMessage := payload.Metadata["original_message"]
 
-	// Send results back to executive for synthesis
-	resultEvent := core.Event{
-		Type:          core.WorkflowCompleted,
+	// Extract channel metadata
+	var channel *core.ChannelMetadata
+	if channelJSON, ok := payload.Metadata["channel"]; ok {
+		var ch core.ChannelMetadata
+		if err := json.Unmarshal([]byte(channelJSON), &ch); err == nil {
+			channel = &ch
+		}
+	}
+
+	// Format workflow results into a prompt for executive to synthesize
+	var message string
+	if payload.Error != "" {
+		message = fmt.Sprintf("The workflow (ID: %s) has failed with error: %s. Please inform the user.",
+			payload.WorkflowID, payload.Error)
+	} else {
+		// Convert results to JSON for executive to process
+		resultsJSON, err := json.Marshal(payload.Results)
+		if err != nil {
+			logger.Log.Warn("failed to marshal workflow results", "err", err)
+			resultsJSON = []byte("failed to marshal results")
+		}
+		message = fmt.Sprintf("The user asked: \"%s\"\n\nYou created a workflow to handle this request. The workflow has completed successfully with the following task results:\n\n%s\n\nPlease synthesize these results into a coherent, natural response for the user that answers their original question.",
+			originalMessage, string(resultsJSON))
+	}
+
+	// Trigger executive to synthesize results
+	synthesisEvent := core.Event{
+		Type:          core.AgentExecute,
 		CorrelationID: evt.CorrelationID,
 		AgentID:       executive.ID(),
-		Payload:       payload,
+		Payload: core.AgentExecutePayload{
+			Message:     message,
+			MessageType: core.MessageTypeWorkflowCompleted,
+			Channel:     channel,
+		},
 	}
 
 	select {
-	case executive.Inbox() <- resultEvent:
-		k.logger.Debug("workflow results sent to executive")
+	case executive.Inbox() <- synthesisEvent:
+		k.logger.Debug("workflow synthesis task sent to executive")
 
 	case <-time.After(5 * time.Second):
-		k.logger.Error("failed to send workflow results - executive inbox full")
+		k.logger.Error("failed to send workflow synthesis - executive inbox full",
+			"workflow_id", payload.WorkflowID)
 
 	case <-k.ctx.Done():
 		k.logger.Info("shutdown in progress")
@@ -284,7 +320,7 @@ func (k *Kernel) handleAgentExecute(evt core.Event) {
 
 // handleTaskAssigned: Workflow engine assigned task to agent
 func (k *Kernel) handleTaskAssigned(evt core.Event) {
-	payload, ok := evt.Payload.(core.TaskAssignedPayload)
+	payload, ok := evt.Payload.(workflow.TaskAssignedPayload)
 	if !ok {
 		k.logger.Error("invalid TaskAssigned payload")
 		return
@@ -338,6 +374,32 @@ func (k *Kernel) handleTaskAssigned(evt core.Event) {
 
 	case <-k.ctx.Done():
 		return
+	}
+}
+
+func (k *Kernel) handleTaskCompleted(evt core.Event) {
+	payload, ok := evt.Payload.(workflow.TaskCompletedPayload)
+	if !ok {
+		k.logger.Error("invalid TaskCompleted payload")
+		return
+	}
+
+	k.logger.Debug("task completed",
+		"workflow_id", payload.WorkflowID,
+		"task_id", payload.TaskID,
+		"has_error", payload.Error != "")
+
+	if k.workflow == nil {
+		k.logger.Error("workflow engine not initialized")
+		return
+	}
+
+	// Pass to workflow engine
+	if err := k.workflow.HandleTaskCompleted(k.ctx, payload); err != nil {
+		k.logger.Error("failed to handle task completion",
+			"error", err,
+			"workflow_id", payload.WorkflowID,
+			"task_id", payload.TaskID)
 	}
 }
 

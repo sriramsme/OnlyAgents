@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type Storage interface {
 	CalendarStore
 	NoteStore
 	ReminderStore
+	WorkflowStore
 	Close() error
 }
 
@@ -85,4 +87,22 @@ type ReminderStore interface {
 	ListReminders(ctx context.Context, agentID string) ([]*Reminder, error)
 	GetDueReminders(ctx context.Context, before time.Time) ([]*Reminder, error)
 	MarkReminderSent(ctx context.Context, id string) error
+}
+
+// WorkflowStore manages workflow orchestration
+type WorkflowStore interface {
+	// Workflows
+	CreateWorkflow(ctx context.Context, workflow *Workflow) error
+	GetWorkflow(ctx context.Context, id string) (*Workflow, error)
+	UpdateWorkflowStatus(ctx context.Context, id string, status WorkflowStatus) error
+
+	// Tasks
+	CreateTask(ctx context.Context, task *Task) error
+	GetTask(ctx context.Context, id string) (*Task, error)
+	UpdateTaskStatus(ctx context.Context, id string, status TaskStatus, errorMsg string) error
+	UpdateTaskResult(ctx context.Context, id string, result json.RawMessage) error
+	GetWorkflowTasks(ctx context.Context, workflowID string) ([]*Task, error)
+	GetReadyTasks(ctx context.Context, limit int) ([]*Task, error)
+	GetDependentTasks(ctx context.Context, taskID string) ([]*Task, error)
+	AllDependenciesSatisfied(ctx context.Context, taskID string) (bool, error)
 }

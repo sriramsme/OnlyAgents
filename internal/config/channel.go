@@ -11,6 +11,7 @@ import (
 // ChannelConfigFile represents a loaded channel config file
 type ChannelConfigFile struct {
 	Name      string                 // derived from filename
+	Priority  int                    `mapstructure:"priority"`
 	Platform  string                 `mapstructure:"platform"`
 	Enabled   bool                   `mapstructure:"enabled"`
 	RawConfig map[string]interface{} // the entire config for platform-specific unmarshaling
@@ -18,6 +19,15 @@ type ChannelConfigFile struct {
 
 // LoadConnectorConfig loads a single connector config file
 func LoadChannelConfig(configPath string) (*ChannelConfigFile, error) {
+
+	if configPath == "" {
+		return nil, fmt.Errorf("config path empty")
+	}
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("channel config not found: %s", configPath)
+	}
+
 	v := viper.New()
 	v.SetConfigFile(configPath)
 

@@ -131,3 +131,70 @@ type Reminder struct {
 	Recurring string     `db:"recurring"`
 	CreatedAt DBTime     `db:"created_at"`
 }
+
+// Workflow types
+type WorkflowStatus string
+
+const (
+	WorkflowStatusPending   WorkflowStatus = "pending"
+	WorkflowStatusRunning   WorkflowStatus = "running"
+	WorkflowStatusCompleted WorkflowStatus = "completed"
+	WorkflowStatusFailed    WorkflowStatus = "failed"
+	WorkflowStatusCancelled WorkflowStatus = "cancelled"
+)
+
+type Workflow struct {
+	ID          string         `db:"id"`
+	Name        string         `db:"name"`
+	Description string         `db:"description"`
+	CreatedBy   string         `db:"created_by"`
+	Status      WorkflowStatus `db:"status"`
+	Metadata    string         `db:"metadata"` // JSON
+	CreatedAt   DBTime         `db:"created_at"`
+	UpdatedAt   DBTime         `db:"updated_at"`
+}
+
+type TaskType string
+
+const (
+	TaskTypeAgentExecution TaskType = "agent_execution"
+	TaskTypeSkillExecution TaskType = "skill_execution"
+	TaskTypeWebhook        TaskType = "webhook"
+	TaskTypeDelay          TaskType = "delay"
+	TaskTypeCondition      TaskType = "condition"
+)
+
+type TaskStatus string
+
+const (
+	TaskStatusPending   TaskStatus = "pending"
+	TaskStatusQueued    TaskStatus = "queued"
+	TaskStatusRunning   TaskStatus = "running"
+	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusFailed    TaskStatus = "failed"
+	TaskStatusCancelled TaskStatus = "cancelled"
+	TaskStatusBlocked   TaskStatus = "blocked"
+)
+
+type Task struct {
+	ID                   string     `db:"id"`
+	WorkflowID           string     `db:"workflow_id"`
+	Name                 string     `db:"name"`
+	Description          string     `db:"description"`
+	Type                 TaskType   `db:"type"`
+	DependsOn            string     `db:"depends_on"`            // JSON array
+	RequiredCapabilities string     `db:"required_capabilities"` // JSON array
+	Payload              string     `db:"payload"`               // JSON
+	Status               TaskStatus `db:"status"`
+	Result               string     `db:"result"` // JSON
+	Error                string     `db:"error"`
+	AssignedAgentID      string     `db:"assigned_agent_id"`
+	CreatedAt            DBTime     `db:"created_at"`
+	StartedAt            NullDBTime `db:"started_at"`
+	CompletedAt          NullDBTime `db:"completed_at"`
+	RetryCount           int        `db:"retry_count"`
+	MaxRetries           int        `db:"max_retries"`
+	TimeoutSeconds       int        `db:"timeout_seconds"`
+	Metadata             string     `db:"metadata"` // JSON
+	UpdatedAt            DBTime     `db:"updated_at"`
+}

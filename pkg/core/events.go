@@ -65,6 +65,9 @@ const (
 	// Note: NOT routed through executive - engine manages DAG internally
 	TaskAssigned EventType = "task_assigned"
 
+	// TaskCompleted: Task completed
+	TaskCompleted EventType = "task_completed"
+
 	// NewSession: Start a new session
 	// Flow: Kernel → Agent
 	NewSession EventType = "new_session"
@@ -81,10 +84,11 @@ const (
 type MessageType string
 
 const (
-	MessageTypeUser         MessageType = "user"
-	MessageTypeDelegation   MessageType = "delegation"
-	MessageTypeWorkflowTask MessageType = "workflow_task"
-	MessageTypeAgentMessage MessageType = "agent"
+	MessageTypeUser              MessageType = "user"
+	MessageTypeDelegation        MessageType = "delegation"
+	MessageTypeWorkflowTask      MessageType = "workflow_task"
+	MessageTypeAgentMessage      MessageType = "agent"
+	MessageTypeWorkflowCompleted MessageType = "workflow_completed"
 )
 
 // Event represents a message passed through the event bus
@@ -186,29 +190,6 @@ type DelegationResultPayload struct {
 	DelegationID string `json:"delegation_id"`
 	Result       any    `json:"result,omitempty"`
 	Error        string `json:"error,omitempty"`
-}
-
-// WorkflowPayload: Submit workflow for execution
-type WorkflowPayload struct {
-	Workflow Workflow `json:"workflow"` // *workflow.Workflow (avoid import cycle)
-}
-
-// WorkflowResultPayload: Workflow execution completed
-type WorkflowResultPayload struct {
-	WorkflowID string         `json:"workflow_id"`
-	Status     string         `json:"status"`  // completed, failed, cancelled
-	Results    map[string]any `json:"results"` // Task ID → result
-	Error      string         `json:"error,omitempty"`
-	CreatedBy  string         `json:"created_by"` // Executive agent ID
-}
-
-// TaskAssignedPayload: Workflow engine assigns task to agent
-type TaskAssignedPayload struct {
-	WorkflowID string         `json:"workflow_id"`
-	TaskID     string         `json:"task_id"`
-	TaskName   string         `json:"task_name"`
-	Task       string         `json:"task"` // Task description
-	Context    map[string]any `json:"context,omitempty"`
 }
 
 // AgentMessagePayload: Direct agent-to-agent message (future)

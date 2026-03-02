@@ -25,12 +25,13 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
+	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
 // NewAgent creates an agent. Kernel calls this and injects the shared bus + tool definitions.
 func NewAgent(
 	ctx context.Context, // ← Parent context (kernel's context)
-	cfg config.Config,
+	cfg config.AgentConfig,
 	llmClient llm.Client,
 	tools []tools.ToolDef,
 	outbox chan<- core.Event,
@@ -365,6 +366,10 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			if err := a.cm.SaveAssistantMessage(ctx, a.id, resp.Content, resp.ReasoningContent, nil); err != nil {
 				a.logger.Warn("failed to save assistant message", "err", err, "correlation_id", correlationID)
 			}
+			// If this was a workflow task, fire completion
+			if payload.Workflow != nil {
+				a.fireTaskCompletion(ctx, correlationID, payload.Workflow, resp.Content, nil)
+			}
 			return resp.Content, nil
 		}
 
@@ -383,7 +388,7 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			var toolErr error
 
 			if a.isExecutive && isMetaTool(tc.Function.Name) {
-				result, toolErr = a.handleMetaTool(ctx, correlationID, tc, payload.Channel)
+				result, toolErr = a.handleMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel)
 			} else {
 				result, toolErr = a.requestToolCall(ctx, correlationID, tc)
 			}
@@ -483,6 +488,48 @@ func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc to
 
 	case <-time.After(30 * time.Second):
 		return nil, fmt.Errorf("tool call timeout: %s", tc.Function.Name)
+	}
+}
+
+// Add new method to fire task completion
+func (a *Agent) fireTaskCompletion(ctx context.Context, correlationID string, wf *core.WorkflowMetadata, response string, err error) {
+	resultMap := map[string]interface{}{
+		"response": response,
+		"agent_id": a.id,
+		"task_id":  wf.TaskID,
+	}
+
+	resultJSON, marshalErr := json.Marshal(resultMap)
+
+	errorMsg := ""
+	if err != nil {
+		errorMsg = err.Error()
+	}
+	if marshalErr != nil {
+		errorMsg = fmt.Sprintf("marshal result: %s", marshalErr.Error())
+	}
+
+	completionEvent := core.Event{
+		Type:          core.TaskCompleted,
+		CorrelationID: correlationID,
+		Payload: workflow.TaskCompletedPayload{
+			WorkflowID: wf.WorkflowID,
+			TaskID:     wf.TaskID,
+			Result:     json.RawMessage(resultJSON),
+			Error:      errorMsg,
+		},
+	}
+
+	// Send to kernel bus
+	select {
+	case a.outbox <- completionEvent:
+		a.logger.Debug("task completion sent",
+			"task_id", wf.TaskID,
+			"workflow_id", wf.WorkflowID)
+	case <-time.After(5 * time.Second):
+		a.logger.Warn("failed to send task completion - bus timeout")
+	case <-ctx.Done():
+		a.logger.Debug("context cancelled during task completion")
 	}
 }
 

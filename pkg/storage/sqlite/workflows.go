@@ -1,0 +1,210 @@
+package sqlite
+
+import (
+	"context"
+	"encoding/json"
+	"time"
+
+	"github.com/sriramsme/OnlyAgents/pkg/storage"
+)
+
+// CreateWorkflow creates a new workflow
+func (d *DB) CreateWorkflow(ctx context.Context, workflow *storage.Workflow) error {
+	_, err := d.db.ExecContext(ctx, `
+        INSERT INTO workflows (id, name, description, created_by, status, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, workflow.ID, workflow.Name, workflow.Description, workflow.CreatedBy,
+		workflow.Status, workflow.Metadata, workflow.CreatedAt, workflow.UpdatedAt)
+
+	return wrap(err, "CreateWorkflow")
+}
+
+// GetWorkflow retrieves a workflow by ID
+func (d *DB) GetWorkflow(ctx context.Context, id string) (*storage.Workflow, error) {
+	var w storage.Workflow
+	err := d.db.GetContext(ctx, &w, `
+        SELECT id, name, description, created_by, status, metadata, created_at, updated_at
+        FROM workflows WHERE id = ?
+    `, id)
+
+	if err != nil {
+		return nil, wrap(err, "GetWorkflow")
+	}
+	return &w, nil
+}
+
+// UpdateWorkflowStatus updates workflow status
+func (d *DB) UpdateWorkflowStatus(ctx context.Context, id string, status storage.WorkflowStatus) error {
+	_, err := d.db.ExecContext(ctx, `
+        UPDATE workflows SET status = ?, updated_at = ? WHERE id = ?
+    `, status, storage.DBTime{Time: time.Now()}, id)
+
+	return wrap(err, "UpdateWorkflowStatus")
+}
+
+// CreateTask creates a new task
+func (d *DB) CreateTask(ctx context.Context, task *storage.Task) error {
+	_, err := d.db.ExecContext(ctx, `
+        INSERT INTO tasks (
+            id, workflow_id, name, description, type, depends_on, required_capabilities,
+            payload, status, assigned_agent_id, created_at, retry_count, max_retries,
+            timeout_seconds, metadata, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, task.ID, task.WorkflowID, task.Name, task.Description, task.Type,
+		task.DependsOn, task.RequiredCapabilities, task.Payload, task.Status,
+		task.AssignedAgentID, task.CreatedAt, task.RetryCount, task.MaxRetries,
+		task.TimeoutSeconds, task.Metadata, task.UpdatedAt)
+
+	return wrap(err, "CreateTask")
+}
+
+// GetTask retrieves a task by ID
+func (d *DB) GetTask(ctx context.Context, id string) (*storage.Task, error) {
+	var t storage.Task
+	err := d.db.GetContext(ctx, &t, `
+        SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
+               payload, status, result, error, assigned_agent_id, created_at, started_at,
+               completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
+        FROM tasks WHERE id = ?
+    `, id)
+
+	if err != nil {
+		return nil, wrap(err, "GetTask")
+	}
+	return &t, nil
+}
+
+// UpdateTaskStatus updates task status and timestamps
+func (d *DB) UpdateTaskStatus(ctx context.Context, id string, status storage.TaskStatus, errorMsg string) error {
+	now := storage.DBTime{Time: time.Now()}
+
+	// Build query based on status
+	var query string
+	var args []interface{}
+
+	switch status {
+	case storage.TaskStatusRunning:
+		query = `UPDATE tasks SET status = ?, error = ?, started_at = ?, updated_at = ? WHERE id = ?`
+		args = []interface{}{status, errorMsg, now, now, id}
+	case storage.TaskStatusCompleted, storage.TaskStatusFailed:
+		query = `UPDATE tasks SET status = ?, error = ?, completed_at = ?, updated_at = ? WHERE id = ?`
+		args = []interface{}{status, errorMsg, now, now, id}
+	default:
+		query = `UPDATE tasks SET status = ?, error = ?, updated_at = ? WHERE id = ?`
+		args = []interface{}{status, errorMsg, now, id}
+	}
+
+	_, err := d.db.ExecContext(ctx, query, args...)
+	return wrap(err, "UpdateTaskStatus")
+}
+
+// UpdateTaskResult updates task result
+func (d *DB) UpdateTaskResult(ctx context.Context, id string, result json.RawMessage) error {
+	_, err := d.db.ExecContext(ctx, `
+        UPDATE tasks SET result = ?, updated_at = ? WHERE id = ?
+    `, string(result), storage.DBTime{Time: time.Now()}, id)
+
+	return wrap(err, "UpdateTaskResult")
+}
+
+// GetWorkflowTasks returns all tasks for a workflow
+func (d *DB) GetWorkflowTasks(ctx context.Context, workflowID string) ([]*storage.Task, error) {
+	var tasks []*storage.Task
+	err := d.db.SelectContext(ctx, &tasks, `
+        SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
+               payload, status, result, error, assigned_agent_id, created_at, started_at,
+               completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
+        FROM tasks
+        WHERE workflow_id = ?
+        ORDER BY created_at ASC
+    `, workflowID)
+
+	if err != nil {
+		return nil, wrap(err, "GetWorkflowTasks")
+	}
+	return tasks, nil
+}
+
+// GetReadyTasks returns queued tasks ready to execute
+func (d *DB) GetReadyTasks(ctx context.Context, limit int) ([]*storage.Task, error) {
+	var tasks []*storage.Task
+	err := d.db.SelectContext(ctx, &tasks, `
+        SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
+               payload, status, result, error, assigned_agent_id, created_at, started_at,
+               completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
+        FROM tasks
+        WHERE status = ?
+        ORDER BY created_at ASC
+        LIMIT ?
+    `, storage.TaskStatusQueued, limit)
+
+	if err != nil {
+		return nil, wrap(err, "GetReadyTasks")
+	}
+	return tasks, nil
+}
+
+// GetDependentTasks returns tasks that depend on the given task
+func (d *DB) GetDependentTasks(ctx context.Context, taskID string) ([]*storage.Task, error) {
+	var tasks []*storage.Task
+	err := d.db.SelectContext(ctx, &tasks, `
+        SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
+               payload, status, result, error, assigned_agent_id, created_at, started_at,
+               completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
+        FROM tasks
+        WHERE depends_on LIKE ?
+    `, "%"+taskID+"%")
+
+	if err != nil {
+		return nil, wrap(err, "GetDependentTasks")
+	}
+
+	// Filter to exact matches (not just substrings)
+	var filtered []*storage.Task
+	for _, task := range tasks {
+		var deps []string
+		if err := json.Unmarshal([]byte(task.DependsOn), &deps); err != nil {
+			continue
+		}
+		for _, dep := range deps {
+			if dep == taskID {
+				filtered = append(filtered, task)
+				break
+			}
+		}
+	}
+
+	return filtered, nil
+}
+
+// AllDependenciesSatisfied checks if all task dependencies are completed
+func (d *DB) AllDependenciesSatisfied(ctx context.Context, taskID string) (bool, error) {
+	var dependsOnJSON string
+	err := d.db.GetContext(ctx, &dependsOnJSON, `
+        SELECT depends_on FROM tasks WHERE id = ?
+    `, taskID)
+
+	if err != nil {
+		return false, wrap(err, "AllDependenciesSatisfied")
+	}
+
+	var deps []string
+	if err := json.Unmarshal([]byte(dependsOnJSON), &deps); err != nil {
+		return false, wrap(err, "AllDependenciesSatisfied: unmarshal")
+	}
+
+	if len(deps) == 0 {
+		return true, nil
+	}
+
+	// Check each dependency
+	for _, depID := range deps {
+		var status storage.TaskStatus
+		err := d.db.GetContext(ctx, &status, `SELECT status FROM tasks WHERE id = ?`, depID)
+		if err != nil || status != storage.TaskStatusCompleted {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
