@@ -23,6 +23,7 @@ func NewRegistry(
 	v vault.Vault,
 	outbox chan<- core.Event,
 	cm *memory.ConversationManager,
+	mm *memory.MemoryManager,
 ) (*Registry, error) {
 	configs, err := config.LoadAllAgentsConfig(configsDir, v)
 	if err != nil {
@@ -41,7 +42,7 @@ func NewRegistry(
 		}
 
 		// Pass parent context to agent
-		agent, err := NewAgent(ctx, *cfg, llmClient, []tools.ToolDef{}, outbox, cm)
+		agent, err := NewAgent(ctx, *cfg, llmClient, []tools.ToolDef{}, outbox, cm, mm)
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: init: %w", cfg.ID, err)
 		}

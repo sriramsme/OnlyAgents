@@ -15,6 +15,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mymmrac/telego v1.6.0
 	github.com/openai/openai-go/v3 v3.24.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	golang.org/x/oauth2 v0.35.0

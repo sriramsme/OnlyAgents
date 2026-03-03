@@ -34,6 +34,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
+	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
@@ -51,6 +52,8 @@ type Kernel struct {
 	cliExecutor             *cli.CLIExecutor
 	capabilities            *core.CapabilityRegistry
 	cm                      *memory.ConversationManager
+	mm                      *memory.MemoryManager
+	store                   storage.Storage
 
 	// defaultAgentID is used when a channel message doesn't specify a target agent
 	defaultAgentID string
@@ -104,6 +107,8 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc) (*Kernel, error) 
 		skillMarketplaceManager: components.skillMarketplaceManager,
 		cliExecutor:             components.cliExecutor,
 		cm:                      components.cm,
+		mm:                      components.mm,
+		store:                   components.store,
 		defaultAgentID:          cfg.DefaultAgentID,
 		// helperClient:            components.helperClient,
 		cfg:    cfg,
@@ -250,6 +255,12 @@ func (k *Kernel) Stop() error {
 				"error", err)
 		}
 	}
+
+	defer func() {
+		if err := k.store.Close(); err != nil {
+			k.logger.Error("storage close failed", "err", err)
+		}
+	}()
 
 	k.logger.Info("kernel stopped")
 	return nil

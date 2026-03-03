@@ -36,6 +36,7 @@ func NewAgent(
 	tools []tools.ToolDef,
 	outbox chan<- core.Event,
 	cm *memory.ConversationManager,
+	mm *memory.MemoryManager,
 ) (*Agent, error) {
 	if llmClient == nil {
 		return nil, fmt.Errorf("llm client is required")
@@ -58,6 +59,7 @@ func NewAgent(
 		tools:          tools,
 		outbox:         outbox,
 		cm:             cm,
+		mm:             mm,
 		inbox:          make(chan core.Event, cfg.BufferSize),
 		ctx:            agentCtx,
 		cancel:         cancel,
@@ -305,19 +307,27 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 
 	//persist incoming user message
 	if err := a.cm.SaveUserMessage(ctx, a.id, payload.Message); err != nil {
-		// Non-fatal: log and continue. Losing one message is better than
-		// crashing the entire request.
 		a.logger.Warn("failed to save user message", "err", err, "correlation_id", correlationID)
 	}
 
 	// build messages from history instead of scratch
-	history, err := a.cm.GetHistory(ctx, a.id, memory.DefaultHistoryLimit)
+	history, err := a.cm.GetHistory(ctx, a.id, memory.DefaultHistoryTurns)
 	if err != nil {
 		a.logger.Warn("failed to load history, falling back to empty", "err", err)
 		history = []llm.Message{}
 	}
+
+	// Load long-term memory context (today's summary + relevant facts).
+	memCtx, err := a.mm.GetRelevantMemory(ctx, a.id, payload.Message)
+	if err != nil {
+		a.logger.Warn("failed to load memory context", "err", err)
+	}
+
 	messages := make([]llm.Message, 0, len(history)+1)
 	messages = append(messages, llm.SystemMessage(a.systemPrompt))
+	if formatted := memory.FormatMemoryContext(memCtx); formatted != "" {
+		messages = append(messages, llm.SystemMessage(formatted))
+	}
 	messages = append(messages, history...)
 
 	llmCallCount := 0

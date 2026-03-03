@@ -18,8 +18,10 @@ import (
 // It is internal to this package — no real agent has this ID.
 const sessionKey = "__session__"
 
-// DefaultHistoryLimit is the sliding window size passed to GetHistory.
-const DefaultHistoryLimit = 20
+const (
+	DefaultHistoryTurns       = 10  // number of user→assistant exchanges to include
+	ToolResultHistoryMaxBytes = 500 // tool result content cap when building history
+)
 
 // ConversationManager is shared across all agents. One instance lives in the
 // kernel. Agents call it to save messages and retrieve history. Because it is
@@ -177,41 +179,75 @@ func (cm *ConversationManager) SaveToolResult(
 
 // ── History retrieval ─────────────────────────────────────────────────────────
 
-// GetHistory returns the last `limit` messages in the current conversation,
-// ready to be prepended with the agent's system prompt and passed to the LLM.
+// GetHistory returns the last `maxTurns` complete conversational turns from
+// the current conversation, ready to be prepended with the agent's system
+// prompt and passed to the LLM.
+//
+// A "turn" is one user message plus all subsequent assistant and tool messages
+// up to the next user message. This means a turn containing 5 tool calls still
+// counts as 1 turn — the window is defined by human exchanges, not raw message
+// count.
+//
+// Tool result content is truncated to ToolResultHistoryMaxBytes when building
+// the slice. Full content is preserved in the DB for the summarizer.
 //
 // Messages from other agents are given Name = agentID so the LLM understands
 // they came from a different participant in the session.
 func (cm *ConversationManager) GetHistory(
 	ctx context.Context,
 	agentID string,
-	limit int,
+	maxTurns int,
 ) ([]llm.Message, error) {
 	all, err := cm.store.GetMessages(ctx, cm.CurrentConvID())
 	if err != nil {
 		return nil, fmt.Errorf("memory: get history: %w", err)
 	}
 
-	// Sliding window: take the last `limit` messages.
-	if len(all) > limit {
-		all = all[len(all)-limit:]
+	// Group messages into turns. A new turn starts on each user message.
+	// Each element of turns is a slice of messages: [user, assistant, tool, tool, ...]
+	var turns [][]*storage.Message
+	var current []*storage.Message
+	for _, m := range all {
+		if m.Role == "user" && len(current) > 0 {
+			turns = append(turns, current)
+			current = nil
+		}
+		current = append(current, m)
+	}
+	if len(current) > 0 {
+		turns = append(turns, current)
 	}
 
-	out := make([]llm.Message, 0, len(all))
-	for _, m := range all {
-		msg, err := toMessage(m, agentID)
-		if err != nil {
-			logger.Log.Warn("memory: skipping malformed message", "id", m.ID, "err", err)
-			continue
+	// Sliding window on turns.
+	if len(turns) > maxTurns {
+		turns = turns[len(turns)-maxTurns:]
+	}
+
+	// Flatten turns back to []llm.Message, truncating tool result content.
+	var out []llm.Message
+	for _, turn := range turns {
+		for _, m := range turn {
+			msg, err := toMessage(m, agentID)
+			if err != nil {
+				logger.Log.Warn("memory: skipping malformed message",
+					"id", m.ID, "role", m.Role, "err", err)
+				continue
+			}
+			out = append(out, msg)
 		}
-		out = append(out, msg)
 	}
 	return out, nil
 }
 
 // toMessage converts a storage.Message to an llm.Message.
-// Messages authored by a different agent are tagged with that agent's ID in
-// the Name field so the LLM treats them as a distinct participant.
+//
+// Tool result content is truncated to ToolResultHistoryMaxBytes — the agent
+// already synthesised the full result into its response; the raw blob is not
+// needed for conversational continuity. Tool call arguments are never
+// truncated since they are small and tell the agent what it requested.
+//
+// Messages authored by a different agent get Name = agentID so the LLM
+// treats them as a distinct participant.
 func toMessage(m *storage.Message, selfAgentID string) (llm.Message, error) {
 	switch m.Role {
 	case "user":
@@ -224,9 +260,10 @@ func toMessage(m *storage.Message, selfAgentID string) (llm.Message, error) {
 				return llm.Message{}, fmt.Errorf("unmarshal tool calls: %w", err)
 			}
 		}
-
 		var msg llm.Message
 		if len(tcs) > 0 {
+			// Tool call arguments are kept intact — they are small and
+			// tell the agent what it requested in prior turns.
 			msg = llm.AssistantMessageWithTools(m.Content, m.ReasoningContent, tcs)
 		} else {
 			msg = llm.Message{
@@ -241,7 +278,7 @@ func toMessage(m *storage.Message, selfAgentID string) (llm.Message, error) {
 		return msg, nil
 
 	case "tool":
-		// Recover the tool name we stored in ToolCalls.
+		// Recover the tool name stored in ToolCalls during SaveToolResult.
 		var nameHolder []struct {
 			Name string `json:"name"`
 		}
@@ -249,9 +286,24 @@ func toMessage(m *storage.Message, selfAgentID string) (llm.Message, error) {
 		if err := json.Unmarshal([]byte(m.ToolCalls), &nameHolder); err == nil && len(nameHolder) > 0 {
 			toolName = nameHolder[0].Name
 		}
-		return llm.ToolResultMessage(m.ToolCallID, toolName, m.Content), nil
+		// Truncate the result content — the agent synthesised this into its
+		// response already. The full content is preserved in the DB for the
+		// summarizer and debugging.
+		content := truncateToolContent(toolName, m.Content)
+		return llm.ToolResultMessage(m.ToolCallID, toolName, content), nil
 
 	default:
 		return llm.Message{}, fmt.Errorf("unknown role %q", m.Role)
 	}
+}
+
+// truncateToolContent caps tool result content at ToolResultHistoryMaxBytes.
+// If truncated, a prefix is added so the LLM understands why the content ends
+// abruptly rather than treating it as a malformed response.
+func truncateToolContent(toolName, content string) string {
+	if len(content) <= ToolResultHistoryMaxBytes {
+		return content
+	}
+	return fmt.Sprintf("[%s: full result was %d chars, truncated for context]\n%s...",
+		toolName, len(content), content[:ToolResultHistoryMaxBytes])
 }

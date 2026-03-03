@@ -37,20 +37,28 @@ type kernelComponents struct {
 	cliExecutor             *cli.CLIExecutor
 	capabilities            *core.CapabilityRegistry
 	cm                      *memory.ConversationManager
+	mm                      *memory.MemoryManager
 	workflow                *workflow.Engine
+	store                   storage.Storage
 }
 
 func loadComponents(ctx context.Context, paths *bootstrap.Paths, cfg *config.KernelConfig, bus chan core.Event) (kernelComponents, error) {
 	var c kernelComponents
+	var err error
 
-	store, err := loadStore(ctx, paths.DBPath)
+	c.store, err = loadStore(ctx, paths.DBPath)
 	if err != nil {
 		return c, fmt.Errorf("load store: %w", err)
 	}
 
-	c.cm, err = loadConversationManager(ctx, store)
+	c.cm, err = loadConversationManager(ctx, c.store)
 	if err != nil {
 		return c, fmt.Errorf("load conversation manager: %w", err)
+	}
+
+	c.mm, err = loadMemoryManager(ctx, c.store)
+	if err != nil {
+		return c, fmt.Errorf("load memory manager: %w", err)
 	}
 
 	v, err := loadVault(paths.VaultPath)
@@ -86,7 +94,7 @@ func loadComponents(ctx context.Context, paths *bootstrap.Paths, cfg *config.Ker
 		}
 	}
 
-	c.agents, err = loadAgents(ctx, v, paths.Agents, bus, c.cm)
+	c.agents, err = loadAgents(ctx, v, paths.Agents, bus, c.cm, c.mm)
 	if err != nil {
 		return c, fmt.Errorf("load agents: %w", err)
 	}
@@ -111,12 +119,18 @@ func loadComponents(ctx context.Context, paths *bootstrap.Paths, cfg *config.Ker
 		return c, fmt.Errorf("validate agent skills: %w", err)
 	}
 
-	c.workflow = workflow.NewEngine(store, bus)
+	c.workflow = workflow.NewEngine(c.store, bus)
 	if err != nil {
 		return c, fmt.Errorf("create workflow engine: %w", err)
 	}
 
 	return c, nil
+}
+
+// loadMemoryManager loads the MemoryManager.
+func loadMemoryManager(ctx context.Context, store storage.Storage) (*memory.MemoryManager, error) {
+	mm := memory.NewMemoryManager(store, nil) // TODO: llmClient for summarizer
+	return mm, nil
 }
 
 // loadStore loads the SQLite storage.
@@ -126,11 +140,6 @@ func loadStore(ctx context.Context, path string) (storage.Storage, error) {
 		logger.Log.Error("storage init failed", "err", err)
 		return nil, fmt.Errorf("storage init failed: %w", err)
 	}
-	defer func() {
-		if err := store.Close(); err != nil {
-			logger.Log.Error("storage close failed", "err", err)
-		}
-	}()
 
 	return store, nil
 }
@@ -159,8 +168,9 @@ func loadAgents(
 	ctx context.Context, v vault.Vault,
 	configDir string, kernelBus chan<- core.Event,
 	cm *memory.ConversationManager,
+	mm *memory.MemoryManager,
 ) (*agents.Registry, error) {
-	registry, err := agents.NewRegistry(ctx, configDir, v, kernelBus, cm)
+	registry, err := agents.NewRegistry(ctx, configDir, v, kernelBus, cm, mm)
 	if err != nil {
 		return nil, fmt.Errorf("create agents registry: %w", err)
 	}

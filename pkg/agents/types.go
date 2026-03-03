@@ -38,6 +38,7 @@ type Agent struct {
 	inbox chan core.Event
 
 	cm *memory.ConversationManager // shared across all agents, injected by kernel
+	mm *memory.MemoryManager       // shared across all agents, injected by kernel
 
 	systemPrompt  string
 	findBestAgent tools.FindBestAgentFunc // injected by kernel only for executive agents

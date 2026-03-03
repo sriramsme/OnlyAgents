@@ -132,6 +132,15 @@ type Reminder struct {
 	CreatedAt DBTime     `db:"created_at"`
 }
 
+// JobRun records the last execution of a named background job.
+// Stored with job_name as primary key — one row per job, upserted on each run.
+type JobRun struct {
+	JobName    string `db:"job_name"`
+	LastRun    DBTime `db:"last_run"`
+	LastStatus string `db:"last_status"` // "ok" | "error"
+	LastError  string `db:"last_error"`  // "" when ok
+}
+
 // Workflow types
 type WorkflowStatus string
 
