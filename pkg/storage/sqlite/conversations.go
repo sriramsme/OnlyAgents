@@ -11,8 +11,8 @@ import (
 
 func (d *DB) CreateConversation(ctx context.Context, conv *storage.Conversation) error {
 	_, err := d.db.NamedExecContext(ctx, `
-		INSERT INTO conversations (id, agent_id, started_at, ended_at, context, summary)
-		VALUES (:id, :agent_id, :started_at, :ended_at, :context, :summary)
+		INSERT INTO conversations (id, agent_id, started_at, ended_at, context, summary, peer_agent_id)
+		VALUES (:id, :agent_id, :started_at, :ended_at, :context, :summary, :peer_agent_id)
 	`, conv)
 	return wrap(err, "create conversation")
 }
@@ -59,9 +59,9 @@ func (d *DB) EndConversation(ctx context.Context, id string, summary string) err
 func (d *DB) SaveMessage(ctx context.Context, msg *storage.Message) error {
 	_, err := d.db.NamedExecContext(ctx, `
 		INSERT INTO messages
-			(id, conversation_id, agent_id, role, content, reasoning_content, tool_calls, timestamp)
+			(id, conversation_id, agent_id, role, content, reasoning_content, tool_calls, tool_call_id, timestamp)
 		VALUES
-			(:id, :conversation_id, :agent_id, :role, :content, :reasoning_content, :tool_calls, :timestamp)
+		(:id, :conversation_id, :agent_id, :role, :content, :reasoning_content, :tool_calls, :tool_call_id, :timestamp)
 	`, msg)
 	return wrap(err, "save message")
 }
