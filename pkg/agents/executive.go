@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -152,42 +153,57 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 		"name", input.Name,
 		"tasks", len(input.Steps))
 
-	// Create tasks
+	// Map old IDs to new UUIDs
+	idMap := make(map[string]string)
+	for _, t := range input.Steps {
+		oldID := t.ID
+		if oldID == "" {
+			oldID = uuid.NewString()
+			t.ID = oldID
+		}
+		idMap[oldID] = uuid.NewString()
+	}
+
+	// Create tasks in a single pass with remapped dependencies
 	tasks := make([]*workflow.WFTaskDefinition, 0, len(input.Steps))
 	for _, t := range input.Steps {
-		taskID := t.ID
-		if taskID == "" {
-			taskID = uuid.NewString()
-		}
-
 		caps := make([]core.Capability, len(t.RequiredCapabilities))
 		for i, capStr := range t.RequiredCapabilities {
 			caps[i] = core.Capability(capStr)
 		}
 
+		// Remap dependencies using the idMap
+		newDeps := make([]string, len(t.DependsOn))
+		for i, dep := range t.DependsOn {
+			if newID, ok := idMap[dep]; ok {
+				newDeps[i] = newID
+			} else {
+				newDeps[i] = dep // fallback, should rarely happen
+			}
+		}
+
 		tasks = append(tasks, &workflow.WFTaskDefinition{
-			ID:                   taskID,
+			ID:                   idMap[t.ID],
 			Name:                 t.Name,
 			Description:          t.Description,
 			Type:                 "agent_execution",
-			DependsOn:            t.DependsOn,
+			DependsOn:            newDeps,
 			RequiredCapabilities: caps,
 			MaxRetries:           3,
 		})
 	}
 
-	// Store original context in metadata for later synthesis
-	metadata := make(map[string]string)
-	metadata["original_message"] = originalMessage
-	metadata["correlation_id"] = correlationID
-
-	// Store channel metadata if available
+	// Store original context in metadata
+	metadata := map[string]string{
+		"original_message": originalMessage,
+		"correlation_id":   correlationID,
+	}
 	if channel != nil {
-		channelJSON, err := json.Marshal(channel)
-		if err != nil {
+		if channelJSON, err := json.Marshal(channel); err == nil {
+			metadata["channel"] = string(channelJSON)
+		} else {
 			a.logger.Warn("failed to marshal channel metadata", "err", err)
 		}
-		metadata["channel"] = string(channelJSON)
 	}
 
 	return &workflow.WorkflowDefinition{
@@ -197,7 +213,7 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 		Tasks:       tasks,
 		CreatedBy:   a.id,
 		Status:      "pending",
-		Metadata:    metadata, // Store context here
+		Metadata:    metadata,
 	}, nil
 }
 
@@ -214,12 +230,17 @@ func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc to
 		return tools.ExecErr(err)
 	}
 
-	result := map[string]any{
-		"workflow_id": wf.ID,
-		"status":      "submitted",
-		"message":     fmt.Sprintf("Workflow '%s' with %d tasks has been submitted. You'll be notified when complete.", wf.Name, len(wf.Tasks)),
+	return tools.ExecDone(a.workflowAck(wf))
+}
+
+func (a *Agent) workflowAck(wf *workflow.WorkflowDefinition) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "On it — kicking off a %d-step workflow:\n", len(wf.Tasks))
+	for i, s := range wf.Tasks {
+		fmt.Fprintf(&b, "%d. %s\n", i+1, s.Description)
 	}
-	return tools.ExecOK(result)
+	b.WriteString("\nI'll report back once it's done.")
+	return b.String()
 }
 
 // requestCapabilityQuery queries available capabilities from kernel
