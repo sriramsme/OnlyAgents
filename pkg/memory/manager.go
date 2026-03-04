@@ -2,6 +2,8 @@ package memory
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -12,11 +14,20 @@ import (
 
 // Job name constants — used as primary keys in the job_runs table.
 const (
-	jobDaily   = "daily_summary"
-	jobWeekly  = "weekly_summary"
-	jobMonthly = "monthly_summary"
-	jobYearly  = "yearly_archive"
+	jobDaily       = "daily_summary"
+	jobWeekly      = "weekly_summary"
+	jobMonthly     = "monthly_summary"
+	jobYearly      = "yearly_archive"
+	jobDailyDigest = "daily_digest"
 )
+
+// DigestDeliverer delivers the daily digest message to the user.
+// The kernel implements this by routing through the active channel (Telegram etc.).
+// Keeping it as an interface means MemoryManager has no import dependency on
+// pkg/channels or pkg/kernel.
+type DigestDeliverer interface {
+	Deliver(ctx context.Context, message string) error
+}
 
 // MemoryManager owns the background summarisation scheduler.
 // One instance lives in the kernel alongside ConversationManager.
@@ -24,6 +35,7 @@ type MemoryManager struct {
 	store      storage.Storage
 	summarizer *Summarizer
 	scheduler  *cron.Cron
+	deliverer  DigestDeliverer // may be nil — digest skipped if not set
 }
 
 // NewMemoryManager creates a MemoryManager. llmClient should be the kernel's
@@ -80,6 +92,13 @@ func (mm *MemoryManager) registerJobs(ctx context.Context) {
 	mm.mustAddFunc("30 23 31 12 *", jobYearly, func() {
 		mm.runJob(ctx, jobYearly, func() error {
 			return mm.summarizer.SummarizeYear(ctx, time.Now().Year())
+		})
+	})
+
+	// Daily digest at 8pm: fetch tomorrow's tasks + reminders and deliver.
+	mm.mustAddFunc("0 20 * * *", jobDailyDigest, func() {
+		mm.runJob(ctx, jobDailyDigest, func() error {
+			return mm.deliverDailyDigest(ctx)
 		})
 	})
 }
@@ -181,5 +200,91 @@ func (mm *MemoryManager) mustAddFunc(spec string, name string, fn func()) {
 			"spec", spec,
 			"err", err,
 		)
+	}
+}
+
+// ── Daily digest ──────────────────────────────────────────────────────────────
+
+func (mm *MemoryManager) deliverDailyDigest(ctx context.Context) error {
+	if mm.deliverer == nil {
+		logger.Log.Info("memory: digest deliverer not set, skipping")
+		return nil
+	}
+
+	tomorrow := time.Now().AddDate(0, 0, 1)
+
+	// Tasks due tomorrow.
+	tasks, err := mm.store.GetTasksDueOn(ctx, tomorrow)
+	if err != nil {
+		return fmt.Errorf("digest: tasks: %w", err)
+	}
+
+	// Standalone reminders due tomorrow (before end of day).
+	tomorrowStart := truncateToDay(tomorrow)
+	tomorrowEnd := tomorrowStart.Add(24*time.Hour - time.Second)
+	reminders, err := mm.store.GetDueReminders(ctx, tomorrowEnd)
+	if err != nil {
+		return fmt.Errorf("digest: reminders: %w", err)
+	}
+	// Filter to only tomorrow's reminders (GetDueReminders returns everything up to the time).
+	var tomorrowReminders []*storage.Reminder
+	for _, r := range reminders {
+		if !r.DueAt.Before(tomorrowStart) {
+			tomorrowReminders = append(tomorrowReminders, r)
+		}
+	}
+
+	msg := formatDigest(tomorrow, tasks, tomorrowReminders)
+	if msg == "" {
+		logger.Log.Info("memory: nothing due tomorrow, skipping digest")
+		return nil
+	}
+
+	return mm.deliverer.Deliver(ctx, msg)
+}
+
+// formatDigest builds the digest message string.
+// Returns "" if there is nothing to report.
+func formatDigest(date time.Time, tasks []*storage.Task, reminders []*storage.Reminder) string {
+	if len(tasks) == 0 && len(reminders) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("📅 *Tomorrow — %s*\n\n", date.Format("Monday, Jan 2")))
+
+	if len(tasks) > 0 {
+		b.WriteString("*Tasks due:*\n")
+		for _, t := range tasks {
+			icon := priorityIcon(t.Priority)
+			b.WriteString(fmt.Sprintf("%s %s", icon, t.Title))
+			if t.DueAt.Valid {
+				b.WriteString(fmt.Sprintf(" _%s_", t.DueAt.Time.Format("3:04 PM")))
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if len(reminders) > 0 {
+		if len(tasks) > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("*Reminders:*\n")
+		for _, r := range reminders {
+			b.WriteString(fmt.Sprintf("🔔 %s _%s_\n", r.Title, r.DueAt.Format("3:04 PM")))
+		}
+	}
+
+	return strings.TrimSpace(b.String())
+}
+
+func priorityIcon(priority string) string {
+	switch priority {
+	case "high":
+		return "🔴"
+	case "medium":
+		return "🟡"
+	default:
+		return "⚪"
 	}
 }

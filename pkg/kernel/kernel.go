@@ -28,6 +28,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	"github.com/sriramsme/OnlyAgents/pkg/connectors/native"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
@@ -142,12 +143,28 @@ func (k *Kernel) Bus() chan<- core.Event {
 	return k.bus
 }
 
+func (k *Kernel) initNativeConnectors() {
+	k.RegisterConnector(native.NewCalendarConnector(k.store))
+	k.RegisterConnector(native.NewNotesConnector(k.store))
+	k.RegisterConnector(native.NewRemindersConnector(k.store))
+	k.RegisterConnector(native.NewTasksConnector(k.store))
+}
+
 // --- Lifecycle ---
 
 func (k *Kernel) Start() error {
 	k.logger.Info("starting kernel")
 
+	k.logger.Info("initializing native connectors")
+	k.initNativeConnectors()
+
+	k.logger.Info("initializing skills")
+	if err := k.initializeSkills(); err != nil {
+		return fmt.Errorf("failed to initialize skills: %w", err)
+	}
+
 	// Start all channels — they'll write MessageReceived events to the bus
+	k.logger.Info("starting channels")
 	for _, ch := range k.channels.All() {
 		if err := ch.Start(); err != nil {
 			return fmt.Errorf("failed to start channel %s: %w", ch.PlatformName(), err)
@@ -155,6 +172,7 @@ func (k *Kernel) Start() error {
 	}
 
 	// Start all connectors
+	k.logger.Info("starting connectors")
 	for _, c := range k.connectors.All() {
 		if err := c.Start(); err != nil {
 			return fmt.Errorf("failed to start connector %s: %w", c.Name(), err)
@@ -162,25 +180,22 @@ func (k *Kernel) Start() error {
 	}
 
 	// Start all agents
+	k.logger.Info("starting agents")
 	for _, a := range k.agents.All() {
 		if err := a.Start(); err != nil {
 			return fmt.Errorf("failed to start agent %s: %w", a.ID(), err)
 		}
 	}
 
-	// Start all skills
-	if err := k.initializeSkills(); err != nil {
-		return fmt.Errorf("failed to initialize skills: %w", err)
-	}
-
 	// Start workflow engine
+	k.logger.Info("starting workflow engine")
 	if err := k.workflow.Start(); err != nil {
 		return fmt.Errorf("failed to start workflow engine: %w", err)
 	}
-
 	k.workflow.SetAgentFinder(k.findBestAgentToolDep)
 
 	// assign agent tools
+	k.logger.Info("assigning agent tools")
 	if err := k.assignAgentTools(); err != nil {
 		return fmt.Errorf("failed to assign agent tools: %w", err)
 	}

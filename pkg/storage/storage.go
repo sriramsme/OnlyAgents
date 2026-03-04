@@ -17,6 +17,8 @@ type Storage interface {
 	ReminderStore
 	WorkflowStore
 	JobRunStore
+	TaskStore
+	ProjectStore
 	Close() error
 }
 
@@ -67,8 +69,8 @@ type CalendarStore interface {
 	GetEvent(ctx context.Context, id string) (*CalendarEvent, error)
 	UpdateEvent(ctx context.Context, event *CalendarEvent) error
 	DeleteEvent(ctx context.Context, id string) error
-	ListEvents(ctx context.Context, agentID string, from, to time.Time) ([]*CalendarEvent, error)
-	GetUpcomingEvents(ctx context.Context, agentID string, limit int) ([]*CalendarEvent, error)
+	ListEvents(ctx context.Context, from, to time.Time) ([]*CalendarEvent, error)
+	GetUpcomingEvents(ctx context.Context, limit int) ([]*CalendarEvent, error)
 }
 
 type NoteStore interface {
@@ -76,8 +78,8 @@ type NoteStore interface {
 	GetNote(ctx context.Context, id string) (*Note, error)
 	UpdateNote(ctx context.Context, note *Note) error
 	DeleteNote(ctx context.Context, id string) error
-	ListNotes(ctx context.Context, agentID string) ([]*Note, error)
-	SearchNotes(ctx context.Context, agentID string, query string) ([]*Note, error) // FTS5
+	ListNotes(ctx context.Context) ([]*Note, error)
+	SearchNotes(ctx context.Context, query string) ([]*Note, error)
 }
 
 type ReminderStore interface {
@@ -85,7 +87,7 @@ type ReminderStore interface {
 	GetReminder(ctx context.Context, id string) (*Reminder, error)
 	UpdateReminder(ctx context.Context, r *Reminder) error
 	DeleteReminder(ctx context.Context, id string) error
-	ListReminders(ctx context.Context, agentID string) ([]*Reminder, error)
+	ListReminders(ctx context.Context) ([]*Reminder, error)
 	GetDueReminders(ctx context.Context, before time.Time) ([]*Reminder, error)
 	MarkReminderSent(ctx context.Context, id string) error
 }
@@ -98,14 +100,36 @@ type WorkflowStore interface {
 	UpdateWorkflowStatus(ctx context.Context, id string, status WorkflowStatus) error
 
 	// Tasks
+	CreateWFTask(ctx context.Context, task *WFTask) error
+	GetWFTask(ctx context.Context, id string) (*WFTask, error)
+	UpdateWFTaskStatus(ctx context.Context, id string, status WFTaskStatus, errorMsg string) error
+	UpdateWFTaskResult(ctx context.Context, id string, result json.RawMessage) error
+	GetWFTasks(ctx context.Context, workflowID string) ([]*WFTask, error)
+	GetReadyWFTasks(ctx context.Context, limit int) ([]*WFTask, error)
+	GetDependentWFTasks(ctx context.Context, taskID string) ([]*WFTask, error)
+	AllDependenciesSatisfied(ctx context.Context, taskID string) (bool, error)
+}
+
+// ProjectStore manages task groupings.
+type ProjectStore interface {
+	CreateProject(ctx context.Context, project *Project) error
+	GetProject(ctx context.Context, id string) (*Project, error)
+	UpdateProject(ctx context.Context, project *Project) error
+	DeleteProject(ctx context.Context, id string) error
+	ListProjects(ctx context.Context) ([]*Project, error)
+}
+
+// TaskStore manages tasks with optional project grouping.
+// TaskFilter fields are all optional — nil means no filter on that field.
+type TaskStore interface {
 	CreateTask(ctx context.Context, task *Task) error
 	GetTask(ctx context.Context, id string) (*Task, error)
-	UpdateTaskStatus(ctx context.Context, id string, status TaskStatus, errorMsg string) error
-	UpdateTaskResult(ctx context.Context, id string, result json.RawMessage) error
-	GetWorkflowTasks(ctx context.Context, workflowID string) ([]*Task, error)
-	GetReadyTasks(ctx context.Context, limit int) ([]*Task, error)
-	GetDependentTasks(ctx context.Context, taskID string) ([]*Task, error)
-	AllDependenciesSatisfied(ctx context.Context, taskID string) (bool, error)
+	UpdateTask(ctx context.Context, task *Task) error
+	DeleteTask(ctx context.Context, id string) error
+	CompleteTask(ctx context.Context, id string) error
+	ListTasks(ctx context.Context, filter TaskFilter) ([]*Task, error)
+	SearchTasks(ctx context.Context, query string) ([]*Task, error)
+	GetTasksDueOn(ctx context.Context, date time.Time) ([]*Task, error)
 }
 
 // JobRunStore tracks the last successful execution of each scheduled background job.

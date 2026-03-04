@@ -18,10 +18,10 @@ import (
 
 // requestDelegation delegates a task to another agent and waits for result
 func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
-	tc tools.ToolCall, channelMetadata *core.ChannelMetadata) (any, error) {
+	tc tools.ToolCall, channelMetadata *core.ChannelMetadata) tools.ToolExecution {
 	var input tools.DelegateInput
 	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
-		return nil, fmt.Errorf("invalid delegation args: %w", err)
+		return tools.ExecErr(fmt.Errorf("invalid delegation args: %w", err))
 	}
 
 	a.logger.Info("delegating task",
@@ -62,13 +62,13 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		a.logger.Debug("delegation request sent", "delegation_id", delegationID)
 	case <-ctx.Done():
 		logger.Timing.EndPhase(correlationID, delegationPhase)
-		return nil, fmt.Errorf("request cancelled")
+		return tools.ExecErr(fmt.Errorf("request cancelled"))
 	case <-a.ctx.Done():
 		logger.Timing.EndPhase(correlationID, delegationPhase)
-		return nil, fmt.Errorf("agent shutting down")
+		return tools.ExecErr(fmt.Errorf("agent shutting down"))
 	case <-time.After(5 * time.Second):
 		logger.Timing.EndPhase(correlationID, delegationPhase)
-		return nil, fmt.Errorf("failed to send delegation request")
+		return tools.ExecErr(fmt.Errorf("failed to send delegation request"))
 	}
 
 	// If sending directly to user, return immediately
@@ -77,12 +77,7 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		logger.Timing.EndPhaseWithMetadata(correlationID, delegationPhase, map[string]any{
 			"direct_response": true,
 		})
-		return map[string]any{
-			"status":                "delegated",
-			"message":               fmt.Sprintf("Task delegated to %s. Response will be sent directly to user.", input.AgentID),
-			"delegation_id":         delegationID,
-			"send_directly_to_user": true,
-		}, nil
+		return tools.ExecDone(a.delegationAck(input.AgentName))
 	}
 
 	// Wait for result
@@ -91,14 +86,14 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		result, ok := resultEvt.Payload.(core.DelegationResultPayload)
 		if !ok {
 			logger.Timing.EndPhase(correlationID, delegationPhase)
-			return nil, fmt.Errorf("invalid delegation result payload")
+			return tools.ExecErr(fmt.Errorf("invalid delegation result payload"))
 		}
 
 		if result.Error != "" {
 			logger.Timing.EndPhaseWithMetadata(correlationID, delegationPhase, map[string]any{
 				"error": "failed",
 			})
-			return nil, fmt.Errorf("delegation error: %s", result.Error)
+			return tools.ExecErr(fmt.Errorf("delegation error: %s", result.Error))
 		}
 
 		logger.Timing.EndPhaseWithMetadata(correlationID, delegationPhase, map[string]any{
@@ -108,17 +103,17 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 			"delegation_id", delegationID,
 			"correlation_id", correlationID)
 
-		return result.Result, nil
+		return tools.ExecOK(result.Result)
 
 	case <-ctx.Done():
 		logger.Timing.EndPhase(correlationID, delegationPhase)
-		return nil, fmt.Errorf("request cancelled")
+		return tools.ExecErr(fmt.Errorf("request cancelled"))
 	case <-a.ctx.Done():
 		logger.Timing.EndPhase(correlationID, delegationPhase)
-		return nil, fmt.Errorf("agent shutting down")
+		return tools.ExecErr(fmt.Errorf("agent shutting down"))
 	case <-time.After(5 * time.Minute):
 		logger.Timing.EndPhase(correlationID, delegationPhase)
-		return nil, fmt.Errorf("delegation timeout")
+		return tools.ExecErr(fmt.Errorf("delegation timeout"))
 	}
 }
 
@@ -155,11 +150,11 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 
 	a.logger.Info("creating workflow",
 		"name", input.Name,
-		"tasks", len(input.Tasks))
+		"tasks", len(input.Steps))
 
 	// Create tasks
-	tasks := make([]*workflow.TaskDefinition, 0, len(input.Tasks))
-	for _, t := range input.Tasks {
+	tasks := make([]*workflow.WFTaskDefinition, 0, len(input.Steps))
+	for _, t := range input.Steps {
 		taskID := t.ID
 		if taskID == "" {
 			taskID = uuid.NewString()
@@ -170,7 +165,7 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 			caps[i] = core.Capability(capStr)
 		}
 
-		tasks = append(tasks, &workflow.TaskDefinition{
+		tasks = append(tasks, &workflow.WFTaskDefinition{
 			ID:                   taskID,
 			Name:                 t.Name,
 			Description:          t.Description,
@@ -207,39 +202,44 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 }
 
 // requestWorkflow - pass original message and channel
-func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channel *core.ChannelMetadata) (any, error) {
+func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channel *core.ChannelMetadata) tools.ToolExecution {
 	logger.Timing.StartPhase(correlationID, "workflow_creation")
 	wf, err := a.parseWorkflow(correlationID, tc, originalMessage, channel)
 	if err != nil {
-		return nil, err
+		return tools.ExecErr(err)
 	}
 	logger.Timing.EndPhase(correlationID, "workflow_creation")
 
 	if err := a.submitWorkflow(ctx, correlationID, wf); err != nil {
-		return nil, err
+		return tools.ExecErr(err)
 	}
 
-	return map[string]interface{}{
+	result := map[string]any{
 		"workflow_id": wf.ID,
 		"status":      "submitted",
 		"message":     fmt.Sprintf("Workflow '%s' with %d tasks has been submitted. You'll be notified when complete.", wf.Name, len(wf.Tasks)),
-	}, nil
+	}
+	return tools.ExecOK(result)
 }
 
 // requestCapabilityQuery queries available capabilities from kernel
-func (a *Agent) requestAgentSelection(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
+func (a *Agent) requestAgentSelection(ctx context.Context, correlationID string, tc tools.ToolCall) tools.ToolExecution {
 	var input tools.FindBestAgentInput
 	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
-		return nil, fmt.Errorf("invalid find_best_agent args: %w", err)
+		return tools.ExecErr(fmt.Errorf("invalid find_best_agent args: %w", err))
 	}
 	if a.findBestAgent == nil {
-		return nil, fmt.Errorf("findBestAgent not configured")
+		return tools.ExecErr(fmt.Errorf("findBestAgent not configured"))
 	}
-	return a.findBestAgent(ctx, input.Task, input.Capabilities)
+	result, err := a.findBestAgent(ctx, input.Task, input.Capabilities)
+	if err != nil {
+		return tools.ExecErr(err)
+	}
+	return tools.ExecOK(result)
 }
 
 // handleMetaTool routes meta-tool calls to appropriate handlers
-func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channelMetadata *core.ChannelMetadata) (any, error) {
+func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channelMetadata *core.ChannelMetadata) tools.ToolExecution {
 	a.logger.Debug("handling meta-tool",
 		"tool", tc.Function.Name,
 		"correlation_id", correlationID)
@@ -255,16 +255,16 @@ func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc too
 		return a.requestAgentSelection(ctx, correlationID, tc)
 
 	default:
-		return nil, fmt.Errorf("unknown meta-tool: %s", tc.Function.Name)
+		return tools.ExecErr(fmt.Errorf("unknown meta-tool: %s", tc.Function.Name))
 	}
 }
 
 // isMetaTool checks if a tool name is a meta-tool
 func isMetaTool(toolName string) bool {
 	metaTools := map[string]bool{
-		"delegate_to_agent":  true,
-		"create_workflow":    true,
-		"query_capabilities": true,
+		"delegate_to_agent": true,
+		"create_workflow":   true,
+		"find_best_agent":   true,
 	}
 	return metaTools[toolName]
 }

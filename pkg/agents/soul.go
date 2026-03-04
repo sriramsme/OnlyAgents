@@ -31,6 +31,10 @@ func (s *Soul) SystemPrompt(availableAgents string) string {
 	return header + "\n\n" + body
 }
 
+func (s *Soul) DelegationAcknowledgments() []string {
+	return s.config.Identity.DelegationAcknowledgments
+}
+
 func buildInstructionHeader() string {
 	return `=== INSTRUCTION HIERARCHY ===\n
 If instructions conflict:

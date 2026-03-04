@@ -24,6 +24,7 @@ func GetGeneralTools() []ToolDef {
 
 	return []ToolDef{
 		NewToolDef(
+			SkillMetaTools,
 			"find_skill",
 			"Discover and load a skill for a required capability. "+
 				"Returns the skill's available tools that you can then use via use_skill_tool.\n\n"+
@@ -37,6 +38,7 @@ func GetGeneralTools() []ToolDef {
 			findSkillSchema,
 		),
 		NewToolDef(
+			SkillMetaTools,
 			"use_skill_tool",
 			"Execute a specific tool from a loaded skill. "+
 				"Must call find_skill first to discover available tools.\n\n"+

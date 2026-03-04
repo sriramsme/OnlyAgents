@@ -53,7 +53,7 @@ func FormatResult(result any) string {
 // ====================
 
 // NewToolDef creates a new tool definition with basic validation
-func NewToolDef(name, description string, params map[string]any) ToolDef {
+func NewToolDef(skill SkillName, name, description string, params map[string]any) ToolDef {
 	// Ensure params has required structure
 	if params == nil {
 		params = make(map[string]any)
@@ -66,6 +66,7 @@ func NewToolDef(name, description string, params map[string]any) ToolDef {
 	}
 
 	return ToolDef{
+		Skill:       skill,
 		Name:        name,
 		Description: description,
 		Parameters:  params,
@@ -187,10 +188,19 @@ func SchemaFromStruct(v any) map[string]any {
 		t = t.Elem()
 	}
 	root := buildObjectSchema(t)
+
+	// normalize slices to avoid nil -> null
+	normalizeProperty(&root)
+
+	required := root.Required
+	if required == nil {
+		required = []string{}
+	}
+
 	return map[string]any{
 		"type":       "object",
 		"properties": root.Properties,
-		"required":   root.Required,
+		"required":   required,
 	}
 }
 
@@ -293,6 +303,18 @@ func parseJSONTag(tag string) (name string, omitempty bool) {
 		}
 	}
 	return
+}
+
+func normalizeProperty(p *Property) {
+	if p.Required == nil {
+		p.Required = []string{}
+	}
+	if p.Items != nil {
+		normalizeProperty(p.Items)
+	}
+	for _, child := range p.Properties {
+		normalizeProperty(&child)
+	}
 }
 
 // ====================

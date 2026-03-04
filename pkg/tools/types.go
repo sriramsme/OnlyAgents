@@ -1,8 +1,26 @@
 package tools
 
+// SkillName identifies which skill a tool belongs to.
+// Used internally for routing tool calls from agents to the correct skill.
+// Never sent to the LLM.
+type SkillName string
+
+const (
+	SkillEmail     SkillName = "email"
+	SkillWebSearch SkillName = "websearch"
+	SkillCalendar  SkillName = "calendar"
+	SkillNotes     SkillName = "notes"
+	SkillReminders SkillName = "reminders"
+	SkillTasks     SkillName = "tasks"
+	SkillMetaTools SkillName = "meta_tools"
+)
+
 // ToolDef defines a tool/function that can be called by the LLM.
 // This is the schema that gets sent to the LLM in function calling.
 type ToolDef struct {
+	// Skill is the name of the skill that defines this tool
+	Skill SkillName `json:"-"` // internal only, never sent to LLM
+
 	// Name of the tool (e.g., "email_send", "calendar_create_event")
 	Name string `json:"name"`
 
@@ -64,4 +82,20 @@ type Property struct {
 	Properties  map[string]Property `json:"properties,omitempty"`
 	Required    []string            `json:"required,omitempty"`
 	Default     any                 `json:"default,omitempty"`
+}
+
+// ToolCallRequestPayload: Tool execution request
+type ToolCallRequestPayload struct {
+	ToolCallID string    `json:"tool_call_id"`
+	SkillName  SkillName `json:"skill_name"`
+	ToolName   string    `json:"tool_name"`
+	Arguments  []byte    `json:"arguments"`
+}
+
+// ToolCallResultPayload: Tool execution result
+type ToolCallResultPayload struct {
+	ToolCallID string `json:"tool_call_id"`
+	ToolName   string `json:"tool_name"`
+	Result     any    `json:"result,omitempty"`
+	Error      string `json:"error,omitempty"`
 }

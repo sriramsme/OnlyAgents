@@ -83,7 +83,7 @@ func (k *Kernel) assignAgentTools() error {
 }
 
 // getToolsForAgent returns all tools from the given skill names
-func (k *Kernel) getToolsForAgent(skillNames []string) []tools.ToolDef {
+func (k *Kernel) getToolsForAgent(skillNames []tools.SkillName) []tools.ToolDef {
 	var agentTools []tools.ToolDef
 
 	for _, skillName := range skillNames {
@@ -180,12 +180,14 @@ func formatUserProfile(user *config.UserConfig) string {
 Name: %s (preferred: "%s")
 Job: %s
 Background: %s
+Timezone: %s
 Daily Routine: %s
 Values: %s`,
 		user.Identity.Name,
 		user.Identity.PreferredName,
 		user.Identity.Role,
 		user.Background.Professional,
+		user.Identity.Timezone,
 		user.DailyRoutine,
 		strings.Join(user.Preferences.WhatIValue, ", "),
 	)
@@ -274,7 +276,7 @@ func (k *Kernel) findSkillByCapability(ctx context.Context, cap core.Capability)
 }
 
 // useSkillTool executes a tool from a dynamically discovered skill
-func (k *Kernel) useSkillTool(ctx context.Context, skillName, toolName string, params map[string]interface{}) (interface{}, error) {
+func (k *Kernel) useSkillTool(ctx context.Context, skillName tools.SkillName, toolName string, params map[string]interface{}) (interface{}, error) {
 	// Get the skill
 	skill, ok := k.skills.Get(skillName)
 	if !ok {

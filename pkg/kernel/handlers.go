@@ -11,6 +11,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
@@ -320,7 +321,7 @@ func (k *Kernel) handleAgentExecute(evt core.Event) {
 
 // handleTaskAssigned: Workflow engine assigned task to agent
 func (k *Kernel) handleTaskAssigned(evt core.Event) {
-	payload, ok := evt.Payload.(workflow.TaskAssignedPayload)
+	payload, ok := evt.Payload.(workflow.WFTaskAssignedPayload)
 	if !ok {
 		k.logger.Error("invalid TaskAssigned payload")
 		return
@@ -378,7 +379,7 @@ func (k *Kernel) handleTaskAssigned(evt core.Event) {
 }
 
 func (k *Kernel) handleTaskCompleted(evt core.Event) {
-	payload, ok := evt.Payload.(workflow.TaskCompletedPayload)
+	payload, ok := evt.Payload.(workflow.WFTaskCompletedPayload)
 	if !ok {
 		k.logger.Error("invalid TaskCompleted payload")
 		return
@@ -451,7 +452,7 @@ func (k *Kernel) handleAgentMessage(evt core.Event) {
 
 // handleToolCallRequest: agent wants to execute a tool, kernel dispatches to the right skill
 func (k *Kernel) handleToolCallRequest(evt core.Event) {
-	payload, ok := evt.Payload.(core.ToolCallRequestPayload)
+	payload, ok := evt.Payload.(tools.ToolCallRequestPayload)
 	if !ok {
 		k.logger.Error("invalid ToolCallRequest payload",
 			"actual_type", fmt.Sprintf("%T", evt.Payload))
@@ -505,7 +506,7 @@ func (k *Kernel) handleToolCallRequest(evt core.Event) {
 				"error", err,
 				"correlation_id", evt.CorrelationID)
 
-			resultEvt.Payload = core.ToolCallResultPayload{
+			resultEvt.Payload = tools.ToolCallResultPayload{
 				ToolCallID: payload.ToolCallID,
 				ToolName:   payload.ToolName,
 				Error:      err.Error(),
@@ -516,7 +517,7 @@ func (k *Kernel) handleToolCallRequest(evt core.Event) {
 				"tool", payload.ToolName,
 				"correlation_id", evt.CorrelationID)
 
-			resultEvt.Payload = core.ToolCallResultPayload{
+			resultEvt.Payload = tools.ToolCallResultPayload{
 				ToolCallID: payload.ToolCallID,
 				ToolName:   payload.ToolName,
 				Result:     result,
@@ -625,7 +626,7 @@ func (k *Kernel) sendToolError(evt core.Event, errorMsg string) {
 		Type:          core.ToolCallResult,
 		CorrelationID: evt.CorrelationID,
 		AgentID:       evt.AgentID,
-		Payload: core.ToolCallResultPayload{
+		Payload: tools.ToolCallResultPayload{
 			ToolCallID: "", // Extract from payload if available
 			Error:      errorMsg,
 		},
@@ -712,7 +713,7 @@ func (k *Kernel) sendWorkflowError(evt core.Event, errorMsg string) {
 // Capability Helpers
 // ====================
 
-func (k *Kernel) getAgentCapabilities(skillNames []string) []core.Capability {
+func (k *Kernel) getAgentCapabilities(skillNames []tools.SkillName) []core.Capability {
 	capSet := make(map[core.Capability]bool)
 
 	for _, skillName := range skillNames {

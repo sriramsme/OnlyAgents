@@ -98,7 +98,7 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 		taskDef.AssignedAgentID = agentInfo.ID
 		task := e.taskDefToStorage(taskDef, workflow.ID)
 
-		if err := e.store.CreateTask(ctx, task); err != nil {
+		if err := e.store.CreateWFTask(ctx, task); err != nil {
 			return fmt.Errorf("create task %s: %w", task.ID, err)
 		}
 
@@ -117,14 +117,15 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 }
 
 // HandleTaskCompleted processes task completion from sub-agents
-func (e *Engine) HandleTaskCompleted(ctx context.Context, payload TaskCompletedPayload) error {
+func (e *Engine) HandleTaskCompleted(ctx context.Context, payload WFTaskCompletedPayload) error {
 	e.logger.Debug("handling task completion",
 		"workflow_id", payload.WorkflowID,
 		"task_id", payload.TaskID,
-		"has_error", payload.Error != "")
+		"has_error", payload.Error != "",
+		"result", payload.Result)
 
 	// Get task
-	_, err := e.store.GetTask(ctx, payload.TaskID)
+	_, err := e.store.GetWFTask(ctx, payload.TaskID)
 	if err != nil {
 		return fmt.Errorf("get task: %w", err)
 	}
@@ -135,7 +136,7 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload TaskCompletedP
 			"task_id", payload.TaskID,
 			"error", payload.Error)
 
-		if err := e.store.UpdateTaskStatus(ctx, payload.TaskID, storage.TaskStatusFailed, payload.Error); err != nil {
+		if err := e.store.UpdateWFTaskStatus(ctx, payload.TaskID, storage.WFTaskStatusFailed, payload.Error); err != nil {
 			e.logger.Warn("failed to update task status to failed",
 				"task_id", payload.TaskID,
 				"error", err)
@@ -146,13 +147,20 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload TaskCompletedP
 	}
 
 	// Store result and mark complete
-	if err := e.store.UpdateTaskResult(ctx, payload.TaskID, payload.Result); err != nil {
+	var resultBytes []byte
+	if payload.Result != nil {
+		resultBytes, err = json.Marshal(payload.Result)
+		if err != nil {
+			e.logger.Warn("failed to marshal task result", "task_id", payload.TaskID, "error", err)
+		}
+	}
+	if err := e.store.UpdateWFTaskResult(ctx, payload.TaskID, resultBytes); err != nil {
 		e.logger.Warn("failed to update task result",
 			"task_id", payload.TaskID,
 			"error", err)
 	}
 
-	if err := e.store.UpdateTaskStatus(ctx, payload.TaskID, storage.TaskStatusCompleted, ""); err != nil {
+	if err := e.store.UpdateWFTaskStatus(ctx, payload.TaskID, storage.WFTaskStatusCompleted, ""); err != nil {
 		e.logger.Warn("failed to update task status to completed",
 			"task_id", payload.TaskID,
 			"error", err)
@@ -161,7 +169,7 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload TaskCompletedP
 	e.logger.Debug("task marked as completed", "task_id", payload.TaskID)
 
 	// Check for dependent tasks
-	dependents, err := e.store.GetDependentTasks(ctx, payload.TaskID)
+	dependents, err := e.store.GetDependentWFTasks(ctx, payload.TaskID)
 	if err != nil {
 		return fmt.Errorf("get dependent tasks: %w", err)
 	}
@@ -188,7 +196,7 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload TaskCompletedP
 				Type:          core.TaskAssigned,
 				CorrelationID: dep.ID,
 				AgentID:       dep.AssignedAgentID,
-				Payload: TaskAssignedPayload{
+				Payload: WFTaskAssignedPayload{
 					WorkflowID: dep.WorkflowID,
 					TaskID:     dep.ID,
 					TaskName:   dep.Name,
@@ -210,7 +218,7 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload TaskCompletedP
 // checkWorkflowCompletion checks if all tasks are done and fires WorkflowCompleted
 func (e *Engine) checkWorkflowCompletion(ctx context.Context, workflowID string) error {
 	// Get all tasks for this workflow
-	tasks, err := e.store.GetWorkflowTasks(ctx, workflowID)
+	tasks, err := e.store.GetWFTasks(ctx, workflowID)
 	if err != nil {
 		return fmt.Errorf("get workflow tasks: %w", err)
 	}
@@ -220,16 +228,16 @@ func (e *Engine) checkWorkflowCompletion(ctx context.Context, workflowID string)
 	results := make(map[string]json.RawMessage)
 
 	for _, task := range tasks {
-		if task.Status == storage.TaskStatusFailed {
+		if task.Status == storage.WFTaskStatusFailed {
 			anyFailed = true
 			allComplete = false
 			break
 		}
-		if task.Status != storage.TaskStatusCompleted {
+		if task.Status != storage.WFTaskStatusCompleted {
 			allComplete = false
 			break
 		}
-		if task.Result != "" {
+		if task.Result != nil {
 			results[task.ID] = json.RawMessage(task.Result)
 		}
 	}
@@ -292,7 +300,7 @@ func (e *Engine) checkWorkflowCompletion(ctx context.Context, workflowID string)
 }
 
 // fireTaskAssigned fires a TaskAssigned event for a task
-func (e *Engine) fireTaskAssigned(taskDef *TaskDefinition, workflowID string) {
+func (e *Engine) fireTaskAssigned(taskDef *WFTaskDefinition, workflowID string) {
 	e.logger.Debug("firing task assigned",
 		"task_id", taskDef.ID,
 		"agent_id", taskDef.AssignedAgentID)
@@ -301,7 +309,7 @@ func (e *Engine) fireTaskAssigned(taskDef *TaskDefinition, workflowID string) {
 		Type:          core.TaskAssigned,
 		CorrelationID: taskDef.ID,
 		AgentID:       taskDef.AssignedAgentID,
-		Payload: TaskAssignedPayload{
+		Payload: WFTaskAssignedPayload{
 			WorkflowID: workflowID,
 			TaskID:     taskDef.ID,
 			TaskName:   taskDef.Name,
@@ -310,8 +318,8 @@ func (e *Engine) fireTaskAssigned(taskDef *TaskDefinition, workflowID string) {
 	}
 }
 
-// taskDefToStorage converts TaskDefinition to storage.Task
-func (e *Engine) taskDefToStorage(def *TaskDefinition, workflowID string) *storage.Task {
+// taskDefToStorage converts WFTaskDefinition to storage.Task
+func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *storage.WFTask {
 	depsJSON, err := json.Marshal(def.DependsOn)
 	if err != nil {
 		e.logger.Warn("failed to marshal depends_on", "error", err)
@@ -345,16 +353,16 @@ func (e *Engine) taskDefToStorage(def *TaskDefinition, workflowID string) *stora
 		maxRetries = 3 // default
 	}
 
-	return &storage.Task{
+	return &storage.WFTask{
 		ID:                   def.ID,
 		WorkflowID:           workflowID,
 		Name:                 def.Name,
 		Description:          def.Description,
-		Type:                 storage.TaskType(def.Type),
+		Type:                 storage.WFTaskType(def.Type),
 		DependsOn:            string(depsJSON),
 		RequiredCapabilities: string(capsJSON),
 		Payload:              string(payloadJSON),
-		Status:               storage.TaskStatusPending,
+		Status:               storage.WFTaskStatusPending,
 		AssignedAgentID:      def.AssignedAgentID,
 		CreatedAt:            storage.DBTime{Time: time.Now()},
 		RetryCount:           0,

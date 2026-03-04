@@ -155,22 +155,6 @@ type AgentMetadata struct {
 	FromAgent string `json:"from_agent"`
 }
 
-// ToolCallRequestPayload: Tool execution request
-type ToolCallRequestPayload struct {
-	ToolCallID string `json:"tool_call_id"`
-	SkillName  string `json:"skill_name"`
-	ToolName   string `json:"tool_name"`
-	Arguments  []byte `json:"arguments"`
-}
-
-// ToolCallResultPayload: Tool execution result
-type ToolCallResultPayload struct {
-	ToolCallID string `json:"tool_call_id"`
-	ToolName   string `json:"tool_name"`
-	Result     any    `json:"result,omitempty"`
-	Error      string `json:"error,omitempty"`
-}
-
 // AgentDelegatePayload: Delegate task to another agent
 type AgentDelegatePayload struct {
 	DelegationID       string         `json:"delegation_id"` // Unique delegation ID

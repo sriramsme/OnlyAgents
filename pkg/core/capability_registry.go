@@ -13,10 +13,9 @@ type CapabilityRegistry struct {
 
 // CapabilityInfo holds metadata about a capability
 type CapabilityInfo struct {
-	Name         Capability
-	Source       string // "system", "native", "cli", "online"
-	RegisteredBy string // skill name that registered it
-	Description  string
+	Name        Capability
+	Source      string // "system", "native", "cli", "online"
+	Description string
 }
 
 // NewCapabilityRegistry creates a new capability registry
@@ -32,9 +31,7 @@ func NewCapabilityRegistry() *CapabilityRegistry {
 		CapabilityWebSearch,
 		CapabilityWebFetch,
 		CapabilityTasks,
-		CapabilityStorage,
 		CapabilityNotes,
-		CapabilitySMS,
 	}
 
 	for _, cap := range systemCaps {

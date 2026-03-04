@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -33,7 +34,6 @@ func NewAgent(
 	ctx context.Context, // ← Parent context (kernel's context)
 	cfg config.AgentConfig,
 	llmClient llm.Client,
-	tools []tools.ToolDef,
 	outbox chan<- core.Event,
 	cm *memory.ConversationManager,
 	mm *memory.MemoryManager,
@@ -56,8 +56,9 @@ func NewAgent(
 		skills:         cfg.Skills,
 		llmClient:      llmClient,
 		soul:           agentSoul,
-		tools:          tools,
 		outbox:         outbox,
+		tools:          []tools.ToolDef{},
+		toolSkillMap:   make(map[string]tools.SkillName),
 		cm:             cm,
 		mm:             mm,
 		inbox:          make(chan core.Event, cfg.BufferSize),
@@ -117,9 +118,14 @@ func (a *Agent) IsExecutive() bool { return a.isExecutive }
 
 func (a *Agent) IsGeneral() bool { return a.isGeneral }
 
-func (a *Agent) GetSkillNames() []string { return a.skills }
+func (a *Agent) GetSkillNames() []tools.SkillName { return a.skills }
 
-func (a *Agent) SetTools(tools []tools.ToolDef) { a.tools = tools }
+func (a *Agent) SetTools(tools []tools.ToolDef) {
+	a.tools = tools
+	for _, tool := range tools {
+		a.toolSkillMap[tool.Name] = tool.Skill
+	}
+}
 
 func (a *Agent) SetFindBestAgent(fn tools.FindBestAgentFunc) {
 	a.findBestAgent = fn
@@ -300,11 +306,6 @@ func (a *Agent) safeSend(evt core.Event, description string) {
 // nolint:gocyclo
 // execute is the internal LLM loop, shared by both sync and async paths.
 func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, correlationID string) (string, error) {
-	a.logger.Debug("executing with meta-tools",
-		"message_length", len(payload.Message),
-		"correlation_id", correlationID,
-		"is_executive", a.isExecutive)
-
 	//persist incoming user message
 	if err := a.cm.SaveUserMessage(ctx, a.id, payload.Message); err != nil {
 		a.logger.Warn("failed to save user message", "err", err, "correlation_id", correlationID)
@@ -339,7 +340,7 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 		}
 
 		llmCallCount++
-		llmPhase := fmt.Sprintf("%s_llm_%d", a.id, llmCallCount)
+		llmPhase := fmt.Sprintf("%s_llm_%d. Msg: %s", a.id, llmCallCount, truncate(payload.Message, 100))
 		logger.Timing.StartPhase(correlationID, llmPhase)
 
 		resp, err := a.llmClient.Chat(ctx, &llm.Request{
@@ -354,8 +355,10 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			logger.Timing.EndPhaseWithMetadata(correlationID, llmPhase, map[string]any{"error": "failed"})
 			return "", fmt.Errorf("llm request failed: %w", err)
 		}
+
 		logger.Timing.EndPhaseWithMetadata(correlationID, llmPhase, map[string]any{
 			"model":            a.llmClient.Model(),
+			"agent":            a.name,
 			"input_tokens":     resp.Usage.InputTokens,
 			"output_tokens":    resp.Usage.OutputTokens,
 			"cached_tokens":    resp.Usage.CachedTokens,
@@ -363,12 +366,6 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			"stop_reason":      resp.StopReason,
 			"tool_calls_count": len(resp.ToolCalls),
 		})
-		a.logger.Debug("llm response",
-			"msg", truncate(payload.Message, 100),
-			"stop_reason", resp.StopReason,
-			"tool_calls", len(resp.ToolCalls),
-			"tokens", resp.Usage.TotalTokens,
-			"correlation_id", correlationID)
 
 		// No tool calls — final response.
 		if !resp.HasToolCalls() {
@@ -394,41 +391,55 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 		))
 
 		for _, tc := range resp.ToolCalls {
-			var result any
-			var toolErr error
+			var exec tools.ToolExecution
 
 			if a.isExecutive && isMetaTool(tc.Function.Name) {
-				result, toolErr = a.handleMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel)
+				exec = a.handleMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel)
 			} else {
-				result, toolErr = a.requestToolCall(ctx, correlationID, tc)
+				exec = a.requestToolCall(ctx, correlationID, tc)
 			}
 
-			if toolErr != nil {
+			if exec.Err != nil {
 				a.logger.Warn("tool call failed",
 					"tool", tc.Function.Name,
-					"error", toolErr,
+					"error", exec.Err,
 					"correlation_id", correlationID)
-				errContent := fmt.Sprintf(`{"error": "%s"}`, toolErr.Error())
-
-				if err := a.cm.SaveToolResult(ctx, a.id, tc.ID, tc.Function.Name, toolErr.Error(), true); err != nil {
+				errContent := fmt.Sprintf(`{"error": "%s"}`, exec.Err.Error())
+				if err := a.cm.SaveToolResult(ctx, a.id, tc.ID, tc.Function.Name, exec.Err.Error(), true); err != nil {
 					a.logger.Warn("failed to save tool error result", "err", err)
 				}
-
 				messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, errContent))
-				continue
+				// don't continue here — still need to check Control below
+			} else {
+				resultJSON, err := json.Marshal(exec.Result)
+				if err != nil {
+					return "", fmt.Errorf("marshal tool result: %w", err)
+				}
+				resultStr := string(resultJSON)
+				if err := a.cm.SaveToolResult(ctx, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
+					a.logger.Warn("failed to save tool result", "err", err)
+				}
+				messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, resultStr))
 			}
 
-			resultJSON, err := json.Marshal(result)
-			if err != nil {
-				return "", fmt.Errorf("marshal tool result: %w", err)
+			if exec.Control == tools.ExecHalt {
+				a.logger.Info("halting execution loop",
+					"tool", tc.Function.Name,
+					"correlation_id", correlationID)
+				if exec.DirectMessage != "" {
+					a.safeSend(core.Event{
+						Type:          core.OutboundMessage,
+						CorrelationID: correlationID,
+						AgentID:       a.id,
+						Payload: core.OutboundMessagePayload{
+							ChannelName: payload.Channel.Name,
+							ChatID:      payload.Channel.ChatID,
+							Content:     exec.DirectMessage,
+						},
+					}, "delegation ack")
+				}
+				return "", nil
 			}
-			resultStr := string(resultJSON)
-
-			if err := a.cm.SaveToolResult(ctx, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
-				a.logger.Warn("failed to save tool result", "err", err)
-			}
-
-			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, resultStr))
 		}
 		// Loop: LLM will see tool results and continue
 	}
@@ -436,8 +447,11 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 
 // requestToolCall fires a ToolCallRequest to kernel and blocks until result arrives.
 // Uses a per-call reply channel so concurrent tool calls don't mix up results.
-func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc tools.ToolCall) (any, error) {
-
+func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc tools.ToolCall) tools.ToolExecution {
+	skillName, ok := a.toolSkillMap[tc.Function.Name]
+	if !ok {
+		return tools.ExecErr(fmt.Errorf("agent: no skill registered for tool %q", tc.Function.Name))
+	}
 	// Kernel will send the result back on this channel
 	// Buffer of 1 ensures non-blocking send from kernel
 	replyCh := make(chan core.Event, 1)
@@ -447,9 +461,9 @@ func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc to
 		CorrelationID: correlationID,
 		AgentID:       a.id,
 		ReplyTo:       replyCh,
-		Payload: core.ToolCallRequestPayload{
+		Payload: tools.ToolCallRequestPayload{
 			ToolCallID: tc.ID,
-			SkillName:  skillNameFromTool(tc.Function.Name), // e.g. "email" from "email_send"
+			SkillName:  skillName,
 			ToolName:   tc.Function.Name,
 			Arguments:  []byte(tc.Function.Arguments), // direct cast, no parsing
 		},
@@ -465,39 +479,39 @@ func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc to
 	case a.outbox <- event:
 		// Successfully sent request
 	case <-ctx.Done():
-		return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
+		return tools.ExecErr(fmt.Errorf("request cancelled: %w", ctx.Err()))
 	case <-a.ctx.Done():
-		return nil, fmt.Errorf("agent shutting down")
+		return tools.ExecErr(fmt.Errorf("agent shutting down"))
 	case <-time.After(5 * time.Second):
-		return nil, fmt.Errorf("failed to send tool call request (timeout): %s", tc.Function.Name)
+		return tools.ExecErr(fmt.Errorf("failed to send tool call request (timeout): %s", tc.Function.Name))
 	}
 
 	// Wait for result with timeout
 	select {
 	case resultEvt := <-replyCh:
-		result, ok := resultEvt.Payload.(core.ToolCallResultPayload)
+		result, ok := resultEvt.Payload.(tools.ToolCallResultPayload)
 		if !ok {
-			return nil, fmt.Errorf("invalid tool result payload type: %T", resultEvt.Payload)
+			return tools.ExecErr(fmt.Errorf("invalid tool result payload type: %T", resultEvt.Payload))
 		}
 
 		if result.Error != "" {
-			return nil, fmt.Errorf("tool call error: %s", result.Error)
+			return tools.ExecErr(fmt.Errorf("tool call error: %s", result.Error))
 		}
 
 		a.logger.Debug("tool call succeeded",
 			"tool", tc.Function.Name,
 			"correlation_id", correlationID)
 
-		return result.Result, nil
+		return tools.ExecOK(result.Result)
 
 	case <-ctx.Done():
-		return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
+		return tools.ExecErr(fmt.Errorf("request cancelled: %w", ctx.Err()))
 
 	case <-a.ctx.Done():
-		return nil, fmt.Errorf("agent shutting down")
+		return tools.ExecErr(fmt.Errorf("agent shutting down"))
 
 	case <-time.After(30 * time.Second):
-		return nil, fmt.Errorf("tool call timeout: %s", tc.Function.Name)
+		return tools.ExecErr(fmt.Errorf("tool call timeout: %s", tc.Function.Name))
 	}
 }
 
@@ -522,7 +536,7 @@ func (a *Agent) fireTaskCompletion(ctx context.Context, correlationID string, wf
 	completionEvent := core.Event{
 		Type:          core.TaskCompleted,
 		CorrelationID: correlationID,
-		Payload: workflow.TaskCompletedPayload{
+		Payload: workflow.WFTaskCompletedPayload{
 			WorkflowID: wf.WorkflowID,
 			TaskID:     wf.TaskID,
 			Result:     json.RawMessage(resultJSON),
@@ -573,14 +587,14 @@ func (a *Agent) healthCheck() {
 	}
 }
 
-// skillNameFromTool extracts skill name from tool name convention "skillname_action"
-// e.g. "email_send" → "email", "calendar_create_event" → "calendar"
-func skillNameFromTool(toolName string) string {
-	parts := strings.SplitN(toolName, "_", 2)
-	if len(parts) > 0 {
-		return parts[0]
+func (a *Agent) delegationAck(agentName string) string {
+	msgs := a.soul.DelegationAcknowledgments()
+	if len(msgs) == 0 {
+		// fallback if not configured
+		return fmt.Sprintf("I've handed that off to %s.", agentName)
 	}
-	return toolName
+	template := msgs[rand.Intn(len(msgs))] // nolint:gosec
+	return strings.ReplaceAll(template, "{agent_name}", agentName)
 }
 
 func truncate(s string, max int) string {

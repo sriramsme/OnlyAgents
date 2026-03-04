@@ -55,8 +55,9 @@ type ValidationRules struct {
 
 // NewCLISkill creates a CLISkill from a ParsedSkill definition.
 func NewCLISkill(definition *ParsedSkill, executor *CLIExecutor) *CLISkill {
+	name := tools.SkillName(definition.Name)
 	base := skills.NewBaseSkill(
-		definition.Name,
+		name,
 		definition.Description,
 		definition.Version,
 		skills.SkillTypeCLI,
@@ -68,7 +69,12 @@ func NewCLISkill(definition *ParsedSkill, executor *CLIExecutor) *CLISkill {
 	for _, cmd := range definition.Commands {
 		props := buildParamProps(cmd.ParamDefs)
 		params := tools.BuildParams(props, cmd.Parameters)
-		toolDefs = append(toolDefs, tools.NewToolDef(cmd.Name, cmd.Description, params))
+		toolDefs = append(toolDefs, tools.NewToolDef(
+			tools.SkillName(definition.Name), // dynamic, runtime cast
+			cmd.Name,
+			cmd.Description,
+			params,
+		))
 		commandMap[cmd.Name] = cmd
 	}
 

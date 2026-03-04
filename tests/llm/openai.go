@@ -59,6 +59,7 @@ func TestOpenAIToolCalling(t *testing.T) {
 
 	// Define a weather tool
 	weatherTool := tools.NewToolDef(
+		"weather",
 		"get_weather",
 		"Get the current weather for a location",
 		tools.BuildParams(

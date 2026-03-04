@@ -18,13 +18,15 @@ const (
 	CapabilityTasks Capability = "tasks"
 
 	// Storage capabilities
-	CapabilityStorage Capability = "storage"
+	// CapabilityStorage Capability = "storage"
 
 	// Notes capabilities
 	CapabilityNotes Capability = "notes"
 
+	CapabilityReminders Capability = "reminders"
+
 	// Communication
-	CapabilitySMS Capability = "sms"
+	// CapabilitySMS Capability = "sms"
 )
 
 // String returns the string representation
@@ -40,9 +42,7 @@ func AllCapabilities() []Capability {
 		CapabilityWebSearch,
 		CapabilityWebFetch,
 		CapabilityTasks,
-		CapabilityStorage,
 		CapabilityNotes,
-		CapabilitySMS,
 	}
 }
 

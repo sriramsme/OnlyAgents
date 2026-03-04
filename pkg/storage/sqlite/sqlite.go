@@ -6,6 +6,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
 )
 
@@ -18,7 +19,7 @@ type DB struct {
 
 // New opens (or creates) the SQLite database at path, applies pending
 // migrations, and returns a ready-to-use DB.
-func New(path string) (*DB, error) {
+func New(path string) (storage.Storage, error) {
 	// _loc=auto: driver parses stored time strings respecting timezone info.
 	// _busy_timeout=5000: wait up to 5 s before returning SQLITE_BUSY.
 	dsn := fmt.Sprintf("file:%s?_loc=auto&_busy_timeout=5000", path)

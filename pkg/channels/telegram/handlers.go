@@ -113,6 +113,10 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 // Send is called by kernel when the agent has a response ready.
 // It updates the placeholder message created in handleMessage.
 func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage) error {
+	if strings.TrimSpace(msg.Content) == "" {
+		c.logger.Warn("empty message, skipping send")
+		return nil
+	}
 	chatID, err := parseChatID(msg.ChatID)
 	if err != nil {
 		return fmt.Errorf("invalid chat id: %w", err)

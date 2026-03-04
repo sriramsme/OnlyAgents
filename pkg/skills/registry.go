@@ -14,7 +14,7 @@ import (
 
 // Registry holds all skills available in the system.
 type Registry struct {
-	skills             map[string]Skill
+	skills             map[tools.SkillName]Skill
 	mu                 sync.RWMutex
 	capabilityRegistry *core.CapabilityRegistry
 }
@@ -28,7 +28,7 @@ func NewRegistry(
 	cliExecutor interface{},
 ) (*Registry, error) {
 	reg := &Registry{
-		skills:             make(map[string]Skill),
+		skills:             make(map[tools.SkillName]Skill),
 		capabilityRegistry: capabilityRegistry,
 	}
 
@@ -88,14 +88,17 @@ func (r *Registry) Register(s Skill) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.skills[s.Name()] = s
+	name := tools.SkillName(s.Name())
+	if _, exists := r.skills[name]; exists {
+		return fmt.Errorf("skill %q already registered", name)
+	}
+	r.skills[name] = s
 
 	// Register capabilities
 	for _, cap := range s.RequiredCapabilities() {
 		err := r.capabilityRegistry.Register(cap, &core.CapabilityInfo{
-			Name:         cap,
-			Source:       string(s.Type()),
-			RegisteredBy: s.Name(),
+			Name:   cap,
+			Source: string(s.Type()),
 		})
 		if err != nil {
 			return fmt.Errorf("register capability %s: %w", cap, err)
@@ -106,7 +109,7 @@ func (r *Registry) Register(s Skill) error {
 }
 
 // Get retrieves a skill by name
-func (r *Registry) Get(name string) (Skill, bool) {
+func (r *Registry) Get(name tools.SkillName) (Skill, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.skills[name]
@@ -124,10 +127,10 @@ func (r *Registry) GetAll() []Skill {
 	return out
 }
 
-func (r *Registry) ListAll() []string {
+func (r *Registry) ListAll() []tools.SkillName {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]string, 0, len(r.skills))
+	out := make([]tools.SkillName, 0, len(r.skills))
 	for name := range r.skills {
 		out = append(out, name)
 	}

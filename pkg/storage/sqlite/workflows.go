@@ -43,9 +43,9 @@ func (d *DB) UpdateWorkflowStatus(ctx context.Context, id string, status storage
 }
 
 // CreateTask creates a new task
-func (d *DB) CreateTask(ctx context.Context, task *storage.Task) error {
+func (d *DB) CreateWFTask(ctx context.Context, task *storage.WFTask) error {
 	_, err := d.db.ExecContext(ctx, `
-        INSERT INTO tasks (
+        INSERT INTO wf_tasks (
             id, workflow_id, name, description, type, depends_on, required_capabilities,
             payload, status, assigned_agent_id, created_at, retry_count, max_retries,
             timeout_seconds, metadata, updated_at
@@ -55,27 +55,27 @@ func (d *DB) CreateTask(ctx context.Context, task *storage.Task) error {
 		task.AssignedAgentID, task.CreatedAt, task.RetryCount, task.MaxRetries,
 		task.TimeoutSeconds, task.Metadata, task.UpdatedAt)
 
-	return wrap(err, "CreateTask")
+	return wrap(err, "CreateWFTask")
 }
 
 // GetTask retrieves a task by ID
-func (d *DB) GetTask(ctx context.Context, id string) (*storage.Task, error) {
-	var t storage.Task
+func (d *DB) GetWFTask(ctx context.Context, id string) (*storage.WFTask, error) {
+	var t storage.WFTask
 	err := d.db.GetContext(ctx, &t, `
         SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
                payload, status, result, error, assigned_agent_id, created_at, started_at,
                completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
-        FROM tasks WHERE id = ?
+        FROM wf_tasks WHERE id = ?
     `, id)
 
 	if err != nil {
-		return nil, wrap(err, "GetTask")
+		return nil, wrap(err, "GetWFTask")
 	}
 	return &t, nil
 }
 
 // UpdateTaskStatus updates task status and timestamps
-func (d *DB) UpdateTaskStatus(ctx context.Context, id string, status storage.TaskStatus, errorMsg string) error {
+func (d *DB) UpdateWFTaskStatus(ctx context.Context, id string, status storage.WFTaskStatus, errorMsg string) error {
 	now := storage.DBTime{Time: time.Now()}
 
 	// Build query based on status
@@ -83,84 +83,84 @@ func (d *DB) UpdateTaskStatus(ctx context.Context, id string, status storage.Tas
 	var args []interface{}
 
 	switch status {
-	case storage.TaskStatusRunning:
-		query = `UPDATE tasks SET status = ?, error = ?, started_at = ?, updated_at = ? WHERE id = ?`
+	case storage.WFTaskStatusRunning:
+		query = `UPDATE wf_tasks SET status = ?, error = ?, started_at = ?, updated_at = ? WHERE id = ?`
 		args = []interface{}{status, errorMsg, now, now, id}
-	case storage.TaskStatusCompleted, storage.TaskStatusFailed:
-		query = `UPDATE tasks SET status = ?, error = ?, completed_at = ?, updated_at = ? WHERE id = ?`
+	case storage.WFTaskStatusCompleted, storage.WFTaskStatusFailed:
+		query = `UPDATE wf_tasks SET status = ?, error = ?, completed_at = ?, updated_at = ? WHERE id = ?`
 		args = []interface{}{status, errorMsg, now, now, id}
 	default:
-		query = `UPDATE tasks SET status = ?, error = ?, updated_at = ? WHERE id = ?`
+		query = `UPDATE wf_tasks SET status = ?, error = ?, updated_at = ? WHERE id = ?`
 		args = []interface{}{status, errorMsg, now, id}
 	}
 
 	_, err := d.db.ExecContext(ctx, query, args...)
-	return wrap(err, "UpdateTaskStatus")
+	return wrap(err, "UpdateWFTaskStatus")
 }
 
 // UpdateTaskResult updates task result
-func (d *DB) UpdateTaskResult(ctx context.Context, id string, result json.RawMessage) error {
+func (d *DB) UpdateWFTaskResult(ctx context.Context, id string, result json.RawMessage) error {
 	_, err := d.db.ExecContext(ctx, `
-        UPDATE tasks SET result = ?, updated_at = ? WHERE id = ?
-    `, string(result), storage.DBTime{Time: time.Now()}, id)
+        UPDATE wf_tasks SET result = ?, updated_at = ? WHERE id = ?
+    `, result, storage.DBTime{Time: time.Now()}, id)
 
-	return wrap(err, "UpdateTaskResult")
+	return wrap(err, "UpdateWFTaskResult")
 }
 
 // GetWorkflowTasks returns all tasks for a workflow
-func (d *DB) GetWorkflowTasks(ctx context.Context, workflowID string) ([]*storage.Task, error) {
-	var tasks []*storage.Task
+func (d *DB) GetWFTasks(ctx context.Context, workflowID string) ([]*storage.WFTask, error) {
+	var tasks []*storage.WFTask
 	err := d.db.SelectContext(ctx, &tasks, `
         SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
                payload, status, result, error, assigned_agent_id, created_at, started_at,
                completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
-        FROM tasks
+        FROM wf_tasks
         WHERE workflow_id = ?
         ORDER BY created_at ASC
     `, workflowID)
 
 	if err != nil {
-		return nil, wrap(err, "GetWorkflowTasks")
+		return nil, wrap(err, "GetWFTasks")
 	}
 	return tasks, nil
 }
 
 // GetReadyTasks returns queued tasks ready to execute
-func (d *DB) GetReadyTasks(ctx context.Context, limit int) ([]*storage.Task, error) {
-	var tasks []*storage.Task
+func (d *DB) GetReadyWFTasks(ctx context.Context, limit int) ([]*storage.WFTask, error) {
+	var tasks []*storage.WFTask
 	err := d.db.SelectContext(ctx, &tasks, `
         SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
                payload, status, result, error, assigned_agent_id, created_at, started_at,
                completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
-        FROM tasks
+        FROM wf_tasks
         WHERE status = ?
         ORDER BY created_at ASC
         LIMIT ?
-    `, storage.TaskStatusQueued, limit)
+    `, storage.WFTaskStatusQueued, limit)
 
 	if err != nil {
-		return nil, wrap(err, "GetReadyTasks")
+		return nil, wrap(err, "GetReadyWFTasks")
 	}
 	return tasks, nil
 }
 
 // GetDependentTasks returns tasks that depend on the given task
-func (d *DB) GetDependentTasks(ctx context.Context, taskID string) ([]*storage.Task, error) {
-	var tasks []*storage.Task
+func (d *DB) GetDependentWFTasks(ctx context.Context, taskID string) ([]*storage.WFTask, error) {
+	var tasks []*storage.WFTask
 	err := d.db.SelectContext(ctx, &tasks, `
         SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
                payload, status, result, error, assigned_agent_id, created_at, started_at,
                completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
-        FROM tasks
+        FROM wf_tasks
         WHERE depends_on LIKE ?
     `, "%"+taskID+"%")
 
 	if err != nil {
-		return nil, wrap(err, "GetDependentTasks")
+		return nil, wrap(err, "GetDependentWFTasks")
 	}
 
 	// Filter to exact matches (not just substrings)
-	var filtered []*storage.Task
+	var filtered []*storage.WFTask
 	for _, task := range tasks {
 		var deps []string
 		if err := json.Unmarshal([]byte(task.DependsOn), &deps); err != nil {
@@ -181,7 +181,7 @@ func (d *DB) GetDependentTasks(ctx context.Context, taskID string) ([]*storage.T
 func (d *DB) AllDependenciesSatisfied(ctx context.Context, taskID string) (bool, error) {
 	var dependsOnJSON string
 	err := d.db.GetContext(ctx, &dependsOnJSON, `
-        SELECT depends_on FROM tasks WHERE id = ?
+        SELECT depends_on FROM wf_tasks WHERE id = ?
     `, taskID)
 
 	if err != nil {
@@ -199,9 +199,9 @@ func (d *DB) AllDependenciesSatisfied(ctx context.Context, taskID string) (bool,
 
 	// Check each dependency
 	for _, depID := range deps {
-		var status storage.TaskStatus
-		err := d.db.GetContext(ctx, &status, `SELECT status FROM tasks WHERE id = ?`, depID)
-		if err != nil || status != storage.TaskStatusCompleted {
+		var status storage.WFTaskStatus
+		err := d.db.GetContext(ctx, &status, `SELECT status FROM wf_tasks WHERE id = ?`, depID)
+		if err != nil || status != storage.WFTaskStatusCompleted {
 			return false, nil
 		}
 	}

@@ -32,7 +32,7 @@ type WebSearchSkill struct {
 // NewWebSearchSkill creates a new web search skill
 func NewWebSearchSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skill, error) {
 	base := skills.NewBaseSkill(
-		"websearch",
+		tools.SkillWebSearch,
 		"Search the web for current information using various search providers",
 		version,
 		skills.SkillTypeNative,

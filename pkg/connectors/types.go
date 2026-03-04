@@ -63,73 +63,16 @@ type EmailAttachment struct {
 	URL         string `json:"url,omitempty"`
 }
 
-// ====================
-// Calendar Types
-// ====================
-
-type CalendarEvent struct {
-	ID             string          `json:"id,omitempty"`
-	CalendarID     string          `json:"calendar_id,omitempty"`
-	Summary        string          `json:"summary"`
-	Description    string          `json:"description,omitempty"`
-	Location       string          `json:"location,omitempty"`
-	Start          time.Time       `json:"start"`
-	End            time.Time       `json:"end"`
-	AllDay         bool            `json:"all_day"`
-	Attendees      []EventAttendee `json:"attendees,omitempty"`
-	Reminders      []EventReminder `json:"reminders,omitempty"`
-	Recurring      bool            `json:"recurring"`
-	RecurrenceRule string          `json:"recurrence_rule,omitempty"`
-	Status         string          `json:"status,omitempty"`     // confirmed, tentative, cancelled
-	Visibility     string          `json:"visibility,omitempty"` // public, private
-	CreatedAt      time.Time       `json:"created_at,omitempty"`
-	UpdatedAt      time.Time       `json:"updated_at,omitempty"`
-	Raw            interface{}     `json:"raw,omitempty"`
-}
-
-type EventAttendee struct {
-	Email          string `json:"email"`
-	Name           string `json:"name,omitempty"`
-	ResponseStatus string `json:"response_status,omitempty"` // accepted, declined, tentative, needsAction
-	Optional       bool   `json:"optional"`
-}
-
-type EventReminder struct {
-	Method  string `json:"method"` // email, popup, sms
-	Minutes int    `json:"minutes"`
-}
-
-type ListEventsRequest struct {
-	CalendarID string    `json:"calendar_id,omitempty"`
-	Start      time.Time `json:"start"`
-	End        time.Time `json:"end"`
-	MaxResults int       `json:"max_results,omitempty"`
-	Query      string    `json:"query,omitempty"`
-}
-
-type FindSlotsRequest struct {
-	Duration     time.Duration `json:"duration"`
-	Start        time.Time     `json:"start"`
-	End          time.Time     `json:"end"`
-	Attendees    []string      `json:"attendees,omitempty"`
-	WorkingHours *WorkingHours `json:"working_hours,omitempty"`
-}
-
-type WorkingHours struct {
-	StartHour int   `json:"start_hour"` // 0-23
-	EndHour   int   `json:"end_hour"`   // 0-23
-	Weekdays  []int `json:"weekdays"`   // 0=Sunday, 6=Saturday
-}
-
+// TimeSlot is shared across connectors that deal with availability.
 type TimeSlot struct {
-	Start time.Time `json:"start"`
-	End   time.Time `json:"end"`
+	Start    time.Time     `json:"start"`
+	End      time.Time     `json:"end"`
+	Duration time.Duration `json:"duration"`
 }
 
 // ====================
 // Web Search Types
 // ====================
-
 type SearchRequest struct {
 	Query      string   `json:"query"`
 	MaxResults int      `json:"max_results"`
@@ -177,34 +120,6 @@ type FetchResponse struct {
 }
 
 // ====================
-// Task Types
-// ====================
-
-type Task struct {
-	ID          string      `json:"id,omitempty"`
-	Title       string      `json:"title"`
-	Description string      `json:"description,omitempty"`
-	Status      string      `json:"status"`             // pending, in_progress, completed
-	Priority    string      `json:"priority,omitempty"` // low, medium, high
-	DueDate     *time.Time  `json:"due_date,omitempty"`
-	Tags        []string    `json:"tags,omitempty"`
-	ProjectID   string      `json:"project_id,omitempty"`
-	ParentID    string      `json:"parent_id,omitempty"`
-	Completed   bool        `json:"completed"`
-	CompletedAt *time.Time  `json:"completed_at,omitempty"`
-	CreatedAt   time.Time   `json:"created_at,omitempty"`
-	UpdatedAt   time.Time   `json:"updated_at,omitempty"`
-	Raw         interface{} `json:"raw,omitempty"`
-}
-
-type ListTasksRequest struct {
-	ProjectID  string `json:"project_id,omitempty"`
-	Status     string `json:"status,omitempty"`
-	Completed  *bool  `json:"completed,omitempty"`
-	MaxResults int    `json:"max_results,omitempty"`
-}
-
-// ====================
 // Storage Types
 // ====================
 
@@ -248,21 +163,4 @@ type ShareRequest struct {
 type ShareResponse struct {
 	ShareLink  string `json:"share_link"`
 	Permission string `json:"permission"`
-}
-
-// ====================
-// Notes Types
-// ====================
-
-type Note struct {
-	ID        string            `json:"id,omitempty"`
-	Title     string            `json:"title"`
-	Content   string            `json:"content"`
-	Format    string            `json:"format"` // markdown, html, plain
-	Tags      []string          `json:"tags,omitempty"`
-	FolderID  string            `json:"folder_id,omitempty"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
-	CreatedAt time.Time         `json:"created_at,omitempty"`
-	UpdatedAt time.Time         `json:"updated_at,omitempty"`
-	Raw       interface{}       `json:"raw,omitempty"`
 }

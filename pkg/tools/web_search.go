@@ -9,6 +9,7 @@ type WebSearchInput struct {
 func GetWebSearchTools() []ToolDef {
 	return []ToolDef{
 		NewToolDef(
+			SkillWebSearch,
 			"websearch_search",
 			"Search the web for current information. Returns titles, URLs, and snippets from search results.",
 			SchemaFromStruct(WebSearchInput{}),

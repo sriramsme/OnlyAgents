@@ -9,7 +9,7 @@ CREATE TABLE workflows (
     updated_at TEXT NOT NULL
 );
 
-CREATE TABLE tasks (
+CREATE TABLE wf_tasks (
     id TEXT PRIMARY KEY,
     workflow_id TEXT NOT NULL,
     name TEXT NOT NULL,
@@ -33,6 +33,6 @@ CREATE TABLE tasks (
     FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_tasks_workflow ON tasks(workflow_id);
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_tasks_created ON tasks(created_at);
+CREATE INDEX idx_wf_tasks_workflow ON wf_tasks(workflow_id);
+CREATE INDEX idx_wf_tasks_status ON wf_tasks(status);
+CREATE INDEX idx_wf_tasks_created ON wf_tasks(created_at);

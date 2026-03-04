@@ -1,5 +1,10 @@
 package storage
 
+import (
+	"database/sql"
+	"time"
+)
+
 // Conversation is a single session between a user and an agent.
 type Conversation struct {
 	ID          string     `db:"id"`
@@ -95,7 +100,6 @@ type AgentState struct {
 // CalendarEvent is a native calendar entry.
 type CalendarEvent struct {
 	ID          string            `db:"id"`
-	AgentID     string            `db:"agent_id"`
 	Title       string            `db:"title"`
 	Description string            `db:"description"`
 	StartTime   DBTime            `db:"start_time"`
@@ -111,7 +115,6 @@ type CalendarEvent struct {
 // Note is a Markdown note.
 type Note struct {
 	ID        string            `db:"id"`
-	AgentID   string            `db:"agent_id"`
 	Title     string            `db:"title"`
 	Content   string            `db:"content"`
 	Tags      JSONSlice[string] `db:"tags"`
@@ -123,13 +126,48 @@ type Note struct {
 // Reminder is a one-shot or recurring reminder delivered via the agent's channel.
 type Reminder struct {
 	ID        string     `db:"id"`
-	AgentID   string     `db:"agent_id"`
 	Title     string     `db:"title"`
 	Body      string     `db:"body"`
 	DueAt     DBTime     `db:"due_at"`
 	SentAt    NullDBTime `db:"sent_at"`
 	Recurring string     `db:"recurring"`
 	CreatedAt DBTime     `db:"created_at"`
+}
+
+// Project groups related tasks together.
+type Project struct {
+	ID          string `db:"id"`
+	Name        string `db:"name"`
+	Description string `db:"description"`
+	Color       string `db:"color"` // hex e.g. "#6366f1"
+	CreatedAt   DBTime `db:"created_at"`
+	UpdatedAt   DBTime `db:"updated_at"`
+}
+
+// Task is a work item with optional project grouping and due date.
+// Status: todo | in_progress | done | cancelled
+// Priority: low | medium | high
+type Task struct {
+	ID          string            `db:"id"`
+	ProjectID   string            `db:"project_id"` // "" = no project
+	Title       string            `db:"title"`
+	Body        string            `db:"body"`
+	Status      string            `db:"status"`
+	Priority    string            `db:"priority"`
+	DueAt       NullDBTime        `db:"due_at"`
+	CompletedAt NullDBTime        `db:"completed_at"`
+	Tags        JSONSlice[string] `db:"tags"`
+	CreatedAt   DBTime            `db:"created_at"`
+	UpdatedAt   DBTime            `db:"updated_at"`
+}
+
+// TaskFilter is used by ListTasks. All fields are optional — nil = no filter.
+type TaskFilter struct {
+	ProjectID *string    // filter by project; use pointer to "" to filter unprojectd tasks
+	Status    *string    // "todo" | "in_progress" | "done" | "cancelled"
+	Priority  *string    // "low" | "medium" | "high"
+	DueFrom   *time.Time // inclusive lower bound on due_at
+	DueTo     *time.Time // inclusive upper bound on due_at
 }
 
 // JobRun records the last execution of a named background job.
@@ -163,47 +201,47 @@ type Workflow struct {
 	UpdatedAt   DBTime         `db:"updated_at"`
 }
 
-type TaskType string
+type WFTaskType string
 
 const (
-	TaskTypeAgentExecution TaskType = "agent_execution"
-	TaskTypeSkillExecution TaskType = "skill_execution"
-	TaskTypeWebhook        TaskType = "webhook"
-	TaskTypeDelay          TaskType = "delay"
-	TaskTypeCondition      TaskType = "condition"
+	WFTaskTypeAgentExecution WFTaskType = "agent_execution"
+	WFTaskTypeSkillExecution WFTaskType = "skill_execution"
+	WFTaskTypeWebhook        WFTaskType = "webhook"
+	WFTaskTypeDelay          WFTaskType = "delay"
+	WFTaskTypeCondition      WFTaskType = "condition"
 )
 
-type TaskStatus string
+type WFTaskStatus string
 
 const (
-	TaskStatusPending   TaskStatus = "pending"
-	TaskStatusQueued    TaskStatus = "queued"
-	TaskStatusRunning   TaskStatus = "running"
-	TaskStatusCompleted TaskStatus = "completed"
-	TaskStatusFailed    TaskStatus = "failed"
-	TaskStatusCancelled TaskStatus = "cancelled"
-	TaskStatusBlocked   TaskStatus = "blocked"
+	WFTaskStatusPending   WFTaskStatus = "pending"
+	WFTaskStatusQueued    WFTaskStatus = "queued"
+	WFTaskStatusRunning   WFTaskStatus = "running"
+	WFTaskStatusCompleted WFTaskStatus = "completed"
+	WFTaskStatusFailed    WFTaskStatus = "failed"
+	WFTaskStatusCancelled WFTaskStatus = "cancelled"
+	WFTaskStatusBlocked   WFTaskStatus = "blocked"
 )
 
-type Task struct {
-	ID                   string     `db:"id"`
-	WorkflowID           string     `db:"workflow_id"`
-	Name                 string     `db:"name"`
-	Description          string     `db:"description"`
-	Type                 TaskType   `db:"type"`
-	DependsOn            string     `db:"depends_on"`            // JSON array
-	RequiredCapabilities string     `db:"required_capabilities"` // JSON array
-	Payload              string     `db:"payload"`               // JSON
-	Status               TaskStatus `db:"status"`
-	Result               string     `db:"result"` // JSON
-	Error                string     `db:"error"`
-	AssignedAgentID      string     `db:"assigned_agent_id"`
-	CreatedAt            DBTime     `db:"created_at"`
-	StartedAt            NullDBTime `db:"started_at"`
-	CompletedAt          NullDBTime `db:"completed_at"`
-	RetryCount           int        `db:"retry_count"`
-	MaxRetries           int        `db:"max_retries"`
-	TimeoutSeconds       int        `db:"timeout_seconds"`
-	Metadata             string     `db:"metadata"` // JSON
-	UpdatedAt            DBTime     `db:"updated_at"`
+type WFTask struct {
+	ID                   string         `db:"id"`
+	WorkflowID           string         `db:"workflow_id"`
+	Name                 string         `db:"name"`
+	Description          string         `db:"description"`
+	Type                 WFTaskType     `db:"type"`
+	DependsOn            string         `db:"depends_on"`            // JSON array
+	RequiredCapabilities string         `db:"required_capabilities"` // JSON array
+	Payload              string         `db:"payload"`               // JSON
+	Status               WFTaskStatus   `db:"status"`
+	Result               []byte         `db:"result"`
+	Error                sql.NullString `db:"error"`
+	AssignedAgentID      string         `db:"assigned_agent_id"`
+	CreatedAt            DBTime         `db:"created_at"`
+	StartedAt            NullDBTime     `db:"started_at"`
+	CompletedAt          NullDBTime     `db:"completed_at"`
+	RetryCount           int            `db:"retry_count"`
+	MaxRetries           int            `db:"max_retries"`
+	TimeoutSeconds       int            `db:"timeout_seconds"`
+	Metadata             string         `db:"metadata"` // JSON
+	UpdatedAt            DBTime         `db:"updated_at"`
 }

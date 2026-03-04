@@ -3,8 +3,10 @@ package connectors
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
 // Connector is the base interface all connectors must implement
@@ -39,17 +41,6 @@ type EmailConnector interface {
 	MarkAsUnread(ctx context.Context, id string) error
 }
 
-// CalendarConnector provides calendar capabilities
-type CalendarConnector interface {
-	Connector
-	CreateEvent(ctx context.Context, event *CalendarEvent) (*CalendarEvent, error)
-	GetEvent(ctx context.Context, id string) (*CalendarEvent, error)
-	ListEvents(ctx context.Context, req *ListEventsRequest) ([]*CalendarEvent, error)
-	UpdateEvent(ctx context.Context, id string, event *CalendarEvent) (*CalendarEvent, error)
-	DeleteEvent(ctx context.Context, id string) error
-	FindAvailableSlots(ctx context.Context, req *FindSlotsRequest) ([]*TimeSlot, error)
-}
-
 // WebSearchConnector provides web search capabilities
 type WebSearchConnector interface {
 	Connector
@@ -60,17 +51,6 @@ type WebSearchConnector interface {
 type WebFetchConnector interface {
 	Connector
 	Fetch(ctx context.Context, req *FetchRequest) (*FetchResponse, error)
-}
-
-// TaskConnector provides task management capabilities
-type TaskConnector interface {
-	Connector
-	CreateTask(ctx context.Context, task *Task) (*Task, error)
-	GetTask(ctx context.Context, id string) (*Task, error)
-	ListTasks(ctx context.Context, req *ListTasksRequest) ([]*Task, error)
-	UpdateTask(ctx context.Context, id string, task *Task) (*Task, error)
-	CompleteTask(ctx context.Context, id string) error
-	DeleteTask(ctx context.Context, id string) error
 }
 
 // StorageConnector provides file storage capabilities
@@ -84,14 +64,57 @@ type StorageConnector interface {
 	Share(ctx context.Context, fileID string, req *ShareRequest) (*ShareResponse, error)
 }
 
-// NotesConnector provides note-taking capabilities
+// CalendarConnector is implemented by native.CalendarConnector and any future
+// external calendar connectors (Google Calendar, etc.).
+type CalendarConnector interface {
+	CreateEvents(ctx context.Context, events []*storage.CalendarEvent) ([]*storage.CalendarEvent, []error)
+	GetEvent(ctx context.Context, id string) (*storage.CalendarEvent, error)
+	UpdateEvent(ctx context.Context, event *storage.CalendarEvent) (*storage.CalendarEvent, error)
+	DeleteEvent(ctx context.Context, id string) error
+	ListEvents(ctx context.Context, from, to time.Time) ([]*storage.CalendarEvent, error)
+	GetUpcoming(ctx context.Context, limit int) ([]*storage.CalendarEvent, error)
+	FindAvailableSlots(ctx context.Context, from, to time.Time, minDuration time.Duration) ([]TimeSlot, error)
+}
+
+// NotesConnector is implemented by native.NotesConnector.
 type NotesConnector interface {
-	Connector
-	CreateNote(ctx context.Context, note *Note) (*Note, error)
-	GetNote(ctx context.Context, id string) (*Note, error)
-	UpdateNote(ctx context.Context, id string, note *Note) (*Note, error)
+	CreateNotes(ctx context.Context, notes []*storage.Note) ([]*storage.Note, []error)
+	GetNote(ctx context.Context, id string) (*storage.Note, error)
+	UpdateNote(ctx context.Context, note *storage.Note) (*storage.Note, error)
 	DeleteNote(ctx context.Context, id string) error
-	SearchNotes(ctx context.Context, query string) ([]*Note, error)
+	ListNotes(ctx context.Context) ([]*storage.Note, error)
+	SearchNotes(ctx context.Context, query string) ([]*storage.Note, error)
+	PinNote(ctx context.Context, id string, pinned bool) error
+}
+
+// RemindersConnector is implemented by native.RemindersConnector.
+type RemindersConnector interface {
+	CreateReminders(ctx context.Context, rems []*storage.Reminder) ([]*storage.Reminder, []error)
+	GetReminder(ctx context.Context, id string) (*storage.Reminder, error)
+	UpdateReminder(ctx context.Context, rem *storage.Reminder) (*storage.Reminder, error)
+	DeleteReminder(ctx context.Context, id string) error
+	ListReminders(ctx context.Context) ([]*storage.Reminder, error)
+}
+
+// TasksConnector is implemented by native.TasksConnector.
+type TasksConnector interface {
+	CreateProject(ctx context.Context, project *storage.Project) (*storage.Project, error)
+	GetProject(ctx context.Context, id string) (*storage.Project, error)
+	UpdateProject(ctx context.Context, project *storage.Project) (*storage.Project, error)
+	DeleteProject(ctx context.Context, id string) error
+	ListProjects(ctx context.Context) ([]*storage.Project, error)
+
+	CreateTasks(ctx context.Context, task []*storage.Task) ([]*storage.Task, []error)
+	GetTask(ctx context.Context, id string) (*storage.Task, error)
+	UpdateTask(ctx context.Context, task *storage.Task) (*storage.Task, error)
+	DeleteTask(ctx context.Context, id string) error
+	CompleteTask(ctx context.Context, id string) error
+	ListTasks(ctx context.Context, filter storage.TaskFilter) ([]*storage.Task, error)
+	SearchTasks(ctx context.Context, query string) ([]*storage.Task, error)
+	GetTodaysTasks(ctx context.Context) ([]*storage.Task, error)
+	GetTasksByProject(ctx context.Context, projectID string, filter storage.TaskFilter) ([]*storage.Task, error)
+	MoveToProject(ctx context.Context, taskID, projectID string) error
+	SetPriority(ctx context.Context, id, priority string) error
 }
 
 // ====================
@@ -104,9 +127,7 @@ func SupportsCapability(conn Connector, capability core.Capability) bool {
 	case core.CapabilityEmail:
 		_, ok := conn.(EmailConnector)
 		return ok
-	case core.CapabilityCalendar:
-		_, ok := conn.(CalendarConnector)
-		return ok
+
 	case core.CapabilityWebSearch:
 		_, ok := conn.(WebSearchConnector)
 		return ok
@@ -114,10 +135,15 @@ func SupportsCapability(conn Connector, capability core.Capability) bool {
 		_, ok := conn.(WebFetchConnector)
 		return ok
 	case core.CapabilityTasks:
-		_, ok := conn.(TaskConnector)
+		_, ok := conn.(TasksConnector)
 		return ok
-	case core.CapabilityStorage:
-		_, ok := conn.(StorageConnector)
+
+		// Productivity
+	case core.CapabilityCalendar:
+		_, ok := conn.(CalendarConnector)
+		return ok
+	case core.CapabilityReminders:
+		_, ok := conn.(RemindersConnector)
 		return ok
 	case core.CapabilityNotes:
 		_, ok := conn.(NotesConnector)
@@ -143,11 +169,11 @@ func GetCapabilities(conn Connector) []core.Capability {
 	if _, ok := conn.(WebFetchConnector); ok {
 		caps = append(caps, core.CapabilityWebFetch)
 	}
-	if _, ok := conn.(TaskConnector); ok {
+	if _, ok := conn.(TasksConnector); ok {
 		caps = append(caps, core.CapabilityTasks)
 	}
-	if _, ok := conn.(StorageConnector); ok {
-		caps = append(caps, core.CapabilityStorage)
+	if _, ok := conn.(RemindersConnector); ok {
+		caps = append(caps, core.CapabilityReminders)
 	}
 	if _, ok := conn.(NotesConnector); ok {
 		caps = append(caps, core.CapabilityNotes)

@@ -25,11 +25,12 @@ type Agent struct {
 	// Core capabilities
 	llmClient llm.Client
 	soul      *Soul
-	skills    []string
+	skills    []tools.SkillName
 
 	// Tool definitions given to LLM (schema only, no implementation)
 	// Kernel populates this based on which skills are assigned to this agent.
-	tools []tools.ToolDef
+	tools        []tools.ToolDef
+	toolSkillMap map[string]tools.SkillName
 
 	// Kernel bus — agent fires events here (tool calls, outbound messages)
 	outbox chan<- core.Event
@@ -102,4 +103,4 @@ type Purpose struct {
 }
 
 type findSkillFunc func(ctx context.Context, capability core.Capability) (interface{}, error)
-type useSkillToolFunc func(ctx context.Context, skillName, toolName string, params map[string]interface{}) (interface{}, error)
+type useSkillToolFunc func(ctx context.Context, skillName tools.SkillName, toolName string, params map[string]interface{}) (interface{}, error)

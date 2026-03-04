@@ -11,17 +11,17 @@ import (
 
 // WorkflowDefinition represents a workflow at submission time (before storage)
 type WorkflowDefinition struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Tasks       []*TaskDefinition `json:"tasks"`
-	CreatedBy   string            `json:"created_by"` // Agent ID
-	Status      string            `json:"status"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	ID          string              `json:"id"`
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	Tasks       []*WFTaskDefinition `json:"tasks"`
+	CreatedBy   string              `json:"created_by"` // Agent ID
+	Status      string              `json:"status"`
+	Metadata    map[string]string   `json:"metadata,omitempty"`
 }
 
-// TaskDefinition represents a task at submission time
-type TaskDefinition struct {
+// WFTaskDefinition represents a task at submission time
+type WFTaskDefinition struct {
 	ID                   string            `json:"id"`
 	Name                 string            `json:"name"`
 	Description          string            `json:"description"`
@@ -51,7 +51,7 @@ type WorkflowResultPayload struct {
 }
 
 // TaskAssignedPayload: Workflow engine assigns task to agent
-type TaskAssignedPayload struct {
+type WFTaskAssignedPayload struct {
 	WorkflowID string         `json:"workflow_id"`
 	TaskID     string         `json:"task_id"`
 	TaskName   string         `json:"task_name"`
@@ -59,7 +59,7 @@ type TaskAssignedPayload struct {
 	Context    map[string]any `json:"context,omitempty"`
 }
 
-type TaskCompletedPayload struct {
+type WFTaskCompletedPayload struct {
 	WorkflowID string          `json:"workflow_id"`
 	TaskID     string          `json:"task_id"`
 	Result     json.RawMessage `json:"result,omitempty"`
@@ -84,8 +84,8 @@ func (w *WorkflowDefinition) Validate() error {
 }
 
 // GetRootTasks returns tasks with no dependencies
-func (w *WorkflowDefinition) GetRootTasks() []*TaskDefinition {
-	var roots []*TaskDefinition
+func (w *WorkflowDefinition) GetRootTasks() []*WFTaskDefinition {
+	var roots []*WFTaskDefinition
 	for _, task := range w.Tasks {
 		if len(task.DependsOn) == 0 {
 			roots = append(roots, task)
@@ -95,7 +95,7 @@ func (w *WorkflowDefinition) GetRootTasks() []*TaskDefinition {
 }
 
 // hasCycle checks if task graph has cycles
-func hasCycle(tasks []*TaskDefinition) bool {
+func hasCycle(tasks []*WFTaskDefinition) bool {
 	graph := make(map[string][]string)
 	for _, task := range tasks {
 		graph[task.ID] = task.DependsOn

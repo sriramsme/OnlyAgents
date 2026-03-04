@@ -36,7 +36,7 @@ type EmailSkill struct {
 // NewEmailSkill creates a new email skill
 func NewEmailSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skill, error) {
 	base := skills.NewBaseSkill(
-		"email",
+		tools.SkillEmail,
 		"Manage emails - send, search, read, and draft emails using AI",
 		version,
 		skills.SkillTypeNative,

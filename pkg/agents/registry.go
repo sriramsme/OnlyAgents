@@ -13,7 +13,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
-	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // Accept parent context to pass to agents
@@ -42,7 +41,7 @@ func NewRegistry(
 		}
 
 		// Pass parent context to agent
-		agent, err := NewAgent(ctx, *cfg, llmClient, []tools.ToolDef{}, outbox, cm, mm)
+		agent, err := NewAgent(ctx, *cfg, llmClient, outbox, cm, mm)
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: init: %w", cfg.ID, err)
 		}
