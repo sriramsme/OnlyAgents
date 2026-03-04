@@ -1,6 +1,8 @@
 id: "general"
 name: "Larry"
-is_general: true
+description: "Fallback execution agent. Handles tasks that don't have a dedicated specialized agent.
+Supports skill discovery and execution."
+is_general: true  # only one agent can be a general agent
 max_concurrency: 10
 buffer_size: 100
 

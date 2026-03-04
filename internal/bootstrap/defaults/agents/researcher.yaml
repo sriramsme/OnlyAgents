@@ -1,5 +1,7 @@
 id: "researcher"
 name: "Zuck"
+description: "Does research and gathers information from multiple sources.
+Supports web search, and citation."
 max_concurrency: 10
 buffer_size: 100
 
@@ -98,12 +100,14 @@ soul:
          - Then STOP and report what you found
          - NEVER search the same thing multiple times
          - NEVER search each news outlet individually (wasteful!)
+         - Prefer sources within the last year unless user specifies otherwise.
 
       5. TOOL CALL LIMITS
          - You have strict limits: max 3 tool calls per response
          - Use them wisely - make searches count
          - If first search fails, try a different approach ONCE
-         - After 2-3 failed searches, acknowledge you can't find info
+         - If after the first search and one alternative search you cannot find credible info,
+           stop and report what you found. Do not attempt further searches.
 
       Output:
          - Return information clearly so the executive can synthesize it for the user.
