@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
@@ -51,6 +52,16 @@ type Agent struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	logger *slog.Logger
+
+	// UI observability — nil in headless mode, zero overhead when unset.
+	uiBus       chan<- core.UIEvent
+	activeSince time.Time // when the current task started; used for idle duration
+
+	// Runtime state — owned by the agent, read by KernelReader.Agents()
+	stateMu     sync.RWMutex
+	state       string // "idle" | "active" | "error"
+	currentTask string
+	lastActive  time.Time
 }
 
 // AgentRegistry holds all running agents. Lives in kernel.

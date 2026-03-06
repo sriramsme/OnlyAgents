@@ -13,12 +13,11 @@ import (
 // NewConnectorRegistry creates a registry and loads all channel configs
 func NewRegistry(
 	ctx context.Context,
-	configDir string,
 	vault vault.Vault,
 	bus chan<- core.Event,
 ) (*Registry, error) {
 	// Load all channel configs
-	configs, err := config.LoadAllChannelConfigs(configDir)
+	configs, err := config.LoadAllChannelConfigs()
 	if err != nil {
 		return nil, fmt.Errorf("load channel configs: %w", err)
 	}

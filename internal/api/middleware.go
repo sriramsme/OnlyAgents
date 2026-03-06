@@ -24,12 +24,12 @@ type middlewareFn func(handlerFunc) handlerFunc
 
 // Open returns a chain with no auth: logging → recovery → cors
 func (m *Middleware) Open() middlewareFn {
-	return chain(m.logging, m.recovery, m.cors)
+	return chain(m.logging, m.recovery)
 }
 
 // Authed returns a chain with auth: logging → recovery → cors → auth
 func (m *Middleware) Authed() middlewareFn {
-	return chain(m.logging, m.recovery, m.cors, m.auth)
+	return chain(m.logging, m.recovery, m.auth)
 }
 
 // chain composes middleware so the first in the list runs first
@@ -70,39 +70,56 @@ func (m *Middleware) recovery(next handlerFunc) handlerFunc {
 	}
 }
 
-// cors adds CORS headers so a future web UI can call the API
-func (m *Middleware) cors(next handlerFunc) handlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+// corsGlobal wraps the entire mux so OPTIONS preflights are handled
+// before Go's method router rejects them with 405.
+func (m *Middleware) corsGlobal(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		next(w, r)
-	}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // auth validates the API key — skipped entirely if no key is configured
 func (m *Middleware) auth(next handlerFunc) handlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if m.cfg.APIKeyVault == "" { // no key configured → open access (local dev)
+		m.logger.Debug("auth", "path", r.URL.Path, "key", m.cfg.APIKeyVault)
+		if m.cfg.APIKeyVault == "" {
+			// No key configured → open access (local dev / no-auth mode)
 			next(w, r)
 			return
 		}
 
+		// Extract key from one of three places (in priority order):
+		//   1. X-API-Key header           — standard API clients
+		//   2. Authorization: Bearer ...  — standard bearer auth
+		//   3. ?key= query param          — SSE clients (EventSource limitation)
 		key := r.Header.Get("X-API-Key")
+
 		if key == "" {
 			if auth := r.Header.Get("Authorization"); len(auth) > 7 && auth[:7] == "Bearer " {
 				key = auth[7:]
 			}
 		}
-		// TODO: This is incorrect and a bit of a hack. SHould check against vault.GetApiKey(APIKeyVault)
+
+		if key == "" {
+			key = r.URL.Query().Get("key")
+		}
+
+		// TODO: replace m.cfg.APIKeyVault string comparison with
+		//       vault.GetAPIKey(m.cfg.APIKeyVault) lookup once vault is wired.
 		if key != m.cfg.APIKeyVault {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
+
 		next(w, r)
 	}
 }
@@ -116,4 +133,11 @@ type statusWriter struct {
 func (sw *statusWriter) WriteHeader(code int) {
 	sw.status = code
 	sw.ResponseWriter.WriteHeader(code)
+}
+
+// forwards Flush to the underlying writer if it supports it
+func (sw *statusWriter) Flush() {
+	if f, ok := sw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }

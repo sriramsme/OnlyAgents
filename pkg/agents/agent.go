@@ -35,6 +35,7 @@ func NewAgent(
 	cfg config.AgentConfig,
 	llmClient llm.Client,
 	outbox chan<- core.Event,
+	uiBus core.UIBus,
 	cm *memory.ConversationManager,
 	mm *memory.MemoryManager,
 ) (*Agent, error) {
@@ -57,6 +58,7 @@ func NewAgent(
 		llmClient:      llmClient,
 		soul:           agentSoul,
 		outbox:         outbox,
+		uiBus:          uiBus,
 		tools:          []tools.ToolDef{},
 		toolSkillMap:   make(map[string]tools.SkillName),
 		cm:             cm,
@@ -65,6 +67,7 @@ func NewAgent(
 		ctx:            agentCtx,
 		cancel:         cancel,
 		logger:         slog.With("agent_id", cfg.ID),
+		state:          "idle",
 	}, nil
 }
 
@@ -102,6 +105,69 @@ func (a *Agent) Stop() error {
 			"warning", "goroutines may still be running - check for blocked LLM calls or stuck tool executions")
 		return fmt.Errorf("agent %s shutdown timeout after %v", a.id, timeout)
 	}
+}
+
+func (a *Agent) Status() core.AgentStatus {
+	a.stateMu.RLock()
+	defer a.stateMu.RUnlock()
+	return core.AgentStatus{
+		ID:          a.id,
+		Name:        a.name,
+		State:       a.state,
+		CurrentTask: a.currentTask,
+		LastActive:  a.lastActive,
+		Model:       a.llmClient.Model(),
+		IsExecutive: a.isExecutive,
+	}
+}
+
+func (a *Agent) setState(state, task string) {
+	a.stateMu.Lock()
+	a.state = state
+	a.currentTask = task
+	a.lastActive = time.Now()
+	a.stateMu.Unlock()
+}
+
+// non-blocking, nil-safe UIBus write
+
+func (a *Agent) emitUI(evt core.UIEvent) {
+	if a.uiBus == nil {
+		return
+	}
+	select {
+	case a.uiBus <- evt:
+	default: // drop — UI missing one frame is fine, blocking the agent is not
+	}
+}
+
+func (a *Agent) updateUI(message string, maxLen int) {
+	if len(message) > maxLen {
+		message = message[:maxLen] + "…"
+	}
+	a.setState("active", message)
+	a.activeSince = time.Now()
+
+	a.emitUI(core.UIEvent{
+		Type:      core.UIEventAgentActivated,
+		Timestamp: time.Now(),
+		AgentID:   a.id,
+		Payload: core.AgentActivatedPayload{
+			Task:  message,
+			Model: a.llmClient.Model(),
+		},
+	})
+	defer func() {
+		a.setState("idle", "")
+		a.emitUI(core.UIEvent{
+			Type:      core.UIEventAgentIdle,
+			Timestamp: time.Now(),
+			AgentID:   a.id,
+			Payload: core.AgentIdlePayload{
+				DurationMs: time.Since(a.activeSince).Milliseconds(),
+			},
+		})
+	}()
 }
 
 // Inbox returns the channel kernel sends events to.
@@ -155,10 +221,16 @@ func (a *Agent) GetSystemPrompt() string {
 
 func (a *Agent) processEvents() {
 	defer a.wg.Done()
+	sem := make(chan struct{}, a.maxConcurrency)
+
 	for {
 		select {
 		case evt := <-a.inbox:
-			a.handleEvent(evt)
+			sem <- struct{}{} // acquire slot (blocks if at max)
+			go func(e core.Event) {
+				defer func() { <-sem }() // release slot
+				a.handleEvent(e)
+			}(evt)
 		case <-a.ctx.Done():
 			a.logger.Info("event processor shutting down")
 			return
@@ -200,6 +272,9 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 			"correlation_id", evt.CorrelationID)
 		return
 	}
+
+	a.updateUI(payload.Message, 60)
+
 	agentPhase := fmt.Sprintf("%s_execution", a.id)
 	logger.Timing.StartPhase(evt.CorrelationID, agentPhase)
 
@@ -307,12 +382,18 @@ func (a *Agent) safeSend(evt core.Event, description string) {
 // execute is the internal LLM loop, shared by both sync and async paths.
 func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, correlationID string) (string, error) {
 	//persist incoming user message
-	if err := a.cm.SaveUserMessage(ctx, a.id, payload.Message); err != nil {
+	sessionID := deriveSessionID(payload) // ← derive once at top
+
+	// Ensure session exists (idempotent — safe to call every time)
+	if err := a.cm.EnsureSession(ctx, sessionID); err != nil {
+		a.logger.Warn("failed to ensure session", "err", err)
+	}
+	if err := a.cm.SaveUserMessage(ctx, sessionID, a.id, payload.Message); err != nil {
 		a.logger.Warn("failed to save user message", "err", err, "correlation_id", correlationID)
 	}
 
 	// build messages from history instead of scratch
-	history, err := a.cm.GetHistory(ctx, a.id, memory.DefaultHistoryTurns)
+	history, err := a.cm.GetHistory(ctx, sessionID, a.id, memory.DefaultHistoryTurns)
 	if err != nil {
 		a.logger.Warn("failed to load history, falling back to empty", "err", err)
 		history = []llm.Message{}
@@ -370,7 +451,7 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 		// No tool calls — final response.
 		if !resp.HasToolCalls() {
 			// persist final assistant response
-			if err := a.cm.SaveAssistantMessage(ctx, a.id, resp.Content, resp.ReasoningContent, nil); err != nil {
+			if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, nil); err != nil {
 				a.logger.Warn("failed to save assistant message", "err", err, "correlation_id", correlationID)
 			}
 			// If this was a workflow task, fire completion
@@ -382,7 +463,7 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 
 		// Has tool calls — persist assistant turn and add to local slice.
 		//persist assistant turn with tool calls
-		if err := a.cm.SaveAssistantMessage(ctx, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
+		if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
 			a.logger.Warn("failed to save assistant tool-call message", "err", err, "correlation_id", correlationID)
 		}
 
@@ -391,6 +472,16 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 		))
 
 		for _, tc := range resp.ToolCalls {
+			toolStart := time.Now()
+			a.emitUI(core.UIEvent{
+				Type:      core.UIEventToolCalled,
+				Timestamp: time.Now(),
+				AgentID:   a.id,
+				Payload: core.ToolCalledPayload{
+					ToolName: tc.Function.Name,
+					Input:    tc.Function.Arguments,
+				},
+			})
 			var exec tools.ToolExecution
 
 			if a.isExecutive && isMetaTool(tc.Function.Name) {
@@ -399,13 +490,24 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 				exec = a.requestToolCall(ctx, correlationID, tc)
 			}
 
+			a.emitUI(core.UIEvent{
+				Type:      core.UIEventToolResult,
+				Timestamp: time.Now(),
+				AgentID:   a.id,
+				Payload: core.ToolResultPayload{
+					ToolName:   tc.Function.Name,
+					Success:    exec.Err == nil,
+					DurationMs: time.Since(toolStart).Milliseconds(),
+				},
+			})
+
 			if exec.Err != nil {
 				a.logger.Warn("tool call failed",
 					"tool", tc.Function.Name,
 					"error", exec.Err,
 					"correlation_id", correlationID)
 				errContent := fmt.Sprintf(`{"error": "%s"}`, exec.Err.Error())
-				if err := a.cm.SaveToolResult(ctx, a.id, tc.ID, tc.Function.Name, exec.Err.Error(), true); err != nil {
+				if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, exec.Err.Error(), true); err != nil {
 					a.logger.Warn("failed to save tool error result", "err", err)
 				}
 				messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, errContent))
@@ -416,7 +518,7 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 					return "", fmt.Errorf("marshal tool result: %w", err)
 				}
 				resultStr := string(resultJSON)
-				if err := a.cm.SaveToolResult(ctx, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
+				if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
 					a.logger.Warn("failed to save tool result", "err", err)
 				}
 				messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, resultStr))
@@ -603,4 +705,16 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return string(r[:max]) + "..."
+}
+
+func deriveSessionID(payload core.AgentExecutePayload) string {
+	// Case 1 & 2 & 3: channel is always present (you said it's preserved)
+	if payload.Channel != nil {
+		return fmt.Sprintf("%s:%s", payload.Channel.Name, payload.Channel.ChatID)
+	}
+	// Fallback: delegation without channel (shouldn't happen but be safe)
+	if payload.Delegation != nil {
+		return fmt.Sprintf("delegation:%s", payload.Delegation.DelegationID)
+	}
+	return "default"
 }

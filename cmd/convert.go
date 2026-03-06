@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	_ "github.com/sriramsme/OnlyAgents/internal/bootstrap"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
@@ -37,13 +38,11 @@ Examples:
 }
 
 var (
-	convertName      string // -n / --name
-	convertProvider  string // -p / --provider
-	convertModel     string // -m / --model
-	convertOutputDir string // --output-dir
-	convertVaultPath string // --vault
-	convertVaultKey  string // --vault-key
-	convertDryRun    bool   // --dry-run
+	convertName     string // -n / --name
+	convertProvider string // -p / --provider
+	convertModel    string // -m / --model
+	convertVaultKey string // --vault-key
+	convertDryRun   bool   // --dry-run
 )
 
 // providerDefaults maps provider names to their default model and vault key path.
@@ -64,8 +63,6 @@ func init() {
 	convertCmd.Flags().StringVarP(&convertName, "name", "n", "", "Name to save as in the output directory (defaults to input filename stem)")
 	convertCmd.Flags().StringVarP(&convertProvider, "provider", "p", "", "LLM provider: anthropic, openai, gemini (auto-detected from vault if omitted)")
 	convertCmd.Flags().StringVarP(&convertModel, "model", "m", "", "LLM model (uses provider default if omitted)")
-	convertCmd.Flags().StringVar(&convertOutputDir, "output-dir", "configs/skills/", "Directory to write the converted skill to")
-	convertCmd.Flags().StringVar(&convertVaultPath, "vault", "configs/vault.yaml", "Path to the vault file containing API keys")
 	convertCmd.Flags().StringVar(&convertVaultKey, "vault-key", "", "Vault key path for the API key, e.g. openai/api_key")
 	convertCmd.Flags().BoolVar(&convertDryRun, "dry-run", false, "Print the converted skill to stdout instead of writing it to disk")
 }
@@ -84,7 +81,7 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	}
 
 	// ── 3. Load vault ─────────────────────────────────────────────────────────
-	v, err := config.LoadVault(convertVaultPath)
+	v, err := config.LoadVault()
 	if err != nil {
 		return fmt.Errorf("load vault: %w", err)
 	}
@@ -115,14 +112,11 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if err := os.MkdirAll(convertOutputDir, 0750); err != nil {
-		return fmt.Errorf("create output dir: %w", err)
-	}
 	outName := convertName
 	if outName == "" {
 		outName = result.Parsed.Name
 	}
-	outPath := filepath.Join(convertOutputDir, outName+".md")
+	outPath := filepath.Join(config.SkillsDir(), outName+".md")
 	if err := os.WriteFile(outPath, []byte(result.Content), 0600); err != nil {
 		return fmt.Errorf("write output file: %w", err)
 	}

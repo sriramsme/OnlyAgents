@@ -85,7 +85,18 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 		k.logger.Error("invalid AgentDelegate payload")
 		return
 	}
-
+	if k.uiBus != nil {
+		k.uiBus <- core.UIEvent{
+			Type:      core.UIEventDelegation,
+			Timestamp: time.Now(),
+			AgentID:   evt.AgentID,
+			Payload: core.DelegationPayload{
+				FromAgent: evt.AgentID,
+				ToAgent:   payload.AgentID,
+				Task:      payload.Task,
+			},
+		}
+	}
 	delegationPhase := fmt.Sprintf("delegation_%s", payload.AgentID)
 	logger.Timing.StartPhase(evt.CorrelationID, delegationPhase)
 
@@ -597,8 +608,8 @@ func (k *Kernel) handleNewSession(evt core.Event) {
 	if correlationID == "" {
 		correlationID = uuid.NewString()
 	}
-
-	newConvID, err := k.cm.StartNewSession(k.ctx)
+	newConvID := uuid.NewString()
+	err := k.cm.EnsureSession(k.ctx, newConvID)
 	if err != nil {
 		k.logger.Error("failed to start new session",
 			"err", err,

@@ -17,6 +17,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
 	_ "github.com/sriramsme/OnlyAgents/pkg/connectors/bootstrap"
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/kernel"
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
@@ -36,35 +37,19 @@ var serverStartCmd = &cobra.Command{
 }
 
 var (
-	serverHost          string
-	serverPort          int
-	serverConfigPath    string
-	agentConfigsDir     string
-	connectorConfigsDir string
-	channelConfigsDir   string
-	skillConfigsDir     string
-	vaultPath           string
-	logLevel            string
-	logFormat           string
+	serverHost string
+	serverPort int
+	logLevel   string
+	logFormat  string
 )
 
 func init() {
 	rootCmd.AddCommand(serverCmd)
 	serverCmd.AddCommand(serverStartCmd)
 
-	// Server flags
 	serverStartCmd.Flags().StringVar(&serverHost, "host", "0.0.0.0", "Server host")
 	serverStartCmd.Flags().IntVarP(&serverPort, "port", "p", 8080, "Server port")
-	serverStartCmd.Flags().StringVar(&serverConfigPath, "config", "configs/server.yaml", "Server config file path")
 
-	// Kernel flags
-	serverStartCmd.Flags().StringVar(&agentConfigsDir, "agents-dir", "configs/agents/", "Agent configs directory")
-	serverStartCmd.Flags().StringVar(&connectorConfigsDir, "connectors-dir", "configs/connectors/", "Connector configs directory")
-	serverStartCmd.Flags().StringVar(&channelConfigsDir, "channels-dir", "configs/channels/", "Channel configs directory")
-	serverStartCmd.Flags().StringVar(&skillConfigsDir, "skills-dir", "configs/skills/", "Skill configs directory")
-	serverStartCmd.Flags().StringVar(&vaultPath, "vault", "configs/vault.yaml", "Vault file path")
-
-	// Logging flags
 	serverStartCmd.Flags().StringVar(&logLevel, "log-level", "debug", "Log level (debug, info, warn, error)")
 	serverStartCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
 }
@@ -72,15 +57,11 @@ func init() {
 func runServer(cmd *cobra.Command, args []string) error {
 	logger.Initialize(logLevel, logFormat)
 
-	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Set up signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
-
-	// Handle signals in goroutine
 	go func() {
 		sig := <-sigChan
 		logger.Log.Info("received shutdown signal", "signal", sig.String())
@@ -90,9 +71,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 	fmt.Println("OnlyAgents Server v0.1.0")
 	fmt.Println("=========================")
 
-	// Initialize kernel
-	k, err := kernel.NewKernel(ctx, cancel)
+	// Create UIBus — this is what makes it "server mode".
+	// The kernel starts runUI() only when uiBus is non-nil.
+	// cmd/agents/main.go passes nil → headless, zero overhead.
+	uiBus := make(core.UIBus, core.UIBusBuffer)
 
+	k, err := kernel.NewKernel(ctx, cancel, uiBus)
 	if err != nil {
 		logger.Log.Error("failed to initialize kernel", "error", err)
 		return err
@@ -103,14 +87,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Load server config
-	serverConfig, err := loadServerConfig(serverConfigPath)
+	serverConfig, err := loadServerConfig()
 	if err != nil {
 		logger.Log.Error("failed to load server config", "error", err)
 		return err
 	}
 
-	// Override with flags if provided
 	if cmd.Flags().Changed("host") {
 		serverConfig.Host = serverHost
 	}
@@ -118,7 +100,6 @@ func runServer(cmd *cobra.Command, args []string) error {
 		serverConfig.Port = serverPort
 	}
 
-	// Create and start API server
 	server := createAPIServer(serverConfig, k)
 
 	u := &url.URL{
@@ -128,13 +109,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Server started at %s\n", u.String())
 	fmt.Println("Press Ctrl+C to stop")
 
-	// Start server in goroutine
 	serverErr := make(chan error, 1)
 	go func() {
 		serverErr <- server.Start()
 	}()
 
-	// Wait for shutdown signal or server error
 	select {
 	case err := <-serverErr:
 		logger.Log.Error("server error", "error", err)
@@ -143,7 +122,6 @@ func runServer(cmd *cobra.Command, args []string) error {
 		logger.Log.Info("shutdown initiated")
 	}
 
-	// Graceful shutdown
 	fmt.Println("\nShutting down...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -163,12 +141,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func loadServerConfig(path string) (*config.ServerConfig, error) {
-	cfg, err := config.LoadServerConfig(path)
-	if err != nil {
-		return nil, err
-	}
-	return cfg, nil
+func loadServerConfig() (*config.ServerConfig, error) {
+	return config.LoadServerConfig()
 }
 
 func createAPIServer(cfg *config.ServerConfig, k *kernel.Kernel) *api.Server {
@@ -176,12 +150,13 @@ func createAPIServer(cfg *config.ServerConfig, k *kernel.Kernel) *api.Server {
 		config.ServerConfig{
 			Host:        cfg.Host,
 			Port:        cfg.Port,
-			APIKeyVault: cfg.APIKeyVault,
+			APIKeyVault: "", // cfg.APIKeyVault,
 			Version:     "0.1.0",
 		},
 		handlers.Deps{
 			Bus:     k.Bus(),
 			Version: "0.1.0",
+			Kernel:  k, // k implements KernelReader — Agents(), IsHealthy(), Subscribe()
 		},
 		logger.Log,
 	)

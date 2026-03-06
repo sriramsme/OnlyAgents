@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,10 +12,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
-
-// sessionKey is a sentinel used to persist the current convID in agent_state.
-// It is internal to this package — no real agent has this ID.
-const sessionKey = "__session__"
 
 const (
 	DefaultHistoryTurns       = 10  // number of user→assistant exchanges to include
@@ -28,93 +23,40 @@ const (
 // a shared pointer, StartNewSession immediately affects every agent's next
 // GetHistory call — no broadcast required.
 type ConversationManager struct {
-	store  storage.Storage
-	mu     sync.RWMutex
-	convID string
+	store storage.Storage
 }
 
 // New creates a ConversationManager. It resumes the last active session if one
 // exists in the database, otherwise starts a fresh one.
 func New(ctx context.Context, store storage.Storage) (*ConversationManager, error) {
 	cm := &ConversationManager{store: store}
-
-	// Try to resume the last active session.
-	state, err := store.GetAgentState(ctx, sessionKey)
-	if err == nil && state.CurrentConversationID != "" {
-		conv, convErr := store.GetConversation(ctx, state.CurrentConversationID)
-		if convErr == nil && !conv.EndedAt.Valid {
-			cm.convID = state.CurrentConversationID
-			logger.Log.Info("memory: resumed session", "conv_id", cm.convID)
-			return cm, nil
-		}
-	}
-
-	// No active session found — start fresh.
-	if err := cm.createSession(ctx); err != nil {
-		return nil, fmt.Errorf("memory: init: %w", err)
-	}
 	return cm, nil
 }
 
-// CurrentConvID returns the active conversation ID.
-func (cm *ConversationManager) CurrentConvID() string {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	return cm.convID
-}
-
-// StartNewSession ends the current conversation and begins a fresh one.
-// Called by the kernel on a NewSession event. Returns the new conversation ID.
-func (cm *ConversationManager) StartNewSession(ctx context.Context) (string, error) {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-
-	if cm.convID != "" {
-		if err := cm.store.EndConversation(ctx, cm.convID, ""); err != nil {
-			// Non-fatal: log and continue — a new session must still start.
-			logger.Log.Warn("memory: end conversation", "conv_id", cm.convID, "err", err)
-		}
+// EnsureSession creates session if it doesn't exist (idempotent)
+func (cm *ConversationManager) EnsureSession(ctx context.Context, sessionID string) error {
+	_, err := cm.store.GetConversation(ctx, sessionID)
+	if err == nil {
+		return nil // already exists
 	}
-
-	if err := cm.createSession(ctx); err != nil {
-		return "", err
-	}
-	return cm.convID, nil
-}
-
-// createSession inserts a new Conversation row and persists the convID in
-// agent_state so restarts can resume. Caller must hold mu write lock if
-// called after initialisation.
-func (cm *ConversationManager) createSession(ctx context.Context) error {
-	convID := uuid.NewString()
-	if err := cm.store.CreateConversation(ctx, &storage.Conversation{
-		ID:        convID,
-		AgentID:   sessionKey,
+	return cm.store.CreateConversation(ctx, &storage.Conversation{
+		ID:        sessionID,
 		StartedAt: storage.DBTime{Time: time.Now()},
-	}); err != nil {
-		return fmt.Errorf("create conversation: %w", err)
-	}
+	})
+}
 
-	if err := cm.store.SaveAgentState(ctx, &storage.AgentState{
-		AgentID:               sessionKey,
-		CurrentConversationID: convID,
-		LastActive:            storage.DBTime{Time: time.Now()},
-	}); err != nil {
-		return fmt.Errorf("persist session state: %w", err)
-	}
-
-	cm.convID = convID
-	logger.Log.Info("memory: new session", "conv_id", convID)
-	return nil
+// Explicit session reset (triggered by /new command etc.)
+func (cm *ConversationManager) EndSession(ctx context.Context, sessionID string) error {
+	return cm.store.EndConversation(ctx, sessionID, "")
 }
 
 // ── Message persistence ───────────────────────────────────────────────────────
 
 // SaveUserMessage persists an incoming user message turn.
-func (cm *ConversationManager) SaveUserMessage(ctx context.Context, agentID, content string) error {
+func (cm *ConversationManager) SaveUserMessage(ctx context.Context, sessionID, agentID, content string) error {
 	return cm.store.SaveMessage(ctx, &storage.Message{
 		ID:             uuid.NewString(),
-		ConversationID: cm.CurrentConvID(),
+		ConversationID: sessionID,
 		AgentID:        agentID,
 		Role:           "user",
 		Content:        content,
@@ -126,7 +68,7 @@ func (cm *ConversationManager) SaveUserMessage(ctx context.Context, agentID, con
 // a plain text response.
 func (cm *ConversationManager) SaveAssistantMessage(
 	ctx context.Context,
-	agentID, content, reasoningContent string,
+	sessionID, agentID, content, reasoningContent string,
 	toolCalls []tools.ToolCall,
 ) error {
 	tcJSON := "[]"
@@ -139,7 +81,7 @@ func (cm *ConversationManager) SaveAssistantMessage(
 	}
 	return cm.store.SaveMessage(ctx, &storage.Message{
 		ID:               uuid.NewString(),
-		ConversationID:   cm.CurrentConvID(),
+		ConversationID:   sessionID,
 		AgentID:          agentID,
 		Role:             "assistant",
 		Content:          content,
@@ -153,7 +95,7 @@ func (cm *ConversationManager) SaveAssistantMessage(
 // toolCallID must match the ToolCall.ID from the preceding assistant turn.
 func (cm *ConversationManager) SaveToolResult(
 	ctx context.Context,
-	agentID, toolCallID, toolName, result string,
+	sessionID, agentID, toolCallID, toolName, result string,
 	isError bool,
 ) error {
 	content := result
@@ -167,7 +109,7 @@ func (cm *ConversationManager) SaveToolResult(
 	}
 	return cm.store.SaveMessage(ctx, &storage.Message{
 		ID:             uuid.NewString(),
-		ConversationID: cm.CurrentConvID(),
+		ConversationID: sessionID,
 		AgentID:        agentID,
 		Role:           "tool",
 		Content:        content,
@@ -195,10 +137,10 @@ func (cm *ConversationManager) SaveToolResult(
 // they came from a different participant in the session.
 func (cm *ConversationManager) GetHistory(
 	ctx context.Context,
-	agentID string,
+	sessionID, agentID string,
 	maxTurns int,
 ) ([]llm.Message, error) {
-	all, err := cm.store.GetMessages(ctx, cm.CurrentConvID())
+	all, err := cm.store.GetMessages(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("memory: get history: %w", err)
 	}

@@ -42,7 +42,13 @@ type kernelComponents struct {
 	store                   storage.Storage
 }
 
-func loadComponents(ctx context.Context, paths *bootstrap.Paths, cfg *config.KernelConfig, bus chan core.Event) (kernelComponents, error) {
+func loadComponents(
+	ctx context.Context,
+	paths *bootstrap.Paths,
+	cfg *config.KernelConfig,
+	kernelBus chan core.Event,
+	uiBus core.UIBus,
+) (kernelComponents, error) {
 	var c kernelComponents
 	var err error
 
@@ -94,23 +100,23 @@ func loadComponents(ctx context.Context, paths *bootstrap.Paths, cfg *config.Ker
 		}
 	}
 
-	c.agents, err = loadAgents(ctx, v, paths.Agents, bus, c.cm, c.mm)
+	c.agents, err = loadAgents(ctx, v, kernelBus, uiBus, c.cm, c.mm)
 	if err != nil {
 		return c, fmt.Errorf("load agents: %w", err)
 	}
-	c.connectors, err = loadConnectors(ctx, v, paths.Connectors, bus)
+	c.connectors, err = loadConnectors(ctx, v, kernelBus)
 	if err != nil {
 		return c, fmt.Errorf("load connectors: %w", err)
 	}
-	c.channels, err = loadChannels(ctx, v, paths.Channels, bus)
+	c.channels, err = loadChannels(ctx, v, kernelBus)
 	if err != nil {
 		return c, fmt.Errorf("load channels: %w", err)
 	}
-	c.skills, err = loadSkills(ctx, paths.Skills, bus, c.capabilities, c.cliExecutor)
+	c.skills, err = loadSkills(ctx, paths.Skills, kernelBus, c.capabilities, c.cliExecutor)
 	if err != nil {
 		return c, fmt.Errorf("load skills: %w", err)
 	}
-	c.user, err = config.LoadUserConfig(paths.UserPath)
+	c.user, err = config.LoadUserConfig()
 	if err != nil {
 		return c, fmt.Errorf("load user config: %w", err)
 	}
@@ -119,7 +125,7 @@ func loadComponents(ctx context.Context, paths *bootstrap.Paths, cfg *config.Ker
 		return c, fmt.Errorf("validate agent skills: %w", err)
 	}
 
-	c.workflow = workflow.NewEngine(c.store, bus)
+	c.workflow = workflow.NewEngine(c.store, kernelBus)
 	if err != nil {
 		return c, fmt.Errorf("create workflow engine: %w", err)
 	}
@@ -156,7 +162,7 @@ func loadConversationManager(ctx context.Context, store storage.Storage) (*memor
 
 // mustLoadVault loads vault config or exits
 func loadVault(path string) (vault.Vault, error) {
-	v, err := config.LoadVault(path)
+	v, err := config.LoadVault()
 	if err != nil {
 		return nil, fmt.Errorf("load vault: %w", err)
 	}
@@ -166,19 +172,19 @@ func loadVault(path string) (vault.Vault, error) {
 // bootstrap.go
 func loadAgents(
 	ctx context.Context, v vault.Vault,
-	configDir string, kernelBus chan<- core.Event,
+	kernelBus chan<- core.Event, uiBus core.UIBus,
 	cm *memory.ConversationManager,
 	mm *memory.MemoryManager,
 ) (*agents.Registry, error) {
-	registry, err := agents.NewRegistry(ctx, configDir, v, kernelBus, cm, mm)
+	registry, err := agents.NewRegistry(ctx, v, kernelBus, uiBus, cm, mm)
 	if err != nil {
 		return nil, fmt.Errorf("create agents registry: %w", err)
 	}
 	return registry, nil
 }
 
-func loadConnectors(ctx context.Context, v vault.Vault, configDir string, kernelBus chan<- core.Event) (*connectors.Registry, error) {
-	registry, err := connectors.NewRegistry(ctx, configDir, v, kernelBus)
+func loadConnectors(ctx context.Context, v vault.Vault, kernelBus chan<- core.Event) (*connectors.Registry, error) {
+	registry, err := connectors.NewRegistry(ctx, v, kernelBus)
 	if err != nil {
 		return nil, fmt.Errorf("create connector registry: %w", err)
 	}
@@ -188,9 +194,9 @@ func loadConnectors(ctx context.Context, v vault.Vault, configDir string, kernel
 	return registry, nil
 }
 
-func loadChannels(ctx context.Context, v vault.Vault, configDir string, kernelBus chan<- core.Event) (*channels.Registry, error) {
+func loadChannels(ctx context.Context, v vault.Vault, kernelBus chan<- core.Event) (*channels.Registry, error) {
 	// Create connector registry
-	registry, err := channels.NewRegistry(ctx, configDir, v, kernelBus)
+	registry, err := channels.NewRegistry(ctx, v, kernelBus)
 
 	if err != nil {
 		return nil, fmt.Errorf("create channel registry: %w", err)

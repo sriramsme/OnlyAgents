@@ -25,3 +25,6 @@ issues:
 run:
   timeout: 5m
   go: '1.25'
+  skip-dirs:
+    - web/node_modules
+    - web/build

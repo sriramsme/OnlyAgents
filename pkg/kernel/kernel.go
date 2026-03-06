@@ -68,23 +68,29 @@ type Kernel struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	logger *slog.Logger
+
+	// UI fan-out — nil when running headless (no GUI/server).
+	// Agents write UIEvents here; runUI() fans them out to SSE subscribers.
+	uiBus    core.UIBus
+	uiSubsMu sync.RWMutex
+	uiSubs   map[string]chan core.UIEvent
 }
 
-func NewKernel(ctx context.Context, cancel context.CancelFunc) (*Kernel, error) {
+func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus) (*Kernel, error) {
 
 	paths, err := bootstrap.Init()
 	if err != nil {
 		return nil, fmt.Errorf("init paths: %w", err)
 	}
 
-	cfg, err := config.LoadKernelConfig(paths.ConfigPath)
+	cfg, err := config.LoadKernelConfig()
 	if err != nil {
 		return nil, fmt.Errorf("load kernel config: %w", err)
 	}
 
 	kernelBus := make(chan core.Event, cfg.BusBufferSize)
 
-	components, err := loadComponents(ctx, paths, cfg, kernelBus)
+	components, err := loadComponents(ctx, paths, cfg, kernelBus, uiBus)
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +122,8 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc) (*Kernel, error) 
 		ctx:    ctx,
 		cancel: cancel,
 		logger: slog.Default().With("component", "kernel"),
+		uiBus:  uiBus,
+		uiSubs: make(map[string]chan core.UIEvent),
 	}, nil
 }
 
@@ -203,6 +211,11 @@ func (k *Kernel) Start() error {
 	// Start event router
 	k.wg.Add(1)
 	go k.run()
+
+	if k.uiBus != nil {
+		k.wg.Add(1)
+		go k.runUI()
+	}
 
 	k.logger.Info("kernel started")
 	return nil
@@ -392,4 +405,64 @@ func (k *Kernel) route(evt core.Event) {
 	default:
 		k.logger.Warn("unhandled event type", "type", evt.Type)
 	}
+}
+
+//reads UIBus, fans out to all SSE subscribers
+
+func (k *Kernel) runUI() {
+	defer k.wg.Done()
+	for {
+		select {
+		case evt := <-k.uiBus:
+			k.broadcastUI(evt)
+		case <-k.ctx.Done():
+			k.logger.Info("ui event router shutting down")
+			return
+		}
+	}
+}
+
+// non-blocking fan-out to all SSE subscriber channels
+func (k *Kernel) broadcastUI(evt core.UIEvent) {
+	k.uiSubsMu.RLock()
+	defer k.uiSubsMu.RUnlock()
+	for _, ch := range k.uiSubs {
+		select {
+		case ch <- evt:
+		default: // slow client — drop rather than block the fan-out loop
+		}
+	}
+}
+
+// implements KernelReader
+func (k *Kernel) Subscribe(id string) (<-chan core.UIEvent, func()) {
+	ch := make(chan core.UIEvent, 64)
+	k.uiSubsMu.Lock()
+	k.uiSubs[id] = ch
+	k.uiSubsMu.Unlock()
+
+	return ch, func() {
+		k.uiSubsMu.Lock()
+		delete(k.uiSubs, id)
+		k.uiSubsMu.Unlock()
+	}
+}
+
+// implements KernelReader
+func (k *Kernel) Agents() []core.AgentStatus {
+	ids := k.agents.ListAll()
+	out := make([]core.AgentStatus, 0, len(ids))
+	for _, id := range ids {
+		a, err := k.agents.Get(id)
+		if err != nil {
+			continue
+		}
+		out = append(out, a.Status())
+	}
+	return out
+}
+
+// implements KernelReader
+func (k *Kernel) IsHealthy() bool {
+	return k.ctx.Err() == nil
 }

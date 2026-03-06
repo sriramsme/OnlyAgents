@@ -17,7 +17,7 @@ type ConnectorConfigFile struct {
 }
 
 // LoadConnectorConfig loads a single connector config file
-func LoadConnectorConfig(configPath string) (*ConnectorConfigFile, error) {
+func loadConnectorConfig(configPath string) (*ConnectorConfigFile, error) {
 
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
@@ -54,7 +54,8 @@ func LoadConnectorConfig(configPath string) (*ConnectorConfigFile, error) {
 }
 
 // LoadAllConnectorConfigs loads all connector configs from a directory
-func LoadAllConnectorConfigs(dir string) (map[string]*ConnectorConfigFile, error) {
+func LoadAllConnectorConfigs() (map[string]*ConnectorConfigFile, error) {
+	dir := ConnectorsDir()
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read connectors dir: %w", err)
@@ -67,7 +68,7 @@ func LoadAllConnectorConfigs(dir string) (map[string]*ConnectorConfigFile, error
 			continue
 		}
 
-		cfg, err := LoadConnectorConfig(filepath.Join(dir, f.Name()))
+		cfg, err := loadConnectorConfig(filepath.Join(dir, f.Name()))
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", f.Name(), err)
 		}

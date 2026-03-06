@@ -18,12 +18,11 @@ type Registry struct {
 
 func NewRegistry(
 	ctx context.Context,
-	configDir string,
 	vault vault.Vault,
 	bus chan<- core.Event,
 ) (*Registry, error) {
 	// Load all connector configs
-	configs, err := config.LoadAllConnectorConfigs(configDir)
+	configs, err := config.LoadAllConnectorConfigs()
 	if err != nil {
 		return nil, fmt.Errorf("load connector configs: %w", err)
 	}

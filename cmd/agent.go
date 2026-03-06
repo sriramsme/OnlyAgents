@@ -29,18 +29,12 @@ var agentRunCmd = &cobra.Command{
 }
 
 var (
-	agentLogLevel            string
-	agentLogFormat           string
-	agentLogDetailed         bool
-	agentLogDetailedLLM      bool
-	agentLogDetailedTools    bool
-	agentBusBufferSize       int
-	agentDefaultID           string
-	agentAgentConfigsDir     string
-	agentConnectorConfigsDir string
-	agentChannelConfigsDir   string
-	agentSkillConfigsDir     string
-	agentVaultPath           string
+	agentLogLevel         string
+	agentLogFormat        string
+	agentLogDetailed      bool
+	agentLogDetailedLLM   bool
+	agentLogDetailedTools bool
+	agentBusBufferSize    int
 )
 
 func init() {
@@ -55,12 +49,6 @@ func init() {
 	agentRunCmd.Flags().BoolVar(&agentLogDetailedTools, "log-detailed-tools", false, "Detailed tool calls")
 	// Kernel flags
 	agentRunCmd.Flags().IntVar(&agentBusBufferSize, "bus-buffer", 100, "Event bus buffer size")
-	agentRunCmd.Flags().StringVar(&agentDefaultID, "default-agent", "default", "Default agent ID")
-	agentRunCmd.Flags().StringVar(&agentAgentConfigsDir, "agents-dir", "configs/agents/", "Agent configs directory")
-	agentRunCmd.Flags().StringVar(&agentConnectorConfigsDir, "connectors-dir", "configs/connectors/", "Connector configs directory")
-	agentRunCmd.Flags().StringVar(&agentChannelConfigsDir, "channels-dir", "configs/channels/", "Channel configs directory")
-	agentRunCmd.Flags().StringVar(&agentSkillConfigsDir, "skills-dir", "configs/skills/", "Skill configs directory")
-	agentRunCmd.Flags().StringVar(&agentVaultPath, "vault", "configs/vault.yaml", "Vault file path")
 }
 
 func runAgent(cmd *cobra.Command, args []string) error {
@@ -90,7 +78,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	fmt.Println("========================")
 
 	// Initialize kernel
-	k, err := kernel.NewKernel(ctx, cancel)
+	k, err := kernel.NewKernel(ctx, cancel, nil)
 
 	if err != nil {
 		logger.Log.Error("failed to initialize kernel", "error", err)

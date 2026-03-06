@@ -29,7 +29,7 @@ func NewServer(cfg config.ServerConfig, deps handlers.Deps, logger *slog.Logger)
 	return &Server{
 		httpServer: &http.Server{
 			Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
-			Handler:      mux,
+			Handler:      mid.corsGlobal(mux),
 			ReadTimeout:  cfg.ReadTimeout,
 			WriteTimeout: cfg.WriteTimeout,
 			IdleTimeout:  cfg.IdleTimeout,

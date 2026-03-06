@@ -9,8 +9,8 @@ import (
 )
 
 // LoadServerConfig reads configs/server.yaml.
-func LoadServerConfig(configPath string) (*ServerConfig, error) {
-	cfg, err := loadServer(configPath)
+func LoadServerConfig() (*ServerConfig, error) {
+	cfg, err := loadServer()
 	if err != nil {
 		return nil, fmt.Errorf("load server config: %w", err)
 	}
@@ -18,10 +18,8 @@ func LoadServerConfig(configPath string) (*ServerConfig, error) {
 }
 
 // loadServer reads a server config file into a ServerConfig struct.
-func loadServer(configPath string) (*ServerConfig, error) {
-	if configPath == "" {
-		return nil, fmt.Errorf("config path empty")
-	}
+func loadServer() (*ServerConfig, error) {
+	configPath := ServerConfigPath()
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("server config not found: %s", configPath)

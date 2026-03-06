@@ -8,11 +8,8 @@ import (
 )
 
 // LoadUserConfig loads the user profile
-func LoadUserConfig(configPath string) (*UserConfig, error) {
-	if configPath == "" {
-		return nil, fmt.Errorf("config path empty")
-	}
-
+func LoadUserConfig() (*UserConfig, error) {
+	configPath := UserConfigPath()
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("user config not found: %s", configPath)
 	}
@@ -32,8 +29,9 @@ func LoadUserConfig(configPath string) (*UserConfig, error) {
 	return &cfg, nil
 }
 
-func SaveUserConfig(path string, cfg *UserConfig) error {
+func SaveUserConfig(cfg *UserConfig) error {
 	v := viper.New()
+	path := UserConfigPath()
 	v.SetConfigFile(path)
 
 	// Marshal the config to map for viper

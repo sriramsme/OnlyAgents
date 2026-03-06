@@ -14,7 +14,8 @@ import (
 
 // LoadVault reads configs/vault.yaml, initialises the vault, and returns it.
 // The caller (entry point) owns the vault and must call v.Close() on shutdown.
-func LoadVault(configPath string) (vault.Vault, error) {
+func LoadVault() (vault.Vault, error) {
+	configPath := VaultPath()
 	vc, err := loadVaultConfig(configPath)
 	if err != nil {
 		return nil, err
@@ -62,8 +63,8 @@ func loadVaultConfig(configPath string) (*vault.Config, error) {
 
 // LoadVaultAndValidate is a convenience for CLI tools that want to confirm
 // vault connectivity and a specific agent config all in one shot.
-func LoadVaultAndValidate(vaultPath, agentConfigPath string) (vault.Vault, error) {
-	v, err := LoadVault(vaultPath)
+func LoadVaultAndValidate(agentConfigPath string) (vault.Vault, error) {
+	v, err := LoadVault()
 	if err != nil {
 		return nil, err
 	}

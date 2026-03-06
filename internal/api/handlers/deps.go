@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
 // Deps holds every dependency that handlers might need.
@@ -14,30 +15,35 @@ import (
 type Deps struct {
 	Bus     chan<- core.Event
 	Version string
-
-	// Uncomment as you build these packages:
-	// Memory  MemoryReader
-	// Skills  SkillRegistry
-	// Vault   vault.Vault
+	Kernel  KernelReader
+	Store   storage.Storage
 }
 
-// AgentExecutor is the interface handlers need from the kernel.
-// Keeping it small and defined here avoids importing the kernel package
-// into the api layer directly.
+// ─── Kernel interface ─────────────────────────────────────────────────────────
+
+// KernelReader is the interface the API layer needs from the kernel.
+// Defined here (not in pkg/kernel) so the API layer never imports the kernel
+// package — avoiding a potential import cycle and keeping the boundary clean.
+//
+// pkg/kernel.Kernel implements this interface; it is passed in from cmd/server.
+type KernelReader interface {
+	// Agents returns a runtime snapshot of every registered agent.
+	Agents() []core.AgentStatus
+
+	// IsHealthy returns false if the kernel context has been cancelled.
+	IsHealthy() bool
+
+	// Subscribe registers a new SSE client and returns:
+	//   ch          — read-only channel receiving UIEvents
+	//   unsubscribe — call this (defer it) when the client disconnects
+	Subscribe(id string) (<-chan core.UIEvent, func())
+}
+
+// ─── Agent interface ──────────────────────────────────────────────────────────
+
+// AgentExecutor is the interface handlers need from a single agent.
+// Keeping it small and defined here avoids importing pkg/agents into the API layer.
 type AgentExecutor interface {
 	Execute(ctx context.Context, message string) (string, error)
 	ID() string
 }
-
-// MemoryReader will be used by the memory handler (add when ready)
-// type MemoryReader interface {
-// 	GetDailySummary(ctx context.Context, date time.Time) (string, error)
-// 	GetFacts(ctx context.Context, entity string) ([]memory.Fact, error)
-// 	GetRecentMessages(ctx context.Context, hours int) ([]memory.Message, error)
-// }
-
-// SkillRegistry will be used by the skills handler (add when ready)
-// type SkillRegistry interface {
-// 	List() []string
-// 	Get(name string) skills.Skill
-// }

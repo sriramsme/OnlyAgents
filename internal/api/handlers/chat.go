@@ -43,7 +43,7 @@ type sendResponse struct {
 }
 
 func (h *ChatHandler) Send(w http.ResponseWriter, r *http.Request) {
-	h.send(w, r, "default")
+	h.send(w, r, "executive")
 }
 
 func (h *ChatHandler) SendToAgent(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +71,11 @@ func (h *ChatHandler) send(w http.ResponseWriter, r *http.Request, agentID strin
 		ReplyTo:       replyCh,
 		Payload: core.AgentExecutePayload{
 			Message: req.Message,
+			Channel: &core.ChannelMetadata{
+				Name:     "gui",
+				Username: "user",
+				UserID:   "user",
+			},
 		},
 	}
 

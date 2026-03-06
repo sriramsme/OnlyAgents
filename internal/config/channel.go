@@ -18,7 +18,7 @@ type ChannelConfigFile struct {
 }
 
 // LoadConnectorConfig loads a single connector config file
-func LoadChannelConfig(configPath string) (*ChannelConfigFile, error) {
+func loadChannelConfig(configPath string) (*ChannelConfigFile, error) {
 
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
@@ -55,7 +55,8 @@ func LoadChannelConfig(configPath string) (*ChannelConfigFile, error) {
 }
 
 // LoadAllConnectorConfigs loads all connector configs from a directory
-func LoadAllChannelConfigs(dir string) (map[string]*ChannelConfigFile, error) {
+func LoadAllChannelConfigs() (map[string]*ChannelConfigFile, error) {
+	dir := ChannelsDir()
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read connectors dir: %w", err)
@@ -68,7 +69,7 @@ func LoadAllChannelConfigs(dir string) (map[string]*ChannelConfigFile, error) {
 			continue
 		}
 
-		cfg, err := LoadChannelConfig(filepath.Join(dir, f.Name()))
+		cfg, err := loadChannelConfig(filepath.Join(dir, f.Name()))
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", f.Name(), err)
 		}

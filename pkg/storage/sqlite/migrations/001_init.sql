@@ -27,6 +27,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_conv
     ON messages (conversation_id, timestamp ASC);
 CREATE INDEX IF NOT EXISTS idx_messages_agent_time
     ON messages (agent_id, timestamp ASC);
+CREATE INDEX idx_messages_session_agent
+    ON messages(conversation_id, agent_id, timestamp);
 
 CREATE TABLE IF NOT EXISTS agent_state (
     agent_id                TEXT PRIMARY KEY,

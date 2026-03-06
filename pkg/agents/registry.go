@@ -18,13 +18,13 @@ import (
 // Accept parent context to pass to agents
 func NewRegistry(
 	ctx context.Context,
-	configsDir string,
 	v vault.Vault,
 	outbox chan<- core.Event,
+	uiBus core.UIBus,
 	cm *memory.ConversationManager,
 	mm *memory.MemoryManager,
 ) (*Registry, error) {
-	configs, err := config.LoadAllAgentsConfig(configsDir, v)
+	configs, err := config.LoadAllAgentsConfig(v)
 	if err != nil {
 		return nil, fmt.Errorf("load agent configs: %w", err)
 	}
@@ -41,7 +41,7 @@ func NewRegistry(
 		}
 
 		// Pass parent context to agent
-		agent, err := NewAgent(ctx, *cfg, llmClient, outbox, cm, mm)
+		agent, err := NewAgent(ctx, *cfg, llmClient, outbox, uiBus, cm, mm)
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: init: %w", cfg.ID, err)
 		}

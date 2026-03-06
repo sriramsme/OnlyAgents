@@ -2,8 +2,8 @@ id: "researcher"
 name: "Zuck"
 description: "Does research and gathers information from multiple sources.
 Supports web search, and citation."
-max_concurrency: 10
-buffer_size: 100
+max_concurrency: 5
+buffer_size: 50
 
 logging:
   level: "info"  # debug, info, warn, error

@@ -122,7 +122,7 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload WFTaskComplete
 		"workflow_id", payload.WorkflowID,
 		"task_id", payload.TaskID,
 		"has_error", payload.Error != "",
-		"result", payload.Result)
+	)
 
 	// Get task
 	_, err := e.store.GetWFTask(ctx, payload.TaskID)

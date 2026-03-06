@@ -49,21 +49,11 @@ func load(configPath string) (*AgentConfig, error) {
 	return &cfg, nil
 }
 
-// LoadAgentConfig loads a single agent config and attaches the provided vault.
-// The vault must already be initialised and validated by the caller (entry point).
-func LoadAgentConfig(configPath string, v vault.Vault) (*AgentConfig, error) {
-	cfg, err := load(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("load agent config: %w", err)
-	}
-	cfg.setVault(v)
-	return cfg, nil
-}
-
 // LoadAllAgentsConfig loads every *.yaml under dir, sharing a single vault
 // instance across all of them. Returns the configs and the vault so the
 // caller owns its lifecycle.
-func LoadAllAgentsConfig(dir string, v vault.Vault) ([]*AgentConfig, error) {
+func LoadAllAgentsConfig(v vault.Vault) ([]*AgentConfig, error) {
+	dir := AgentsDir()
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read agents dir: %w", err)
