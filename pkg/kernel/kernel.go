@@ -27,6 +27,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
+	"github.com/sriramsme/OnlyAgents/pkg/channels/oaChannel"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors/native"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -151,6 +152,23 @@ func (k *Kernel) Bus() chan<- core.Event {
 	return k.bus
 }
 
+func (k *Kernel) OAChannel() *oaChannel.OAChannel {
+	k.logger.Info("all channels", "count", k.channels.List())
+	ch, err := k.channels.Get("oaChannel")
+	if err != nil {
+		k.logger.Error("failed to get channel", "name", "oaChannel", "err", err)
+		return nil
+	}
+
+	oaCh, ok := ch.(*oaChannel.OAChannel)
+	if !ok {
+		k.logger.Error("channel type mismatch", "expected", "*oaChannel.OAChannel")
+		return nil
+	}
+
+	return oaCh
+}
+
 func (k *Kernel) initNativeConnectors() {
 	k.RegisterConnector(native.NewCalendarConnector(k.store))
 	k.RegisterConnector(native.NewNotesConnector(k.store))
@@ -178,6 +196,9 @@ func (k *Kernel) Start() error {
 			return fmt.Errorf("failed to start channel %s: %w", ch.PlatformName(), err)
 		}
 	}
+
+	k.logger.Info("wiring onlyagents Channel")
+	k.wireOAChannel()
 
 	// Start all connectors
 	k.logger.Info("starting connectors")
@@ -402,6 +423,9 @@ func (k *Kernel) route(evt core.Event) {
 	case core.AgentMessage:
 		k.handleAgentMessage(evt)
 
+	case core.OutboundToken:
+		k.handleOutboundToken(evt)
+
 	default:
 		k.logger.Warn("unhandled event type", "type", evt.Type)
 	}
@@ -432,6 +456,21 @@ func (k *Kernel) broadcastUI(evt core.UIEvent) {
 		default: // slow client — drop rather than block the fan-out loop
 		}
 	}
+}
+
+func (k *Kernel) wireOAChannel() {
+	ch, err := k.channels.Get("oaChannel")
+	if err != nil {
+		return
+	}
+	oaCh, ok := ch.(*oaChannel.OAChannel)
+	if !ok {
+		return
+	}
+	// Inject Subscribe so each WS connection gets its own UIBus subscription.
+	oaCh.SetSubscribe(k.Subscribe)
+	// Inject EndSession so session.new requests can close the old session.
+	oaCh.SetEndSession(k.cm.EndSession)
 }
 
 // implements KernelReader

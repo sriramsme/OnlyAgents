@@ -148,24 +148,16 @@ func (c *AnthropicClient) Chat(ctx context.Context, req *llm.Request) (*llm.Resp
 	return resp, nil
 }
 
-// StreamChunk represents a chunk of streaming response
-type StreamChunk struct {
-	Content   string
-	ToolCalls []tools.ToolCall
-	Done      bool
-	Error     error
-}
-
 // ChatStream sends a streaming chat completion request
-func (c *AnthropicClient) ChatStream(ctx context.Context, req *llm.Request) <-chan StreamChunk {
-	ch := make(chan StreamChunk)
+func (c *AnthropicClient) ChatStream(ctx context.Context, req *llm.Request) <-chan llm.StreamChunk {
+	ch := make(chan llm.StreamChunk)
 
 	go func() {
 		defer close(ch)
 
 		// Validate capabilities
 		if err := c.validateStreamingCapabilities(req); err != nil {
-			ch <- StreamChunk{Error: err, Done: true}
+			ch <- llm.StreamChunk{Error: err, Done: true}
 			return
 		}
 
@@ -173,7 +165,7 @@ func (c *AnthropicClient) ChatStream(ctx context.Context, req *llm.Request) <-ch
 
 		params, err := c.buildMessageParams(req)
 		if err != nil {
-			ch <- StreamChunk{Error: fmt.Errorf("anthropic: %w", err), Done: true}
+			ch <- llm.StreamChunk{Error: fmt.Errorf("anthropic: %w", err), Done: true}
 			return
 		}
 
@@ -197,7 +189,7 @@ func (c *AnthropicClient) ChatStream(ctx context.Context, req *llm.Request) <-ch
 			// Accumulate into message
 			if err := message.Accumulate(event); err != nil {
 				logger.Log.Error("failed to accumulate message", "error", err)
-				ch <- StreamChunk{Error: err, Done: true}
+				ch <- llm.StreamChunk{Error: err, Done: true}
 				return
 			}
 
@@ -207,12 +199,12 @@ func (c *AnthropicClient) ChatStream(ctx context.Context, req *llm.Request) <-ch
 
 		if err := stream.Err(); err != nil {
 			logger.Log.Error("anthropic stream error", "error", err)
-			ch <- StreamChunk{Error: err, Done: true}
+			ch <- llm.StreamChunk{Error: err, Done: true}
 			return
 		}
 
 		// Send completion signal
-		ch <- StreamChunk{Done: true}
+		ch <- llm.StreamChunk{Done: true}
 
 		logger.Log.Info("anthropic streaming complete",
 			"model", c.model,
@@ -236,7 +228,7 @@ func (c *AnthropicClient) validateStreamingCapabilities(req *llm.Request) error 
 }
 
 // handleStreamEvent processes individual stream events
-func (c *AnthropicClient) handleStreamEvent(event anthropic.MessageStreamEventUnion, ch chan<- StreamChunk, currentToolCall **tools.ToolCall, currentToolJSON *strings.Builder) {
+func (c *AnthropicClient) handleStreamEvent(event anthropic.MessageStreamEventUnion, ch chan<- llm.StreamChunk, currentToolCall **tools.ToolCall, currentToolJSON *strings.Builder) {
 	switch ev := event.AsAny().(type) {
 	case anthropic.MessageStartEvent:
 		// Message started, nothing to emit yet
@@ -273,10 +265,10 @@ func (c *AnthropicClient) handleContentBlockStart(ev anthropic.ContentBlockStart
 }
 
 // handleContentBlockDelta handles delta events within a content block
-func (c *AnthropicClient) handleContentBlockDelta(ev anthropic.ContentBlockDeltaEvent, ch chan<- StreamChunk, currentToolCall *tools.ToolCall, currentToolJSON *strings.Builder) {
+func (c *AnthropicClient) handleContentBlockDelta(ev anthropic.ContentBlockDeltaEvent, ch chan<- llm.StreamChunk, currentToolCall *tools.ToolCall, currentToolJSON *strings.Builder) {
 	switch delta := ev.Delta.AsAny().(type) {
 	case anthropic.TextDelta:
-		ch <- StreamChunk{Content: delta.Text}
+		ch <- llm.StreamChunk{Content: delta.Text}
 
 	case anthropic.InputJSONDelta:
 		if currentToolCall != nil {
@@ -286,10 +278,10 @@ func (c *AnthropicClient) handleContentBlockDelta(ev anthropic.ContentBlockDelta
 }
 
 // handleContentBlockStop handles the completion of a content block
-func (c *AnthropicClient) handleContentBlockStop(ch chan<- StreamChunk, currentToolCall **tools.ToolCall, currentToolJSON *strings.Builder) {
+func (c *AnthropicClient) handleContentBlockStop(ch chan<- llm.StreamChunk, currentToolCall **tools.ToolCall, currentToolJSON *strings.Builder) {
 	if *currentToolCall != nil {
 		(*currentToolCall).Function.Arguments = currentToolJSON.String()
-		ch <- StreamChunk{ToolCalls: []tools.ToolCall{**currentToolCall}}
+		ch <- llm.StreamChunk{ToolCalls: []tools.ToolCall{**currentToolCall}}
 		*currentToolCall = nil
 		currentToolJSON.Reset()
 	}

@@ -135,24 +135,16 @@ func (c *OpenAIClient) Chat(ctx context.Context, req *llm.Request) (*llm.Respons
 	return resp, nil
 }
 
-// StreamChunk represents a chunk of streaming response
-type StreamChunk struct {
-	Content   string
-	ToolCalls []tools.ToolCall
-	Done      bool
-	Error     error
-}
-
 // ChatStream sends a streaming chat completion request
-func (c *OpenAIClient) ChatStream(ctx context.Context, req *llm.Request) <-chan StreamChunk {
-	ch := make(chan StreamChunk)
+func (c *OpenAIClient) ChatStream(ctx context.Context, req *llm.Request) <-chan llm.StreamChunk {
+	ch := make(chan llm.StreamChunk)
 
 	go func() {
 		defer close(ch)
 
 		// Capability checks
 		if !c.capabilities.SupportsStreaming {
-			ch <- StreamChunk{
+			ch <- llm.StreamChunk{
 				Error: fmt.Errorf("model %s does not support streaming", c.model),
 				Done:  true,
 			}
@@ -160,7 +152,7 @@ func (c *OpenAIClient) ChatStream(ctx context.Context, req *llm.Request) <-chan 
 		}
 
 		if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
-			ch <- StreamChunk{
+			ch <- llm.StreamChunk{
 				Error: fmt.Errorf("model %s does not support tool calling", c.model),
 				Done:  true,
 			}
@@ -203,20 +195,20 @@ func (c *OpenAIClient) ChatStream(ctx context.Context, req *llm.Request) <-chan 
 						Arguments: tool.Arguments,
 					},
 				}
-				ch <- StreamChunk{ToolCalls: []tools.ToolCall{tc}}
+				ch <- llm.StreamChunk{ToolCalls: []tools.ToolCall{tc}}
 			}
 
 			// Send content delta
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-				ch <- StreamChunk{Content: chunk.Choices[0].Delta.Content}
+				ch <- llm.StreamChunk{Content: chunk.Choices[0].Delta.Content}
 			}
 		}
 
 		if err := stream.Err(); err != nil && err != io.EOF {
 			logger.Log.Error("stream error", "error", err)
-			ch <- StreamChunk{Error: err, Done: true}
+			ch <- llm.StreamChunk{Error: err, Done: true}
 		} else {
-			ch <- StreamChunk{Done: true}
+			ch <- llm.StreamChunk{Done: true}
 		}
 
 		logger.Log.Info("openai streaming complete",

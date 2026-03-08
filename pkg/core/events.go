@@ -16,6 +16,9 @@ const (
 	// Flow: Agent → Kernel → Channel
 	OutboundMessage EventType = "outbound_message"
 
+	// OutboundToken: Streaming token for agent
+	OutboundToken EventType = "outbound_token"
+
 	// =====================================
 	// Agent Execution Events
 	// =====================================
@@ -106,21 +109,17 @@ type Event struct {
 
 // MessageReceivedPayload: User message from channel
 type MessageReceivedPayload struct {
-	ChannelName string            `json:"channel_name"`
-	ChatID      string            `json:"chat_id"`
-	UserID      string            `json:"user_id"`
-	Username    string            `json:"username"`
-	Content     string            `json:"content"`
-	Metadata    map[string]string `json:"metadata"`
+	Channel  *ChannelMetadata  `json:"channel"`
+	Content  string            `json:"content"`
+	Metadata map[string]string `json:"metadata"`
 }
 
 // OutboundMessagePayload: Response to send to channel
 type OutboundMessagePayload struct {
-	ChannelName string `json:"channel_name"`
-	ChatID      string `json:"chat_id"`
-	Content     string `json:"content"`
-	ReplyToID   string `json:"reply_to_id,omitempty"`
-	ParseMode   string `json:"parse_mode,omitempty"`
+	Channel   *ChannelMetadata `json:"channel"`
+	Content   string           `json:"content"`
+	ReplyToID string           `json:"reply_to_id,omitempty"`
+	ParseMode string           `json:"parse_mode,omitempty"`
 }
 
 // AgentExecutePayload: Execute agent with message
@@ -133,11 +132,18 @@ type AgentExecutePayload struct {
 	Agent       *AgentMetadata      `json:"agent,omitempty"`
 }
 
+type OutboundTokenPayload struct {
+	Channel            *ChannelMetadata `json:"channel"`
+	Token              string           `json:"token"`
+	AccumulatedContent string           `json:"accumulated_content,omitempty"`
+}
+
 type ChannelMetadata struct {
-	ChatID   string `json:"chat_id"`
-	Name     string `json:"name"`
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
+	SessionID string `json:"session_id"`
+	ChatID    string `json:"chat_id"`
+	Name      string `json:"name"`
+	UserID    string `json:"user_id,omitempty"`
+	Username  string `json:"username,omitempty"`
 }
 
 type DelegationMetadata struct {

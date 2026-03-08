@@ -50,10 +50,11 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 			Message:     payload.Content,
 			MessageType: core.MessageTypeUser,
 			Channel: &core.ChannelMetadata{
-				ChatID:   payload.ChatID,
-				Name:     payload.ChannelName,
-				UserID:   payload.UserID,
-				Username: payload.Username,
+				SessionID: payload.Channel.SessionID,
+				ChatID:    payload.Channel.ChatID,
+				Name:      payload.Channel.Name,
+				UserID:    payload.Channel.UserID,
+				Username:  payload.Channel.Username,
 			},
 		},
 	}
@@ -567,11 +568,11 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	}
 
 	logger.Timing.StartPhase(evt.CorrelationID, "outbound_send")
-	ch, err := k.channels.Get(payload.ChannelName)
+	ch, err := k.channels.Get(payload.Channel.Name)
 	if err != nil {
 		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
 		k.logger.Error("channel not found",
-			"channel", payload.ChannelName,
+			"channel", payload.Channel.Name,
 			"correlation_id", evt.CorrelationID)
 		return
 	}
@@ -580,25 +581,59 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	defer cancel()
 
 	if err := ch.Send(ctx, channels.OutgoingMessage{
-		ChatID:    payload.ChatID,
+		Channel:   payload.Channel,
 		Content:   payload.Content,
 		ReplyToID: payload.ReplyToID,
 		ParseMode: payload.ParseMode,
 	}); err != nil {
 		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
 		k.logger.Error("failed to send outbound message",
-			"channel", payload.ChannelName,
+			"channel", payload.Channel.Name,
 			"correlation_id", evt.CorrelationID,
 			"error", err)
 	} else {
 		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
 		k.logger.Debug("outbound message sent",
-			"channel", payload.ChannelName,
+			"channel", payload.Channel.Name,
 			"correlation_id", evt.CorrelationID)
 	}
 
 	logger.Timing.EndPhase(evt.CorrelationID, "end_to_end")
 	logger.Timing.LogSummary(evt.CorrelationID)
+}
+
+// handleOutboundToken: Agent has a response, send it via the appropriate channel
+func (k *Kernel) handleOutboundToken(evt core.Event) {
+	payload, ok := evt.Payload.(core.OutboundTokenPayload)
+	if !ok {
+		k.logger.Error("invalid AgentToken payload",
+			"actual_type", fmt.Sprintf("%T", evt.Payload))
+		return
+	}
+
+	ch, err := k.channels.Get(payload.Channel.Name)
+	if err != nil {
+		k.logger.Error("channel not found for token",
+			"channel", payload.Channel.Name,
+			"correlation_id", evt.CorrelationID)
+		return
+	}
+
+	streamer, ok := ch.(channels.TokenStreamer)
+	if !ok {
+		// Channel doesn't support streaming — silently skip,
+		// final response still arrives via Send()
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(k.ctx, 5*time.Second)
+	defer cancel()
+
+	if err := streamer.SendToken(ctx, payload.Channel, payload.Token, payload.AccumulatedContent); err != nil {
+		k.logger.Debug("send token failed",
+			"channel", payload.Channel.Name,
+			"error", err)
+	}
 }
 
 // handleNewSession ends the current conversation and starts a fresh one.

@@ -25,6 +25,7 @@ type Storage interface {
 type ConversationStore interface {
 	CreateConversation(ctx context.Context, conv *Conversation) error
 	GetConversation(ctx context.Context, id string) (*Conversation, error)
+	GetOrCreateSession(ctx context.Context, key, agentID string) (string, error)
 	UpdateConversation(ctx context.Context, conv *Conversation) error
 	ListConversations(ctx context.Context, agentID string, limit int) ([]*Conversation, error)
 	EndConversation(ctx context.Context, id string, summary string) error
@@ -33,6 +34,7 @@ type ConversationStore interface {
 type MessageStore interface {
 	SaveMessage(ctx context.Context, msg *Message) error
 	GetMessages(ctx context.Context, conversationID string) ([]*Message, error)
+	GetMessagesByAgent(ctx context.Context, conversationID, agentID string) ([]*Message, error)
 	GetRecentMessages(ctx context.Context, agentID string, since time.Time) ([]*Message, error)
 	DeleteOldMessages(ctx context.Context, olderThan time.Time) error
 }

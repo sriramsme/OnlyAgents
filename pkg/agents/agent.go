@@ -49,25 +49,26 @@ func NewAgent(
 	agentCtx, cancel := context.WithCancel(ctx)
 
 	return &Agent{
-		id:             cfg.ID,
-		name:           cfg.Name,
-		isExecutive:    cfg.IsExecutive,
-		isGeneral:      cfg.IsGeneral,
-		maxConcurrency: cfg.MaxConcurrency,
-		skills:         cfg.Skills,
-		llmClient:      llmClient,
-		soul:           agentSoul,
-		outbox:         outbox,
-		uiBus:          uiBus,
-		tools:          []tools.ToolDef{},
-		toolSkillMap:   make(map[string]tools.SkillName),
-		cm:             cm,
-		mm:             mm,
-		inbox:          make(chan core.Event, cfg.BufferSize),
-		ctx:            agentCtx,
-		cancel:         cancel,
-		logger:         slog.With("agent_id", cfg.ID),
-		state:          "idle",
+		id:               cfg.ID,
+		name:             cfg.Name,
+		isExecutive:      cfg.IsExecutive,
+		isGeneral:        cfg.IsGeneral,
+		maxConcurrency:   cfg.MaxConcurrency,
+		skills:           cfg.Skills,
+		streamingEnabled: cfg.StreamingEnabled,
+		llmClient:        llmClient,
+		soul:             agentSoul,
+		outbox:           outbox,
+		uiBus:            uiBus,
+		tools:            []tools.ToolDef{},
+		toolSkillMap:     make(map[string]tools.SkillName),
+		cm:               cm,
+		mm:               mm,
+		inbox:            make(chan core.Event, cfg.BufferSize),
+		ctx:              agentCtx,
+		cancel:           cancel,
+		logger:           slog.With("agent_id", cfg.ID),
+		state:            "idle",
 	}, nil
 }
 
@@ -286,8 +287,15 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 		"message_type", payload.MessageType,
 		"message_length", len(payload.Message))
 
-	// Regular agent uses standard execute
-	response, err := a.execute(requestCtx, payload, evt.CorrelationID)
+	// Choose execute path based on whether this response goes to user directly
+	var response string
+	var err error
+	if a.shouldStream(payload) {
+		response, err = a.executeStream(requestCtx, payload, evt.CorrelationID)
+	} else {
+		response, err = a.execute(requestCtx, payload, evt.CorrelationID)
+	}
+
 	logger.Timing.EndPhase(evt.CorrelationID, agentPhase)
 
 	if err != nil {
@@ -337,6 +345,22 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 	}
 }
 
+func (a *Agent) shouldStream(payload core.AgentExecutePayload) bool {
+	if !a.streamingEnabled {
+		return false
+	}
+	// Executive always streams — response goes directly to user
+	if a.isExecutive {
+		return true
+	}
+	// Sub-agent only streams if responding directly to user
+	if payload.Delegation != nil {
+		return payload.Delegation.SendDirectlyToUser
+	}
+	// Workflow tasks go back to engine — no streaming
+	return false
+}
+
 // safeReply sends to a reply channel with timeout and context checks
 func (a *Agent) safeReply(replyCh chan<- core.Event, evt core.Event, description string) {
 	select {
@@ -379,40 +403,19 @@ func (a *Agent) safeSend(evt core.Event, description string) {
 // }
 
 // nolint:gocyclo
-// execute is the internal LLM loop, shared by both sync and async paths.
-func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, correlationID string) (string, error) {
-	//persist incoming user message
-	sessionID := deriveSessionID(payload) // ← derive once at top
-
-	// Ensure session exists (idempotent — safe to call every time)
-	if err := a.cm.EnsureSession(ctx, sessionID); err != nil {
-		a.logger.Warn("failed to ensure session", "err", err)
-	}
-	if err := a.cm.SaveUserMessage(ctx, sessionID, a.id, payload.Message); err != nil {
-		a.logger.Warn("failed to save user message", "err", err, "correlation_id", correlationID)
-	}
-
-	// build messages from history instead of scratch
-	history, err := a.cm.GetHistory(ctx, sessionID, a.id, memory.DefaultHistoryTurns)
+// execute is the non-streaming internal LLM loop, shared by both sync and async paths.
+func (a *Agent) execute(
+	ctx context.Context,
+	payload core.AgentExecutePayload,
+	correlationID string,
+) (string, error) {
+	sessionID, messages, err := a.prepareExecution(ctx, payload, correlationID)
 	if err != nil {
-		a.logger.Warn("failed to load history, falling back to empty", "err", err)
-		history = []llm.Message{}
+		return "", err
 	}
-
-	// Load long-term memory context (today's summary + relevant facts).
-	memCtx, err := a.mm.GetRelevantMemory(ctx, a.id, payload.Message)
-	if err != nil {
-		a.logger.Warn("failed to load memory context", "err", err)
-	}
-
-	messages := make([]llm.Message, 0, len(history)+1)
-	messages = append(messages, llm.SystemMessage(a.systemPrompt))
-	if formatted := memory.FormatMemoryContext(memCtx); formatted != "" {
-		messages = append(messages, llm.SystemMessage(formatted))
-	}
-	messages = append(messages, history...)
 
 	llmCallCount := 0
+	var halt bool
 	for {
 		select {
 		case <-ctx.Done():
@@ -421,8 +424,8 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 		}
 
 		llmCallCount++
-		llmPhase := fmt.Sprintf("%s_llm_%d. Msg: %s", a.id, llmCallCount, truncate(payload.Message, 100))
-		logger.Timing.StartPhase(correlationID, llmPhase)
+		phase := fmt.Sprintf("%s_llm_%d. Msg: %s", a.id, llmCallCount, truncate(payload.Message, 100))
+		logger.Timing.StartPhase(correlationID, phase)
 
 		resp, err := a.llmClient.Chat(ctx, &llm.Request{
 			Messages: messages,
@@ -433,11 +436,11 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			},
 		})
 		if err != nil {
-			logger.Timing.EndPhaseWithMetadata(correlationID, llmPhase, map[string]any{"error": "failed"})
+			logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{"error": "failed"})
 			return "", fmt.Errorf("llm request failed: %w", err)
 		}
 
-		logger.Timing.EndPhaseWithMetadata(correlationID, llmPhase, map[string]any{
+		logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{
 			"model":            a.llmClient.Model(),
 			"agent":            a.name,
 			"input_tokens":     resp.Usage.InputTokens,
@@ -448,102 +451,288 @@ func (a *Agent) execute(ctx context.Context, payload core.AgentExecutePayload, c
 			"tool_calls_count": len(resp.ToolCalls),
 		})
 
-		// No tool calls — final response.
 		if !resp.HasToolCalls() {
-			// persist final assistant response
-			if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, nil); err != nil {
-				a.logger.Warn("failed to save assistant message", "err", err, "correlation_id", correlationID)
-			}
-			// If this was a workflow task, fire completion
-			if payload.Workflow != nil {
-				a.fireTaskCompletion(ctx, correlationID, payload.Workflow, resp.Content, nil)
-			}
+			a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
 			return resp.Content, nil
 		}
+		var processErr error
+		messages, halt, processErr = a.processToolCalls(ctx, sessionID, correlationID, payload, messages, resp)
+		if processErr != nil {
+			return "", err
+		}
+		if halt {
+			return "", nil
+		}
+	}
+}
 
-		// Has tool calls — persist assistant turn and add to local slice.
-		//persist assistant turn with tool calls
-		if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
-			a.logger.Warn("failed to save assistant tool-call message", "err", err, "correlation_id", correlationID)
+// ── ExecuteStream (streaming) ─────────────────────────────────────────────────
+
+func (a *Agent) executeStream(
+	ctx context.Context,
+	payload core.AgentExecutePayload,
+	correlationID string,
+) (string, error) {
+	sessionID, messages, err := a.prepareExecution(ctx, payload, correlationID)
+	if err != nil {
+		return "", err
+	}
+
+	llmCallCount := 0
+	var halt bool
+	for {
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("request cancelled: %w", ctx.Err())
+		default:
 		}
 
-		messages = append(messages, llm.AssistantMessageWithTools(
-			resp.Content, resp.ReasoningContent, resp.ToolCalls,
-		))
+		llmCallCount++
+		phase := fmt.Sprintf("%s_llm_stream_%d. Msg: %s", a.id, llmCallCount, truncate(payload.Message, 100))
+		logger.Timing.StartPhase(correlationID, phase)
 
-		for _, tc := range resp.ToolCalls {
-			toolStart := time.Now()
-			a.emitUI(core.UIEvent{
-				Type:      core.UIEventToolCalled,
-				Timestamp: time.Now(),
-				AgentID:   a.id,
-				Payload: core.ToolCalledPayload{
-					ToolName: tc.Function.Name,
-					Input:    tc.Function.Arguments,
-				},
-			})
-			var exec tools.ToolExecution
+		// ── Consume the stream ────────────────────────────────────────────────
+		streamCh := a.llmClient.ChatStream(ctx, &llm.Request{
+			Messages: messages,
+			Tools:    a.tools,
+			Metadata: map[string]string{
+				"agent_id":       a.id,
+				"correlation_id": correlationID,
+			},
+		})
 
-			if a.isExecutive && isMetaTool(tc.Function.Name) {
-				exec = a.handleMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel)
-			} else {
-				exec = a.requestToolCall(ctx, correlationID, tc)
+		var (
+			fullContent  strings.Builder
+			toolCalls    []tools.ToolCall
+			inputTokens  int
+			outputTokens int
+			streamErr    error
+		)
+
+		for chunk := range streamCh {
+			if chunk.Error != nil {
+				streamErr = chunk.Error
+				break
 			}
-
-			a.emitUI(core.UIEvent{
-				Type:      core.UIEventToolResult,
-				Timestamp: time.Now(),
-				AgentID:   a.id,
-				Payload: core.ToolResultPayload{
-					ToolName:   tc.Function.Name,
-					Success:    exec.Err == nil,
-					DurationMs: time.Since(toolStart).Milliseconds(),
-				},
-			})
-
-			if exec.Err != nil {
-				a.logger.Warn("tool call failed",
-					"tool", tc.Function.Name,
-					"error", exec.Err,
-					"correlation_id", correlationID)
-				errContent := fmt.Sprintf(`{"error": "%s"}`, exec.Err.Error())
-				if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, exec.Err.Error(), true); err != nil {
-					a.logger.Warn("failed to save tool error result", "err", err)
-				}
-				messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, errContent))
-				// don't continue here — still need to check Control below
-			} else {
-				resultJSON, err := json.Marshal(exec.Result)
-				if err != nil {
-					return "", fmt.Errorf("marshal tool result: %w", err)
-				}
-				resultStr := string(resultJSON)
-				if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
-					a.logger.Warn("failed to save tool result", "err", err)
-				}
-				messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, resultStr))
+			if chunk.Done {
+				inputTokens = chunk.Usage.InputTokens
+				outputTokens = chunk.Usage.OutputTokens
+				break
 			}
-
-			if exec.Control == tools.ExecHalt {
-				a.logger.Info("halting execution loop",
-					"tool", tc.Function.Name,
-					"correlation_id", correlationID)
-				if exec.DirectMessage != "" {
-					a.safeSend(core.Event{
-						Type:          core.OutboundMessage,
-						CorrelationID: correlationID,
-						AgentID:       a.id,
-						Payload: core.OutboundMessagePayload{
-							ChannelName: payload.Channel.Name,
-							ChatID:      payload.Channel.ChatID,
-							Content:     exec.DirectMessage,
-						},
-					}, "delegation ack")
-				}
-				return "", nil
+			if chunk.Content != "" {
+				fullContent.WriteString(chunk.Content)
+				// Emit token to UI — only on the final turn (no tool calls expected yet).
+				// Tool-call turns emit nothing; intermediate reasoning stays internal.
+				a.safeSend(core.Event{
+					Type:          core.OutboundToken,
+					CorrelationID: correlationID,
+					AgentID:       a.id,
+					Payload: core.OutboundTokenPayload{
+						Channel:            payload.Channel,
+						Token:              chunk.Content,
+						AccumulatedContent: fullContent.String(),
+					},
+				}, "agent token")
+			}
+			if len(chunk.ToolCalls) > 0 {
+				toolCalls = append(toolCalls, chunk.ToolCalls...)
 			}
 		}
-		// Loop: LLM will see tool results and continue
+
+		if streamErr != nil {
+			logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{"error": "stream failed"})
+			return "", fmt.Errorf("llm stream failed: %w", streamErr)
+		}
+
+		// Reconstruct a *Response so the rest of the loop is identical to execute.
+		stopReason := "end_turn"
+		if len(toolCalls) > 0 {
+			stopReason = "tool_use"
+		}
+		resp := &llm.Response{
+			Content:    fullContent.String(),
+			ToolCalls:  toolCalls,
+			StopReason: stopReason,
+			Usage: llm.Usage{
+				InputTokens:  inputTokens,
+				OutputTokens: outputTokens,
+				TotalTokens:  inputTokens + outputTokens,
+			},
+		}
+
+		logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{
+			"model":            a.llmClient.Model(),
+			"agent":            a.name,
+			"input_tokens":     resp.Usage.InputTokens,
+			"output_tokens":    resp.Usage.OutputTokens,
+			"total_tokens":     resp.Usage.TotalTokens,
+			"stop_reason":      resp.StopReason,
+			"tool_calls_count": len(resp.ToolCalls),
+		})
+
+		if !resp.HasToolCalls() {
+			a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
+			return resp.Content, nil
+		}
+		var processErr error
+		messages, halt, processErr = a.processToolCalls(ctx, sessionID, correlationID, payload, messages, resp)
+		if processErr != nil {
+			return "", err
+		}
+		if halt {
+			return "", nil
+		}
+	}
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+// prepareExecution loads history and builds the initial messages slice.
+// Called by both execute and executeStream at the start of each request.
+func (a *Agent) prepareExecution(
+	ctx context.Context,
+	payload core.AgentExecutePayload,
+	correlationID string,
+) (sessionID string, messages []llm.Message, err error) {
+	sessionID = payload.Channel.SessionID
+
+	if err = a.cm.EnsureSession(ctx, sessionID); err != nil {
+		a.logger.Warn("failed to ensure session", "err", err)
+	}
+
+	if err = a.cm.SaveUserMessage(ctx, sessionID, a.id, payload.Message); err != nil {
+		a.logger.Warn("failed to save user message", "err", err, "correlation_id", correlationID)
+	}
+
+	history, histErr := a.cm.GetHistory(ctx, sessionID, a.id, memory.DefaultHistoryTurns)
+	if histErr != nil {
+		a.logger.Warn("failed to load history, falling back to empty", "err", histErr)
+		history = []llm.Message{}
+	}
+
+	memCtx, memErr := a.mm.GetRelevantMemory(ctx, a.id, payload.Message)
+	if memErr != nil {
+		a.logger.Warn("failed to load memory context", "err", memErr)
+	}
+
+	messages = make([]llm.Message, 0, len(history)+2)
+	messages = append(messages, llm.SystemMessage(a.systemPrompt))
+	if formatted := memory.FormatMemoryContext(memCtx); formatted != "" {
+		messages = append(messages, llm.SystemMessage(formatted))
+	}
+	messages = append(messages, history...)
+
+	return sessionID, messages, nil
+}
+
+// processToolCalls executes all tool calls from a single LLM turn.
+// Appends the assistant message and all tool results to messages.
+// Returns updated messages, whether to halt, and any error.
+func (a *Agent) processToolCalls(
+	ctx context.Context,
+	sessionID string,
+	correlationID string,
+	payload core.AgentExecutePayload,
+	messages []llm.Message,
+	resp *llm.Response,
+) (updated []llm.Message, halt bool, err error) {
+	// Persist assistant turn with tool calls
+	if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
+		a.logger.Warn("failed to save assistant tool-call message", "err", err, "correlation_id", correlationID)
+	}
+
+	messages = append(messages, llm.AssistantMessageWithTools(
+		resp.Content, resp.ReasoningContent, resp.ToolCalls,
+	))
+
+	for _, tc := range resp.ToolCalls {
+		toolStart := time.Now()
+		a.emitUI(core.UIEvent{
+			Type:      core.UIEventToolCalled,
+			Timestamp: time.Now(),
+			AgentID:   a.id,
+			Payload: core.ToolCalledPayload{
+				ToolName: tc.Function.Name,
+				Input:    tc.Function.Arguments,
+			},
+		})
+
+		var exec tools.ToolExecution
+		if a.isExecutive && isMetaTool(tc.Function.Name) {
+			exec = a.handleMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel)
+		} else {
+			exec = a.requestToolCall(ctx, correlationID, tc)
+		}
+
+		a.emitUI(core.UIEvent{
+			Type:      core.UIEventToolResult,
+			Timestamp: time.Now(),
+			AgentID:   a.id,
+			Payload: core.ToolResultPayload{
+				ToolName:   tc.Function.Name,
+				Success:    exec.Err == nil,
+				DurationMs: time.Since(toolStart).Milliseconds(),
+			},
+		})
+
+		if exec.Err != nil {
+			a.logger.Warn("tool call failed",
+				"tool", tc.Function.Name,
+				"error", exec.Err,
+				"correlation_id", correlationID)
+			errContent := fmt.Sprintf(`{"error": "%s"}`, exec.Err.Error())
+			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, exec.Err.Error(), true); err != nil {
+				a.logger.Warn("failed to save tool error result", "err", err)
+			}
+			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, errContent))
+		} else {
+			resultJSON, err := json.Marshal(exec.Result)
+			if err != nil {
+				return nil, false, fmt.Errorf("marshal tool result: %w", err)
+			}
+			resultStr := string(resultJSON)
+			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
+				a.logger.Warn("failed to save tool result", "err", err)
+			}
+			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, resultStr))
+		}
+
+		if exec.Control == tools.ExecHalt {
+			a.logger.Info("halting execution loop",
+				"tool", tc.Function.Name,
+				"correlation_id", correlationID)
+			if exec.DirectMessage != "" {
+				a.safeSend(core.Event{
+					Type:          core.OutboundMessage,
+					CorrelationID: correlationID,
+					AgentID:       a.id,
+					Payload: core.OutboundMessagePayload{
+						Channel: payload.Channel,
+						Content: exec.DirectMessage,
+					},
+				}, "delegation ack")
+			}
+			return messages, true, nil
+		}
+	}
+
+	return messages, false, nil
+}
+
+// finaliseTurn persists the final assistant response and fires workflow
+// completion if applicable. Called when there are no tool calls.
+func (a *Agent) finaliseTurn(
+	ctx context.Context,
+	sessionID string,
+	correlationID string,
+	payload core.AgentExecutePayload,
+	resp *llm.Response,
+) {
+	if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, nil); err != nil {
+		a.logger.Warn("failed to save assistant message", "err", err, "correlation_id", correlationID)
+	}
+	if payload.Workflow != nil {
+		a.fireTaskCompletion(ctx, correlationID, payload.Workflow, resp.Content, nil)
 	}
 }
 
@@ -705,16 +894,4 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return string(r[:max]) + "..."
-}
-
-func deriveSessionID(payload core.AgentExecutePayload) string {
-	// Case 1 & 2 & 3: channel is always present (you said it's preserved)
-	if payload.Channel != nil {
-		return fmt.Sprintf("%s:%s", payload.Channel.Name, payload.Channel.ChatID)
-	}
-	// Fallback: delegation without channel (shouldn't happen but be safe)
-	if payload.Delegation != nil {
-		return fmt.Sprintf("delegation:%s", payload.Delegation.DelegationID)
-	}
-	return "default"
 }

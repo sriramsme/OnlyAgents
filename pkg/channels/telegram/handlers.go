@@ -81,9 +81,6 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 
 	// Determine target agent from channel config (default if not set)
 	agentID := c.config.DefaultAgent
-	if agentID == "" {
-		agentID = "default"
-	}
 
 	// Show thinking indicator and create placeholder before firing event.
 	// Send() will update this placeholder when the response arrives.
@@ -91,16 +88,24 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 	c.createPlaceholder(ctx, chatID, message.Chat.ID)
 	c.stopThinkingIndicator(chatID)
 
+	sessionID, err := c.resolveSessionID(chatID, agentID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve session ID: %w", err)
+	}
+
 	// Fire event — kernel routes to agent, agent replies via OutboundMessage → Send()
 	c.eventBus <- core.Event{
 		Type:          core.MessageReceived,
 		CorrelationID: uuid.NewString(),
 		Payload: core.MessageReceivedPayload{
-			ChannelName: "telegram",
-			ChatID:      chatID,
-			UserID:      userID,
-			Username:    message.From.Username,
-			Content:     content,
+			Channel: &core.ChannelMetadata{
+				SessionID: sessionID,
+				ChatID:    chatID,
+				Name:      "telegram",
+				UserID:    userID,
+				Username:  message.From.Username,
+			},
+			Content: content,
 			Metadata: map[string]string{
 				"target_agent": agentID,
 			},
@@ -117,7 +122,7 @@ func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage
 		c.logger.Warn("empty message, skipping send")
 		return nil
 	}
-	chatID, err := parseChatID(msg.ChatID)
+	chatID, err := parseChatID(msg.Channel.ChatID)
 	if err != nil {
 		return fmt.Errorf("invalid chat id: %w", err)
 	}
@@ -125,7 +130,7 @@ func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage
 	htmlContent := markdownToTelegramHTML(msg.Content)
 
 	// Try to update the placeholder we created when the message came in
-	if msgID, ok := c.placeholders.LoadAndDelete(msg.ChatID); ok {
+	if msgID, ok := c.placeholders.LoadAndDelete(msg.Channel.ChatID); ok {
 		editMsg := tu.EditMessageText(
 			tu.ID(chatID),
 			msgID.(int),
@@ -150,6 +155,43 @@ func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage
 		_, err = c.bot.SendMessage(ctx, outMsg)
 	}
 	return err
+}
+
+// SendToken implements channels.TokenStreamer.
+// Called by kernel for each streaming token — edits the placeholder in place.
+// In TelegramChannel struct
+
+func (c *TelegramChannel) SendToken(ctx context.Context, chatID, token, accumulated string) error {
+	// Cancel pending edit and schedule a new one 300ms out
+	if t, ok := c.tokenDebounce.Load(chatID); ok {
+		t.(*time.Timer).Stop()
+	}
+	timer := time.AfterFunc(300*time.Millisecond, func() {
+		c.tokenDebounce.Delete(chatID)
+		c.editPlaceholder(ctx, chatID, accumulated)
+	})
+	c.tokenDebounce.Store(chatID, timer)
+	return nil
+}
+
+func (c *TelegramChannel) editPlaceholder(ctx context.Context, chatID, content string) {
+	msgID, ok := c.placeholders.Load(chatID)
+	if !ok {
+		return
+	}
+	id, err := parseChatID(chatID)
+	if err != nil {
+		c.logger.Error("telegram: editPlaceholder: parseChatID failed", "err", err)
+		return
+	}
+	htmlContent := markdownToTelegramHTML(content)
+	_, err = c.bot.EditMessageText(ctx, tu.EditMessageText(
+		tu.ID(id), msgID.(int), htmlContent,
+	).WithParseMode(telego.ModeHTML))
+	if err != nil {
+		c.logger.Error("telegram: editPlaceholder: EditMessageText failed", "err", err)
+		return
+	}
 }
 
 // extractContent extracts text content from a message

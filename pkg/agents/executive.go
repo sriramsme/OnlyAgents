@@ -350,9 +350,8 @@ func (a *Agent) sendOutboundMessage(payload core.AgentExecutePayload, correlatio
 		Type:          core.OutboundMessage,
 		CorrelationID: correlationID,
 		Payload: core.OutboundMessagePayload{
-			ChannelName: payload.Channel.Name,
-			ChatID:      payload.Channel.ChatID,
-			Content:     response,
+			Channel: payload.Channel,
+			Content: response,
 		},
 	}
 

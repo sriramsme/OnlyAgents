@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
@@ -11,10 +13,30 @@ import (
 
 func (d *DB) CreateConversation(ctx context.Context, conv *storage.Conversation) error {
 	_, err := d.db.NamedExecContext(ctx, `
-		INSERT INTO conversations (id, agent_id, started_at, ended_at, context, summary, peer_agent_id)
-		VALUES (:id, :agent_id, :started_at, :ended_at, :context, :summary, :peer_agent_id)
+		INSERT INTO conversations (id, session_key, agent_id, started_at, ended_at, context, summary, peer_agent_id)
+		VALUES (:id, :session_key, :agent_id, :started_at, :ended_at, :context, :summary, :peer_agent_id)
 	`, conv)
 	return wrap(err, "create conversation")
+}
+
+func (d *DB) GetOrCreateSession(ctx context.Context, session_key, agentID string) (string, error) {
+	var id string
+	err := d.db.GetContext(ctx, &id,
+		`SELECT id FROM conversations
+         WHERE session_key = ? AND agent_id = ? AND ended_at IS NULL`,
+		session_key, agentID)
+	if err == nil {
+		return session_key, nil
+	}
+	id = uuid.NewString()
+	_, err = d.db.ExecContext(ctx,
+		`INSERT INTO conversations (id, session_key, agent_id, started_at) VALUES (?, ?, ?, ?)`,
+		id, session_key, agentID, time.Now())
+
+	if err != nil {
+		return "", wrap(err, "create conversation")
+	}
+	return session_key, nil
 }
 
 func (d *DB) GetConversation(ctx context.Context, id string) (*storage.Conversation, error) {
@@ -72,6 +94,16 @@ func (d *DB) GetMessages(ctx context.Context, conversationID string) ([]*storage
 		SELECT * FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC
 	`, conversationID)
 	return msgs, wrap(err, "get messages")
+}
+
+func (d *DB) GetMessagesByAgent(ctx context.Context, conversationID, agentID string) ([]*storage.Message, error) {
+	var msgs []*storage.Message
+	err := d.db.SelectContext(ctx, &msgs, `
+        SELECT * FROM messages
+        WHERE conversation_id = ? AND agent_id = ?
+        ORDER BY timestamp ASC
+    `, conversationID, agentID)
+	return msgs, wrap(err, "get messages by agent")
 }
 
 func (d *DB) GetRecentMessages(ctx context.Context, agentID string, since time.Time) ([]*storage.Message, error) {

@@ -26,13 +26,15 @@ func init() {
 	channels.Register("telegram", NewChannel)
 }
 
-// Connector implements the Connector interface for Telegram
+// Connector implements the Channel interface for Telegram
 type TelegramChannel struct {
 	config   *Config // telegram.Config, not connectors.TelegramConfig
 	vault    vault.Vault
 	eventBus chan<- core.Event
 	bot      *telego.Bot
 	handler  *th.BotHandler
+
+	tokenDebounce sync.Map // chatID → *time.Timer
 
 	// State
 	mu      sync.RWMutex
@@ -49,6 +51,8 @@ type TelegramChannel struct {
 	// Message tracking
 	placeholders sync.Map // chatID -> messageID
 	thinkingCtx  sync.Map // chatID -> cancelFunc
+
+	getOrCreateSession func(ctx context.Context, sessionKey, agentID string) (string, error)
 }
 
 // NewChannel creates a new Telegram channel
@@ -57,6 +61,7 @@ func NewChannel(
 	rawConfig map[string]interface{},
 	vault vault.Vault,
 	eventBus chan<- core.Event,
+	getOrCreateSession func(ctx context.Context, sessionKey, agentID string) (string, error),
 ) (channels.Channel, error) {
 
 	var cfg Config
@@ -81,14 +86,15 @@ func NewChannel(
 	)
 
 	return &TelegramChannel{
-		config:       &cfg,
-		vault:        vault,
-		eventBus:     eventBus,
-		ctx:          channelCtx,
-		cancel:       cancel,
-		logger:       logger,
-		placeholders: sync.Map{},
-		thinkingCtx:  sync.Map{},
+		config:             &cfg,
+		vault:              vault,
+		eventBus:           eventBus,
+		ctx:                channelCtx,
+		cancel:             cancel,
+		logger:             logger,
+		placeholders:       sync.Map{},
+		thinkingCtx:        sync.Map{},
+		getOrCreateSession: getOrCreateSession,
 	}, nil
 }
 
@@ -105,6 +111,19 @@ func (c *TelegramChannel) Version() string {
 // HealthCheck returns true if the connector is healthy
 func (c *TelegramChannel) HealthCheck() (bool, error) {
 	return true, nil
+}
+
+// Telegram adapter — one session per chat, auto-created if not exists
+func (c *TelegramChannel) resolveSessionID(chatID string, agentID string) (string, error) {
+	if agentID == "" {
+		agentID = "executive"
+	}
+	// look up or create: "telegram:{chatID}" → sessionID
+	sessionID, err := c.getOrCreateSession(c.ctx, fmt.Sprintf("telegram:%s", chatID), agentID)
+	if err != nil {
+		return "", err
+	}
+	return sessionID, nil
 }
 
 // Connect initializes the Telegram bot connection

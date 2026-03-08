@@ -153,24 +153,16 @@ func (c *GeminiClient) Chat(ctx context.Context, req *llm.Request) (*llm.Respons
 	return result, nil
 }
 
-// StreamChunk represents a chunk of streaming response
-type StreamChunk struct {
-	Content   string
-	ToolCalls []tools.ToolCall
-	Done      bool
-	Error     error
-}
-
 // ChatStream sends a streaming chat completion request
-func (c *GeminiClient) ChatStream(ctx context.Context, req *llm.Request) <-chan StreamChunk {
-	ch := make(chan StreamChunk)
+func (c *GeminiClient) ChatStream(ctx context.Context, req *llm.Request) <-chan llm.StreamChunk {
+	ch := make(chan llm.StreamChunk)
 
 	go func() {
 		defer close(ch)
 
 		// Validate capabilities
 		if err := c.validateStreamingCapabilities(req); err != nil {
-			ch <- StreamChunk{Error: err, Done: true}
+			ch <- llm.StreamChunk{Error: err, Done: true}
 			return
 		}
 
@@ -178,7 +170,7 @@ func (c *GeminiClient) ChatStream(ctx context.Context, req *llm.Request) <-chan 
 
 		contents, systemInstruction, err := c.toGeminiContents(req.Messages)
 		if err != nil {
-			ch <- StreamChunk{Error: fmt.Errorf("gemini: failed to convert messages: %w", err), Done: true}
+			ch <- llm.StreamChunk{Error: fmt.Errorf("gemini: failed to convert messages: %w", err), Done: true}
 			return
 		}
 
@@ -194,7 +186,7 @@ func (c *GeminiClient) ChatStream(ctx context.Context, req *llm.Request) <-chan 
 		// Create a chat session for streaming
 		chat, err := c.client.Chats.Create(ctx, c.model, config, nil)
 		if err != nil {
-			ch <- StreamChunk{Error: fmt.Errorf("gemini: failed to create chat: %w", err), Done: true}
+			ch <- llm.StreamChunk{Error: fmt.Errorf("gemini: failed to create chat: %w", err), Done: true}
 			return
 		}
 
@@ -205,7 +197,7 @@ func (c *GeminiClient) ChatStream(ctx context.Context, req *llm.Request) <-chan 
 		metrics := c.processStreamingResults(ctx, chat, parts, ch)
 
 		// Send completion signal
-		ch <- StreamChunk{Done: true}
+		ch <- llm.StreamChunk{Done: true}
 
 		logger.Log.Info("gemini streaming complete",
 			"model", c.model,
@@ -237,14 +229,14 @@ type streamingMetrics struct {
 }
 
 // processStreamingResults handles the streaming response and accumulates results
-func (c *GeminiClient) processStreamingResults(ctx context.Context, chat *genai.Chat, parts []genai.Part, ch chan<- StreamChunk) streamingMetrics {
+func (c *GeminiClient) processStreamingResults(ctx context.Context, chat *genai.Chat, parts []genai.Part, ch chan<- llm.StreamChunk) streamingMetrics {
 	var metrics streamingMetrics
 	toolCallsMap := make(map[string]*tools.ToolCall)
 
 	for result, err := range chat.SendMessageStream(ctx, parts...) {
 		if err != nil {
 			logger.Log.Error("gemini stream error", "error", err)
-			ch <- StreamChunk{Error: err, Done: true}
+			ch <- llm.StreamChunk{Error: err, Done: true}
 			return metrics
 		}
 
@@ -274,18 +266,18 @@ func (c *GeminiClient) processStreamingResults(ctx context.Context, chat *genai.
 		for _, tc := range toolCallsMap {
 			completedToolCalls = append(completedToolCalls, *tc)
 		}
-		ch <- StreamChunk{ToolCalls: completedToolCalls}
+		ch <- llm.StreamChunk{ToolCalls: completedToolCalls}
 	}
 
 	return metrics
 }
 
 // processStreamChunkParts processes individual parts from a streaming chunk
-func (c *GeminiClient) processStreamChunkParts(parts []*genai.Part, ch chan<- StreamChunk, toolCallsMap map[string]*tools.ToolCall) {
+func (c *GeminiClient) processStreamChunkParts(parts []*genai.Part, ch chan<- llm.StreamChunk, toolCallsMap map[string]*tools.ToolCall) {
 	for _, part := range parts {
 		// Handle text content
 		if part.Text != "" {
-			ch <- StreamChunk{Content: part.Text}
+			ch <- llm.StreamChunk{Content: part.Text}
 		}
 
 		// Handle function calls

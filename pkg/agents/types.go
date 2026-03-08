@@ -17,11 +17,12 @@ import (
 // It knows nothing about skills, connectors, or other agents directly.
 // Kernel injects tool definitions at construction; all tool calls go back through kernel.
 type Agent struct {
-	id             string
-	name           string
-	isExecutive    bool
-	isGeneral      bool
-	maxConcurrency int
+	id               string
+	name             string
+	isExecutive      bool
+	isGeneral        bool
+	maxConcurrency   int
+	streamingEnabled bool
 
 	// Core capabilities
 	llmClient llm.Client

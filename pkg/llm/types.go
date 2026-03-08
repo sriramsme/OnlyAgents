@@ -14,7 +14,7 @@ type Provider string
 type Client interface {
 	// Chat sends a chat completion request
 	Chat(ctx context.Context, req *Request) (*Response, error)
-
+	ChatStream(ctx context.Context, req *Request) <-chan StreamChunk
 	// Provider returns the provider name
 	Provider() Provider
 
@@ -55,6 +55,15 @@ type Message struct {
 
 	// Required for Gemini 3 stateful multi-turn tool use
 	ThoughtSignature string `json:"thought_signature,omitempty"`
+}
+
+// StreamChunk represents a chunk of streaming response
+type StreamChunk struct {
+	Content   string
+	ToolCalls []tools.ToolCall
+	Done      bool
+	Error     error
+	Usage     Usage
 }
 
 // Role represents the message sender

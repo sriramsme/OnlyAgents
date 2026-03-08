@@ -10,24 +10,25 @@ import (
 
 // Config represents the complete agent configuration.
 type AgentConfig struct {
-	ID             string            `mapstructure:"id"`
-	Name           string            `mapstructure:"name"`
-	IsExecutive    bool              `mapstructure:"is_executive"`
-	IsGeneral      bool              `mapstructure:"is_general"`
-	Role           string            `mapstructure:"role"`
-	UserRef        string            `mapstructure:"user_ref"`
-	MaxConcurrency int               `mapstructure:"max_concurrency"`
-	BufferSize     int               `mapstructure:"buffer_size"`
-	Logging        LoggingConfig     `mapstructure:"logging"`
-	Security       SecurityConfig    `mapstructure:"security"`
-	LLM            LLMConfig         `mapstructure:"llm"`
-	Vault          vault.Config      `mapstructure:"vault"`
-	Skills         []tools.SkillName `mapstructure:"skills"`
-	Platforms      []PlatformConfig  `mapstructure:"platforms"`
-	Connectors     []string          `mapstructure:"connectors"`
-	Channels       []string          `mapstructure:"channels"`
-	Soul           SoulConfig        `mapstructure:"soul"`
-	User           UserConfig        `mapstructure:"user"`
+	ID               string            `mapstructure:"id"`
+	Name             string            `mapstructure:"name"`
+	IsExecutive      bool              `mapstructure:"is_executive"`
+	IsGeneral        bool              `mapstructure:"is_general"`
+	Role             string            `mapstructure:"role"`
+	UserRef          string            `mapstructure:"user_ref"`
+	StreamingEnabled bool              `mapstructure:"streaming_enabled"`
+	MaxConcurrency   int               `mapstructure:"max_concurrency"`
+	BufferSize       int               `mapstructure:"buffer_size"`
+	Logging          LoggingConfig     `mapstructure:"logging"`
+	Security         SecurityConfig    `mapstructure:"security"`
+	LLM              LLMConfig         `mapstructure:"llm"`
+	Vault            vault.Config      `mapstructure:"vault"`
+	Skills           []tools.SkillName `mapstructure:"skills"`
+	Platforms        []PlatformConfig  `mapstructure:"platforms"`
+	Connectors       []string          `mapstructure:"connectors"`
+	Channels         []string          `mapstructure:"channels"`
+	Soul             SoulConfig        `mapstructure:"soul"`
+	User             UserConfig        `mapstructure:"user"`
 
 	// ============================================
 	// EXECUTION LIMITS (Guard Rails)

@@ -1,5 +1,6 @@
 CREATE TABLE IF NOT EXISTS conversations (
     id            TEXT PRIMARY KEY,
+    session_key   TEXT NOT NULL,
     agent_id      TEXT NOT NULL,
     started_at    TEXT NOT NULL,
     ended_at      TEXT,
@@ -7,9 +8,11 @@ CREATE TABLE IF NOT EXISTS conversations (
     summary       TEXT NOT NULL DEFAULT '',
     peer_agent_id TEXT NOT NULL DEFAULT ''   -- A2A: empty for local sessions
 );
-
-CREATE INDEX IF NOT EXISTS idx_conversations_agent
-    ON conversations (agent_id, started_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_active_conversation
+    ON conversations(session_key, agent_id)
+    WHERE ended_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_conversations_agent_time
+    ON conversations(agent_id, started_at);
 
 CREATE TABLE IF NOT EXISTS messages (
     id                TEXT PRIMARY KEY,
@@ -37,4 +40,4 @@ CREATE TABLE IF NOT EXISTS agent_state (
     preferences             TEXT NOT NULL DEFAULT '{}',
     goals                   TEXT NOT NULL DEFAULT '[]',
     last_active             TEXT NOT NULL
-);;
+);
