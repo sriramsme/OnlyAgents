@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
+	"github.com/sriramsme/OnlyAgents/internal/auth"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 )
 
@@ -19,12 +20,12 @@ type Server struct {
 
 // NewServer creates a new API server.
 // deps holds all the dependencies handlers need.
-func NewServer(cfg config.ServerConfig, deps handlers.Deps, logger *slog.Logger) *Server {
+func NewServer(cfg config.ServerConfig, deps handlers.Deps, a *auth.Auth, logger *slog.Logger) *Server {
 	mux := http.NewServeMux()
-	mid := NewMiddleware(cfg, logger)
+	mid := NewMiddleware(cfg, a, logger)
 
 	// Register all routes - see routes.go
-	registerRoutes(mux, mid, deps, logger)
+	registerRoutes(mux, mid, deps, a, logger)
 
 	return &Server{
 		httpServer: &http.Server{

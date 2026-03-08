@@ -1,10 +1,14 @@
 package api
 
 import (
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
+	"github.com/sriramsme/OnlyAgents/internal/auth"
+	"github.com/sriramsme/OnlyAgents/ui"
 )
 
 // registerRoutes is the single source of truth for the entire API surface.
@@ -14,11 +18,10 @@ import (
 //  3. That's it
 //
 // Routes are grouped by domain. Open routes at top, authed routes below.
-func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, logger *slog.Logger) {
+func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, a *auth.Auth, logger *slog.Logger) {
 	// Instantiate handler groups
 	health := handlers.NewHealthHandler(deps, logger)
-	chat := handlers.NewChatHandler(deps, logger)
-	events := handlers.NewEventsHandler(deps, logger)
+	authH := handlers.NewAuthHandler(a, logger)
 
 	// agent   := handlers.NewAgentHandler(deps, logger)     // uncomment when ready
 	// skills  := handlers.NewSkillsHandler(deps, logger)    // uncomment when ready
@@ -28,19 +31,24 @@ func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, log
 	authed := mid.Authed() // + auth
 
 	// ── System ──────────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /health", authed(health.Health))
+	mux.HandleFunc("GET /health", open(health.Health))
 	mux.HandleFunc("GET /version", open(health.Version))
 
-	// ── Real-time event stream (war room backbone) ───────────────────────────
-	// SSE — clients connect once and receive a continuous stream of UIEvents.
-	// Kernel fans UIBus events to all connected clients via EventsHandler.
-	mux.HandleFunc("GET /v1/events", authed(events.Stream))
+	// ── Auth ─────────────────────────────────────────────────────────────────
+	mux.HandleFunc("POST /auth/login", open(authH.Login))
+	mux.HandleFunc("POST /auth/logout", open(authH.Logout))
+	mux.HandleFunc("GET /auth/me", authed(authH.Me))
+	mux.HandleFunc("POST /auth/password", authed(authH.ChangePassword))
 
-	// ── Chat ─────────────────────────────────────────────────────────────────
-	mux.HandleFunc("POST   /v1/chat", authed(chat.Send))
-	mux.HandleFunc("GET    /v1/chat/history", authed(chat.History))
-	mux.HandleFunc("DELETE /v1/chat/history", authed(chat.ClearHistory))
-	mux.HandleFunc("POST   /v1/agents/{agent_id}/chat", authed(chat.SendToAgent))
+	// ── WebSocket — single connection for chat + war room + notifications ─────
+	// Query params: ?session_id=<uuid>&agent_id=<id>
+	// session_id: omit to start a new session, pass existing to resume
+	// agent_id:   defaults to "executive"
+	logger.Info("registering OAChannel handler", "path", "/v1/ws", "channel exists", deps.Kernel.OAChannel() != nil)
+	if deps.Kernel.OAChannel() != nil {
+		mux.HandleFunc("GET /v1/ws", authed(deps.Kernel.OAChannel().WSHandler))
+		logger.Info("registered OAChannel handler", "path", "/v1/ws")
+	}
 
 	// ── Agents ───────────────────────────────────────────────────────────────
 	// mux.HandleFunc("GET /v1/agents",      authed(agent.List))
@@ -95,4 +103,29 @@ func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, log
 	// mux.HandleFunc("POST /v1/a2a/connections/request",  authed(a2a.RequestConnection))
 	// mux.HandleFunc("PUT  /v1/a2a/connections/{id}",     authed(a2a.UpdateConnection))
 	// mux.HandleFunc("GET  /v1/a2a/messages",             authed(a2a.ListMessages))
+
+	// Static assets — Vite outputs hashed files here e.g. /assets/index-abc123.js
+
+	// Get a sub-FS rooted at dist/ so paths match request URLs
+	distFS, err := fs.Sub(ui.WebFS, "dist")
+	if err != nil {
+		logger.Error("failed to create sub filesystem", "error", err)
+	}
+	fileServer := http.FileServerFS(distFS)
+
+	mux.HandleFunc("GET /assets/", open(func(w http.ResponseWriter, r *http.Request) {
+		fileServer.ServeHTTP(w, r)
+	}))
+
+	// SPA catch-all — anything that isn't an API route gets index.html
+	// React Router handles the path client-side
+	mux.HandleFunc("GET /", open(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/v1/") ||
+			strings.HasPrefix(r.URL.Path, "/auth/") ||
+			r.URL.Path == "/health" {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFileFS(w, r, distFS, "index.html")
+	}))
 }

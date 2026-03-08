@@ -18,7 +18,7 @@ type ErrorResponse struct {
 
 // JSON writes a JSON response with the given status code.
 func JSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -32,7 +32,7 @@ func JSON(w http.ResponseWriter, status int, body any) {
 
 	w.WriteHeader(status)
 
-	if _, err := w.Write(buf.Bytes()); err != nil {
+	if _, err := buf.WriteTo(w); err != nil {
 		logger.Log.Error("response write failed", "error", err)
 	}
 }

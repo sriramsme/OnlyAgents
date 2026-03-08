@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 
+	"github.com/sriramsme/OnlyAgents/pkg/channels/oaChannel"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
@@ -37,6 +38,8 @@ type KernelReader interface {
 	//   ch          — read-only channel receiving UIEvents
 	//   unsubscribe — call this (defer it) when the client disconnects
 	Subscribe(id string) (<-chan core.UIEvent, func())
+
+	OAChannel() *oaChannel.OAChannel
 }
 
 // ─── Agent interface ──────────────────────────────────────────────────────────
