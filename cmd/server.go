@@ -3,17 +3,23 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/spf13/cobra"
 	"github.com/sriramsme/OnlyAgents/internal/api"
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
+	"github.com/sriramsme/OnlyAgents/internal/auth"
+	_ "github.com/sriramsme/OnlyAgents/internal/bootstrap"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
 	_ "github.com/sriramsme/OnlyAgents/pkg/connectors/bootstrap"
@@ -27,7 +33,6 @@ import (
 var serverCmd = &cobra.Command{
 	Use:   "server",
 	Short: "Run the OnlyAgents server",
-	Long:  `Start the OnlyAgents server with API endpoints and kernel`,
 }
 
 var serverStartCmd = &cobra.Command{
@@ -49,7 +54,6 @@ func init() {
 
 	serverStartCmd.Flags().StringVar(&serverHost, "host", "0.0.0.0", "Server host")
 	serverStartCmd.Flags().IntVarP(&serverPort, "port", "p", 8080, "Server port")
-
 	serverStartCmd.Flags().StringVar(&logLevel, "log-level", "debug", "Log level (debug, info, warn, error)")
 	serverStartCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
 }
@@ -71,28 +75,20 @@ func runServer(cmd *cobra.Command, args []string) error {
 	fmt.Println("OnlyAgents Server v0.1.0")
 	fmt.Println("=========================")
 
-	// Create UIBus — this is what makes it "server mode".
-	// The kernel starts runUI() only when uiBus is non-nil.
-	// cmd/agents/main.go passes nil → headless, zero overhead.
 	uiBus := make(core.UIBus, core.UIBusBuffer)
 
 	k, err := kernel.NewKernel(ctx, cancel, uiBus)
 	if err != nil {
-		logger.Log.Error("failed to initialize kernel", "error", err)
-		return err
+		return fmt.Errorf("initialising kernel: %w", err)
 	}
-
 	if err := k.Start(); err != nil {
-		logger.Log.Error("failed to start kernel", "error", err)
-		return err
+		return fmt.Errorf("starting kernel: %w", err)
 	}
 
 	serverConfig, err := loadServerConfig()
 	if err != nil {
-		logger.Log.Error("failed to load server config", "error", err)
-		return err
+		return fmt.Errorf("loading server config: %w", err)
 	}
-
 	if cmd.Flags().Changed("host") {
 		serverConfig.Host = serverHost
 	}
@@ -100,7 +96,28 @@ func runServer(cmd *cobra.Command, args []string) error {
 		serverConfig.Port = serverPort
 	}
 
-	server := createAPIServer(serverConfig, k)
+	// Auth — initAuth lives in shared.go, also used by cmd/auth.go
+	a := initAuth(dataDir())
+	defer a.Stop()
+
+	server := api.NewServer(
+		config.ServerConfig{
+			Host:         serverConfig.Host,
+			Port:         serverConfig.Port,
+			APIKeyVault:  "",
+			Version:      "0.1.0",
+			ReadTimeout:  serverConfig.ReadTimeout,
+			WriteTimeout: serverConfig.WriteTimeout,
+			IdleTimeout:  serverConfig.IdleTimeout,
+		},
+		handlers.Deps{
+			Bus:     k.Bus(),
+			Version: "0.1.0",
+			Kernel:  k,
+		},
+		a,
+		logger.Log,
+	)
 
 	u := &url.URL{
 		Scheme: "http",
@@ -110,14 +127,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	fmt.Println("Press Ctrl+C to stop")
 
 	serverErr := make(chan error, 1)
-	go func() {
-		serverErr <- server.Start()
-	}()
+	go func() { serverErr <- server.Start() }()
 
 	select {
 	case err := <-serverErr:
-		logger.Log.Error("server error", "error", err)
-		return err
+		return fmt.Errorf("server error: %w", err)
 	case <-ctx.Done():
 		logger.Log.Info("shutdown initiated")
 	}
@@ -131,10 +145,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 		logger.Log.Error("server stop error", "error", err)
 	}
 
-	logger.Log.Info("shutting down kernel")
 	if err := k.Stop(); err != nil {
-		logger.Log.Error("error shutting down kernel", "error", err)
-		return err
+		return fmt.Errorf("kernel stop error: %w", err)
 	}
 
 	logger.Log.Info("shutdown complete")
@@ -145,19 +157,48 @@ func loadServerConfig() (*config.ServerConfig, error) {
 	return config.LoadServerConfig()
 }
 
-func createAPIServer(cfg *config.ServerConfig, k *kernel.Kernel) *api.Server {
-	return api.NewServer(
-		config.ServerConfig{
-			Host:        cfg.Host,
-			Port:        cfg.Port,
-			APIKeyVault: "", // cfg.APIKeyVault,
-			Version:     "0.1.0",
-		},
-		handlers.Deps{
-			Bus:     k.Bus(),
-			Version: "0.1.0",
-			Kernel:  k, // k implements KernelReader — Agents(), IsHealthy(), Subscribe()
-		},
-		logger.Log,
-	)
+// dataDir returns ~/.onlyagents, the canonical data directory.
+// All persistent state (auth.yaml, future db, etc.) lives here.
+func dataDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		slog.Error("cannot determine home directory", "error", err)
+		os.Exit(1)
+	}
+	return filepath.Join(home, ".onlyagents")
+}
+
+// initAuth sets up the Auth subsystem and handles first-run credential generation.
+// Prints a credential box on first run. Returns a started *auth.Auth.
+// Caller is responsible for calling a.Stop() on shutdown.
+func initAuth(dir string) *auth.Auth {
+	username, firstRunPassword, err := auth.LoadOrCreate(dir)
+	if err != nil {
+		slog.Error("auth initialisation failed", "error", err)
+		os.Exit(1)
+	}
+
+	if firstRunPassword != "" {
+		printFirstRunBox(username, firstRunPassword)
+	}
+
+	// 5 login attempts per IP, refilling at 1 per minute
+	limiter := auth.NewIPRateLimiter(rate.Every(60e9), 5)
+	a := auth.New(dir, limiter)
+	a.Start()
+	return a
+}
+
+func printFirstRunBox(username, password string) {
+	fmt.Println()
+	fmt.Println("╔══════════════════════════════════════════╗")
+	fmt.Println("║           FIRST RUN — SAVE THIS          ║")
+	fmt.Println("╠══════════════════════════════════════════╣")
+	fmt.Printf("║  Username : %-29s║\n", username)
+	fmt.Printf("║  Password : %-29s║\n", password)
+	fmt.Println("║                                          ║")
+	fmt.Println("║  Change at: Settings → Change Password   ║")
+	fmt.Println("║  Or run:    onlyagents auth reset        ║")
+	fmt.Println("╚══════════════════════════════════════════╝")
+	fmt.Println()
 }
