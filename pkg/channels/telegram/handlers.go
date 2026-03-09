@@ -24,6 +24,10 @@ func (c *TelegramChannel) registerHandlers() {
 	}, th.CommandEqual("help"))
 
 	c.handler.HandleMessage(func(ctx *th.Context, message telego.Message) error {
+		return c.handleNewSession(ctx, &message)
+	}, th.CommandEqual("new-session"))
+
+	c.handler.HandleMessage(func(ctx *th.Context, message telego.Message) error {
 		return c.handleMessage(ctx, &message)
 	}, th.AnyMessage())
 }
@@ -88,7 +92,7 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 	c.createPlaceholder(ctx, chatID, message.Chat.ID)
 	c.stopThinkingIndicator(chatID)
 
-	sessionID, err := c.resolveSessionID(chatID, agentID)
+	sessionID, err := c.resolveSessionID(agentID)
 	if err != nil {
 		return fmt.Errorf("failed to resolve session ID: %w", err)
 	}
@@ -113,6 +117,44 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 	}
 
 	return nil
+}
+
+func (c *TelegramChannel) handleNewSession(ctx *th.Context, message *telego.Message) error {
+	if message == nil || message.From == nil {
+		return fmt.Errorf("invalid message")
+	}
+
+	agentID := c.config.DefaultAgent
+
+	replyCh := make(chan core.Event, 1)
+	c.eventBus <- core.Event{
+		Type:          core.SessionNew,
+		CorrelationID: uuid.NewString(),
+		ReplyTo:       replyCh,
+		Payload: core.SessionNewPayload{
+			Channel: "telegram",
+			AgentID: agentID,
+		},
+	}
+
+	select {
+	case reply := <-replyCh:
+		sessionID, _ := reply.Payload.(string)
+		if sessionID == "" {
+			_, err := c.bot.SendMessage(ctx, tu.Message(
+				tu.ID(message.Chat.ID),
+				"❌ Failed to start new session. Please try again.",
+			))
+			return fmt.Errorf("empty session id from kernel %w", err)
+		}
+		_, err := c.bot.SendMessage(ctx, tu.Message(
+			tu.ID(message.Chat.ID),
+			"🆕 New session started. Previous conversation has been archived.",
+		))
+		return err
+	case <-c.ctx.Done():
+		return fmt.Errorf("context cancelled")
+	}
 }
 
 // Send is called by kernel when the agent has a response ready.

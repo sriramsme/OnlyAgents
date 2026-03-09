@@ -596,10 +596,6 @@ func (a *Agent) prepareExecution(
 ) (sessionID string, messages []llm.Message, err error) {
 	sessionID = payload.Channel.SessionID
 
-	if err = a.cm.EnsureSession(ctx, sessionID); err != nil {
-		a.logger.Warn("failed to ensure session", "err", err)
-	}
-
 	if err = a.cm.SaveUserMessage(ctx, sessionID, a.id, payload.Message); err != nil {
 		a.logger.Warn("failed to save user message", "err", err, "correlation_id", correlationID)
 	}

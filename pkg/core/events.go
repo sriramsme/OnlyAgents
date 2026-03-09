@@ -73,7 +73,15 @@ const (
 
 	// NewSession: Start a new session
 	// Flow: Kernel → Agent
-	NewSession EventType = "new_session"
+	SessionNew EventType = "session_new"
+
+	// SessionEnd: End a session
+	// Flow: Kernel → Agent
+	SessionEnd EventType = "session_end"
+
+	// SessionGet: Get existing session
+	// Flow: Kernel → Agent
+	SessionGet EventType = "session_get"
 
 	// =====================================
 	// Future: Agent-to-Agent Communication
@@ -188,6 +196,22 @@ type AgentMessagePayload struct {
 	ToAgent   string         `json:"to_agent"`
 	Content   string         `json:"content"`
 	Context   map[string]any `json:"context,omitempty"`
+}
+
+type SessionGetPayload struct {
+	Channel string `json:"channel"`
+	AgentID string `json:"agent_id"`
+}
+
+// NewSessionPayload: Start a new conversation
+type SessionNewPayload struct {
+	Channel string `json:"channel"`
+	AgentID string `json:"agent_id"`
+}
+
+// SessionEndPayload: End a conversation
+type SessionEndPayload struct {
+	SessionID string `json:"session_id"`
 }
 
 // ErrorPayload: Error response

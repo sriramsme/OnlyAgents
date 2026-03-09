@@ -15,7 +15,6 @@ func NewRegistry(
 	ctx context.Context,
 	vault vault.Vault,
 	bus chan<- core.Event,
-	getOrCreateSession func(ctx context.Context, sessionKey, agentID string) (string, error),
 ) (*Registry, error) {
 	// Load all channel configs
 	configs, err := config.LoadAllChannelConfigs()
@@ -39,7 +38,7 @@ func NewRegistry(
 			return nil, fmt.Errorf("channel %s: %w", name, err)
 		}
 
-		channel, err := factory(ctx, cfg.RawConfig, vault, bus, getOrCreateSession)
+		channel, err := factory(ctx, cfg.RawConfig, vault, bus)
 		if err != nil {
 			return nil, fmt.Errorf("channel %s: create: %w", name, err)
 		}

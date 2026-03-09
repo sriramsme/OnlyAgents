@@ -1,15 +1,16 @@
 CREATE TABLE IF NOT EXISTS conversations (
     id            TEXT PRIMARY KEY,
-    session_key   TEXT NOT NULL,
+    channel       TEXT NOT NULL,        -- "telegram", "onlyagents", "discord"
     agent_id      TEXT NOT NULL,
     started_at    TEXT NOT NULL,
     ended_at      TEXT,
     context       TEXT NOT NULL DEFAULT '{}',
     summary       TEXT NOT NULL DEFAULT '',
-    peer_agent_id TEXT NOT NULL DEFAULT ''   -- A2A: empty for local sessions
+    peer_agent_id TEXT NOT NULL DEFAULT ''
 );
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_active_conversation
-    ON conversations(session_key, agent_id)
+    ON conversations(channel, agent_id)
     WHERE ended_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_conversations_agent_time
     ON conversations(agent_id, started_at);

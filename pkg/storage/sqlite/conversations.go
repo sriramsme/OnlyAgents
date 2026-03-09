@@ -19,24 +19,20 @@ func (d *DB) CreateConversation(ctx context.Context, conv *storage.Conversation)
 	return wrap(err, "create conversation")
 }
 
-func (d *DB) GetOrCreateSession(ctx context.Context, session_key, agentID string) (string, error) {
+func (d *DB) GetOrCreateSession(ctx context.Context, channel, agentID string) (string, error) {
 	var id string
 	err := d.db.GetContext(ctx, &id,
 		`SELECT id FROM conversations
-         WHERE session_key = ? AND agent_id = ? AND ended_at IS NULL`,
-		session_key, agentID)
+         WHERE channel = ? AND agent_id = ? AND ended_at IS NULL`,
+		channel, agentID)
 	if err == nil {
-		return session_key, nil
+		return id, nil
 	}
 	id = uuid.NewString()
 	_, err = d.db.ExecContext(ctx,
-		`INSERT INTO conversations (id, session_key, agent_id, started_at) VALUES (?, ?, ?, ?)`,
-		id, session_key, agentID, time.Now())
-
-	if err != nil {
-		return "", wrap(err, "create conversation")
-	}
-	return session_key, nil
+		`INSERT INTO conversations (id, channel, agent_id, started_at) VALUES (?, ?, ?, ?)`,
+		id, channel, agentID, time.Now())
+	return id, wrap(err, "get or create session")
 }
 
 func (d *DB) GetConversation(ctx context.Context, id string) (*storage.Conversation, error) {

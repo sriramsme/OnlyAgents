@@ -1,6 +1,4 @@
-//go:build ui
-
-// ui/embed_ui.go — only compiled when building with -tags ui
+// ui/embed.go
 package ui
 
 import "embed"

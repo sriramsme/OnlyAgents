@@ -15,7 +15,6 @@ type Factory func(
 	rawConfig map[string]interface{},
 	vault vault.Vault,
 	bus chan<- core.Event,
-	getOrCreateSession func(ctx context.Context, sessionKey, agentID string) (string, error),
 ) (Channel, error)
 
 var (

@@ -45,10 +45,8 @@ type client struct {
 
 // OAChannel implements channels.Channel for the OnlyAgents web UI.
 type OAChannel struct {
-	eventBus           chan<- core.Event
-	getOrCreateSession func(ctx context.Context, sessionKey, agentID string) (string, error)
-	endSession         func(ctx context.Context, sessionID string) error
-	subscribe          func(id string) (<-chan core.UIEvent, func()) // injected by kernel
+	eventBus  chan<- core.Event
+	subscribe func(id string) (<-chan core.UIEvent, func()) // injected by kernel
 
 	clients sync.Map // sessionID → *client
 
@@ -64,7 +62,6 @@ func NewChannel(
 	rawConfig map[string]interface{},
 	v vault.Vault,
 	eventBus chan<- core.Event,
-	getOrCreateSession func(ctx context.Context, sessionKey, agentID string) (string, error),
 ) (channels.Channel, error) {
 	var cfg Config
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
@@ -81,11 +78,10 @@ func NewChannel(
 
 	chanCtx, cancel := context.WithCancel(ctx)
 	return &OAChannel{
-		eventBus:           eventBus,
-		getOrCreateSession: getOrCreateSession,
-		ctx:                chanCtx,
-		cancel:             cancel,
-		logger:             slog.With("channel", "oaChannel"),
+		eventBus: eventBus,
+		ctx:      chanCtx,
+		cancel:   cancel,
+		logger:   slog.With("channel", "oaChannel"),
 	}, nil
 }
 
@@ -93,10 +89,6 @@ func NewChannel(
 // Must be called by the kernel after construction, before any client connects.
 func (g *OAChannel) SetSubscribe(fn func(id string) (<-chan core.UIEvent, func())) {
 	g.subscribe = fn
-}
-
-func (g *OAChannel) SetEndSession(fn func(ctx context.Context, sessionID string) error) {
-	g.endSession = fn
 }
 
 // ── channels.Channel interface ────────────────────────────────────────────────
@@ -153,15 +145,11 @@ func (g *OAChannel) Send(ctx context.Context, msg channels.OutgoingMessage) erro
 //	agent_id   — optional; defaults to "executive"
 func (g *OAChannel) WSHandler(w http.ResponseWriter, r *http.Request) {
 	if g.subscribe == nil {
-		g.logger.Error("oaChannel: subscribe not set — call SetSubscribe before use")
 		http.Error(w, "channel not ready", http.StatusServiceUnavailable)
 		return
 	}
 
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// TODO: lock down to your actual origin in production
-		InsecureSkipVerify: true,
-	})
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
 		g.logger.Error("oaChannel: ws upgrade failed", "err", err)
 		return
@@ -172,15 +160,31 @@ func (g *OAChannel) WSHandler(w http.ResponseWriter, r *http.Request) {
 		agentID = "executive"
 	}
 
-	sessionKey := r.URL.Query().Get("session_id")
-	if sessionKey == "" {
-		sessionKey = uuid.NewString() // no session_id → new session
+	// Resolve session — use existing if provided, else ask kernel to create one
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		replyCh := make(chan core.Event, 1)
+		g.eventBus <- core.Event{
+			Type:    core.SessionNew,
+			ReplyTo: replyCh,
+			Payload: core.SessionNewPayload{
+				Channel: "onlyagents",
+				AgentID: agentID,
+			},
+		}
+		select {
+		case reply := <-replyCh:
+			sessionID, _ = reply.Payload.(string)
+		case <-r.Context().Done():
+			err = conn.Close(websocket.StatusInternalError, "session init timeout")
+			g.logger.Error("oaChannel: session init timeout", "err", err)
+			return
+		}
 	}
 
-	sessionID, err := g.getOrCreateSession(r.Context(), sessionKey, agentID)
-	if err != nil {
-		closeErr := conn.Close(websocket.StatusInternalError, "session init failed")
-		g.logger.Error("oaChannel: session init failed", "err", err, "close_err", closeErr)
+	if sessionID == "" {
+		err = conn.Close(websocket.StatusInternalError, "session init failed")
+		g.logger.Error("oaChannel: session init failed", "err", err)
 		return
 	}
 
@@ -270,7 +274,7 @@ func (g *OAChannel) handleInbound(ctx context.Context, c *client, msg WSMessage)
 	case WSMsgVoiceEnd:
 		// signal that voice turn is complete — wire into voice pipeline when ready
 	case WSMsgNewSession:
-		g.handleNewSession(ctx, c)
+		err = g.handleNewSession(ctx, c)
 	case WSMsgPing:
 		err = g.writeToClient(c, WSMessage{Type: WSMsgPong, Timestamp: time.Now()})
 	default:
@@ -323,35 +327,39 @@ func (g *OAChannel) handleVoiceChunk(_ context.Context, _ *client, _ WSMessage) 
 	// VoiceChunkPayload carries base64 audio + encoding + sample rate.
 }
 
-func (g *OAChannel) handleNewSession(ctx context.Context, c *client) {
-	if g.endSession != nil {
-		if err := g.endSession(ctx, c.sessionID); err != nil {
-			g.logger.Warn("oaChannel: end session failed",
-				"err", err,
-				"session_id", c.sessionID)
-		}
+func (g *OAChannel) handleNewSession(_ context.Context, c *client) error {
+	// End current session
+	g.eventBus <- core.Event{
+		Type:    core.SessionEnd,
+		Payload: core.SessionEndPayload{SessionID: c.sessionID},
 	}
 
-	newKey := uuid.NewString()
-	newSessionID, err := g.getOrCreateSession(ctx, newKey, c.agentID)
-	if err != nil {
-		g.logger.Error("oaChannel: new session failed", "err", err)
-		return
+	// Request a new one
+	replyCh := make(chan core.Event, 1)
+	g.eventBus <- core.Event{
+		Type:    core.SessionNew,
+		ReplyTo: replyCh,
+		Payload: core.SessionNewPayload{Channel: "oaChannel", AgentID: c.agentID},
+	}
+
+	var newSessionID string
+	select {
+	case reply := <-replyCh:
+		newSessionID, _ = reply.Payload.(string)
+	case <-g.ctx.Done():
+		return nil
 	}
 
 	g.clients.Delete(c.sessionID)
 	c.sessionID = newSessionID
 	g.clients.Store(newSessionID, c)
 
-	err = g.writeToClient(c, WSMessage{
+	return g.writeToClient(c, WSMessage{
 		Type:      WSMsgNewSession,
 		SessionID: newSessionID,
 		Timestamp: time.Now(),
 		Payload:   NewSessionPayload{SessionID: newSessionID},
 	})
-	if err != nil {
-		g.logger.Error("oaChannel: handleNewSession ", "err", err)
-	}
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

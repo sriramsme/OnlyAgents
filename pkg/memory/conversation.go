@@ -35,16 +35,16 @@ func New(ctx context.Context, store storage.Storage) (*ConversationManager, erro
 	return cm, nil
 }
 
-// EnsureSession creates session if it doesn't exist (idempotent)
-func (cm *ConversationManager) EnsureSession(ctx context.Context, sessionID string) error {
-	_, err := cm.store.GetConversation(ctx, sessionID)
-	if err == nil {
-		return nil // already exists
-	}
-	return cm.store.CreateConversation(ctx, &storage.Conversation{
-		ID:        sessionID,
+// NewSession creates session if it doesn't exist (idempotent)
+func (cm *ConversationManager) NewSession(ctx context.Context, channel, agentID string) (string, error) {
+	id := uuid.NewString()
+	err := cm.store.CreateConversation(ctx, &storage.Conversation{
+		ID:        id,
+		Channel:   channel,
+		AgentID:   agentID,
 		StartedAt: storage.DBTime{Time: time.Now()},
 	})
+	return id, err
 }
 
 // Explicit session reset (triggered by /new command etc.)

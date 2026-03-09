@@ -57,10 +57,6 @@ func loadComponents(
 		return c, fmt.Errorf("load store: %w", err)
 	}
 
-	getOrCreateSession := func(ctx context.Context, sessionKey, agentID string) (string, error) {
-		return c.store.GetOrCreateSession(ctx, sessionKey, agentID)
-	}
-
 	c.cm, err = loadConversationManager(ctx, c.store)
 	if err != nil {
 		return c, fmt.Errorf("load conversation manager: %w", err)
@@ -112,7 +108,7 @@ func loadComponents(
 	if err != nil {
 		return c, fmt.Errorf("load connectors: %w", err)
 	}
-	c.channels, err = loadChannels(ctx, v, kernelBus, getOrCreateSession)
+	c.channels, err = loadChannels(ctx, v, kernelBus)
 	if err != nil {
 		return c, fmt.Errorf("load channels: %w", err)
 	}
@@ -200,10 +196,9 @@ func loadConnectors(ctx context.Context, v vault.Vault, kernelBus chan<- core.Ev
 
 func loadChannels(
 	ctx context.Context, v vault.Vault, kernelBus chan<- core.Event,
-	getOrCreateSession func(ctx context.Context, sessionKey, agentID string) (string, error),
 ) (*channels.Registry, error) {
 	// Create connector registry
-	registry, err := channels.NewRegistry(ctx, v, kernelBus, getOrCreateSession)
+	registry, err := channels.NewRegistry(ctx, v, kernelBus)
 
 	if err != nil {
 		return nil, fmt.Errorf("create channel registry: %w", err)

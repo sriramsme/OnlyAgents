@@ -51,8 +51,6 @@ type TelegramChannel struct {
 	// Message tracking
 	placeholders sync.Map // chatID -> messageID
 	thinkingCtx  sync.Map // chatID -> cancelFunc
-
-	getOrCreateSession func(ctx context.Context, sessionKey, agentID string) (string, error)
 }
 
 // NewChannel creates a new Telegram channel
@@ -61,7 +59,6 @@ func NewChannel(
 	rawConfig map[string]interface{},
 	vault vault.Vault,
 	eventBus chan<- core.Event,
-	getOrCreateSession func(ctx context.Context, sessionKey, agentID string) (string, error),
 ) (channels.Channel, error) {
 
 	var cfg Config
@@ -86,15 +83,14 @@ func NewChannel(
 	)
 
 	return &TelegramChannel{
-		config:             &cfg,
-		vault:              vault,
-		eventBus:           eventBus,
-		ctx:                channelCtx,
-		cancel:             cancel,
-		logger:             logger,
-		placeholders:       sync.Map{},
-		thinkingCtx:        sync.Map{},
-		getOrCreateSession: getOrCreateSession,
+		config:       &cfg,
+		vault:        vault,
+		eventBus:     eventBus,
+		ctx:          channelCtx,
+		cancel:       cancel,
+		logger:       logger,
+		placeholders: sync.Map{},
+		thinkingCtx:  sync.Map{},
 	}, nil
 }
 
@@ -114,16 +110,26 @@ func (c *TelegramChannel) HealthCheck() (bool, error) {
 }
 
 // Telegram adapter — one session per chat, auto-created if not exists
-func (c *TelegramChannel) resolveSessionID(chatID string, agentID string) (string, error) {
-	if agentID == "" {
-		agentID = "executive"
+func (c *TelegramChannel) resolveSessionID(agentID string) (string, error) {
+	replyCh := make(chan core.Event, 1)
+	c.eventBus <- core.Event{
+		Type:    core.SessionGet,
+		ReplyTo: replyCh,
+		Payload: core.SessionNewPayload{
+			Channel: "telegram",
+			AgentID: agentID,
+		},
 	}
-	// look up or create: "telegram:{chatID}" → sessionID
-	sessionID, err := c.getOrCreateSession(c.ctx, fmt.Sprintf("telegram:%s", chatID), agentID)
-	if err != nil {
-		return "", err
+	select {
+	case reply := <-replyCh:
+		sessionID, _ := reply.Payload.(string)
+		if sessionID == "" {
+			return "", fmt.Errorf("empty session id from kernel")
+		}
+		return sessionID, nil
+	case <-c.ctx.Done():
+		return "", fmt.Errorf("context cancelled waiting for session")
 	}
-	return sessionID, nil
 }
 
 // Connect initializes the Telegram bot connection

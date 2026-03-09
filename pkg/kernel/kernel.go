@@ -363,6 +363,7 @@ func (k *Kernel) run() {
 	}
 }
 
+// nolint:gocyclo
 func (k *Kernel) route(evt core.Event) {
 	k.logger.Debug("routing event",
 		"type", evt.Type,
@@ -415,8 +416,14 @@ func (k *Kernel) route(evt core.Event) {
 	case core.TaskCompleted:
 		k.handleTaskCompleted(evt)
 
-	case core.NewSession:
-		k.handleNewSession(evt)
+	case core.SessionGet:
+		k.handleSessionGet(evt)
+
+	case core.SessionNew:
+		k.handleSessionNew(evt)
+
+	case core.SessionEnd:
+		k.handleSessionEnd(evt)
 
 	// Future
 	case core.AgentMessage:
@@ -468,8 +475,6 @@ func (k *Kernel) wireOAChannel() {
 	}
 	// Inject Subscribe so each WS connection gets its own UIBus subscription.
 	oaCh.SetSubscribe(k.Subscribe)
-	// Inject EndSession so session.new requests can close the old session.
-	oaCh.SetEndSession(k.cm.EndSession)
 }
 
 // implements KernelReader

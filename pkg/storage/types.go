@@ -8,7 +8,7 @@ import (
 // Conversation is a single session between a user and an agent.
 type Conversation struct {
 	ID          string     `db:"id"`
-	SessionKey  string     `db:"session_key"` // "telegram:123", "discord:456", uuid for UI
+	Channel     string     `db:"channel"` // "telegram", "discord"
 	AgentID     string     `db:"agent_id"`
 	StartedAt   DBTime     `db:"started_at"`
 	EndedAt     NullDBTime `db:"ended_at"`
