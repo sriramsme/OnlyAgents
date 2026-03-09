@@ -1,0 +1,66 @@
+version: 2
+
+before:
+  hooks:
+    # Build the web UI before compiling the binary
+    - npm --prefix web run build
+
+builds:
+  - id: onlyagents
+    main: ./cmd/onlyagents
+    binary: onlyagents
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Inject version info at build time
+    ldflags:
+      - -s -w
+      - -X github.com/sriramsme/OnlyAgents/cmd.version={{.Version}}
+      - -X github.com/sriramsme/OnlyAgents/cmd.commit={{.Commit}}
+      - -X github.com/sriramsme/OnlyAgents/cmd.date={{.Date}}
+
+archives:
+  - id: onlyagents
+    name_template: "onlyagents_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: "New Features"
+      regexp: "^feat"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^fix"
+      order: 1
+    - title: "Other"
+      order: 999
+
+release:
+  github:
+    owner: sriramsme
+    name: OnlyAgents
+  draft: false
+  prerelease: auto  # tags like v0.1.0-beta become prereleases automatically
+  name_template: "v{{.Version}}"

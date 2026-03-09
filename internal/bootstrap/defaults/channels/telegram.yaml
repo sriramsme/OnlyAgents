@@ -10,7 +10,7 @@ credentials:
   bot_token: "telegram/bot_token"  # Add this to your .env as TELEGRAM_BOT_TOKEN or your vault
 
 # Operation mode
-mode: webhook  # or "webhook" for production
+mode: polling  # or "webhook" for production
 
 # Routing
 default_agent: executive
@@ -28,7 +28,7 @@ polling:
 
 # Webhook settings (mode: webhook)
 webhook:
-  url: "https://cd3a-2600-1700-494-a00-6f97-2823-2daa-b9dc.ngrok-free.app/bot"
+  url: "https://your-domain.com/bot"
   listen_addr: ":8443"
   path: "/bot"
   drop_pending_updates: false

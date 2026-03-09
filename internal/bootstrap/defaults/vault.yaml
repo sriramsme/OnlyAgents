@@ -1,5 +1,5 @@
 type: env
-dotenv_path: '.env'
+dotenv_path: '.env'  # exlcude this or keep it empty if using system environments.
 prefix: ONLYAGENTS_
 enable_cache: true
 audit_log: false

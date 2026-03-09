@@ -238,6 +238,7 @@ func (k *Kernel) Start() error {
 	}
 
 	k.logger.Info("kernel started")
+	fmt.Println("kernel started")
 	return nil
 }
 
