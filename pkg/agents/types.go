@@ -60,7 +60,7 @@ type Agent struct {
 
 	// Runtime state — owned by the agent, read by KernelReader.Agents()
 	stateMu     sync.RWMutex
-	state       string // "idle" | "active" | "error"
+	state       core.AgentState
 	currentTask string
 	lastActive  time.Time
 }

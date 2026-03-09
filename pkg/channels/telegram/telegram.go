@@ -111,11 +111,14 @@ func (c *TelegramChannel) HealthCheck() (bool, error) {
 
 // Telegram adapter — one session per chat, auto-created if not exists
 func (c *TelegramChannel) resolveSessionID(agentID string) (string, error) {
+	if agentID == "" {
+		return "", fmt.Errorf("agentID is empty")
+	}
 	replyCh := make(chan core.Event, 1)
 	c.eventBus <- core.Event{
 		Type:    core.SessionGet,
 		ReplyTo: replyCh,
-		Payload: core.SessionNewPayload{
+		Payload: core.SessionGetPayload{
 			Channel: "telegram",
 			AgentID: agentID,
 		},

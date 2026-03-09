@@ -29,7 +29,7 @@ type Deps struct {
 // pkg/kernel.Kernel implements this interface; it is passed in from cmd/server.
 type KernelReader interface {
 	// Agents returns a runtime snapshot of every registered agent.
-	Agents() []core.AgentStatus
+	AgentsStatus() []core.AgentStatus
 
 	// IsHealthy returns false if the kernel context has been cancelled.
 	IsHealthy() bool

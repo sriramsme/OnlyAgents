@@ -13,8 +13,8 @@ import (
 
 func (d *DB) CreateConversation(ctx context.Context, conv *storage.Conversation) error {
 	_, err := d.db.NamedExecContext(ctx, `
-		INSERT INTO conversations (id, session_key, agent_id, started_at, ended_at, context, summary, peer_agent_id)
-		VALUES (:id, :session_key, :agent_id, :started_at, :ended_at, :context, :summary, :peer_agent_id)
+		INSERT INTO conversations (id, channel, agent_id, started_at, ended_at, context, summary, peer_agent_id)
+		VALUES (:id, :channel , :agent_id, :started_at, :ended_at, :context, :summary, :peer_agent_id)
 	`, conv)
 	return wrap(err, "create conversation")
 }

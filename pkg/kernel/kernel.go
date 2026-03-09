@@ -475,6 +475,7 @@ func (k *Kernel) wireOAChannel() {
 	}
 	// Inject Subscribe so each WS connection gets its own UIBus subscription.
 	oaCh.SetSubscribe(k.Subscribe)
+	oaCh.SetAgentsStatus(k.AgentsStatus)
 }
 
 // implements KernelReader
@@ -492,7 +493,7 @@ func (k *Kernel) Subscribe(id string) (<-chan core.UIEvent, func()) {
 }
 
 // implements KernelReader
-func (k *Kernel) Agents() []core.AgentStatus {
+func (k *Kernel) AgentsStatus() []core.AgentStatus {
 	ids := k.agents.ListAll()
 	out := make([]core.AgentStatus, 0, len(ids))
 	for _, id := range ids {

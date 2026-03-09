@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
 	"github.com/sriramsme/OnlyAgents/internal/auth"
@@ -45,7 +46,14 @@ func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, a *
 	// session_id: omit to start a new session, pass existing to resume
 	// agent_id:   defaults to "executive"
 	if deps.Kernel.OAChannel() != nil {
-		mux.HandleFunc("GET /v1/ws", authed(deps.Kernel.OAChannel().WSHandler))
+		mux.HandleFunc("GET /v1/ws", authed(func(w http.ResponseWriter, r *http.Request) {
+			rc := http.NewResponseController(w)
+			err := rc.SetWriteDeadline(time.Time{}) // zero = no deadline for this connection only
+			deps.Kernel.OAChannel().WSHandler(w, r)
+			if err != nil {
+				logger.Error("failed to set write deadline", "error", err)
+			}
+		}))
 		logger.Info("registered OAChannel handler", "path", "/v1/ws")
 	}
 

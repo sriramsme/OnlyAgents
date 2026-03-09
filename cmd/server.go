@@ -141,12 +141,14 @@ func runServer(cmd *cobra.Command, args []string) error {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
-	if err := server.Stop(shutdownCtx); err != nil {
-		logger.Log.Error("server stop error", "error", err)
+	// Stop kernel FIRST — this closes WS connections via OAChannel.Stop()
+	if err := k.Stop(); err != nil {
+		logger.Log.Error("kernel stop error", "error", err)
 	}
 
-	if err := k.Stop(); err != nil {
-		return fmt.Errorf("kernel stop error: %w", err)
+	// THEN stop HTTP server — no active WS connections left, exits cleanly
+	if err := server.Stop(shutdownCtx); err != nil {
+		logger.Log.Error("server stop error", "error", err)
 	}
 
 	logger.Log.Info("shutdown complete")

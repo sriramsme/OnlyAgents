@@ -65,14 +65,23 @@ type DelegationPayload struct {
 
 // ─── AgentStatus ──────────────────────────────────────────────────────────────
 
+type AgentState string
+
+const (
+	AgentStateIdle   AgentState = "idle"   // nothing in inbox
+	AgentStateActive AgentState = "active" // something in inbox
+	AgentStateError  AgentState = "error"  // issue with agent
+	AgentStateBusy   AgentState = "busy"   // inbox full
+)
+
 // AgentStatus is the runtime snapshot of an agent.
 // Used by KernelReader.Agents() and the snapshot.agent event on SSE connect.
 type AgentStatus struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	State       string    `json:"state"`                  // "idle" | "active" | "error"
-	CurrentTask string    `json:"current_task,omitempty"` // truncated, empty when idle
-	LastActive  time.Time `json:"last_active"`
-	Model       string    `json:"model"`
-	IsExecutive bool      `json:"is_executive"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	State       AgentState `json:"state"`
+	CurrentTask string     `json:"current_task,omitempty"` // truncated, empty when idle
+	LastActive  time.Time  `json:"last_active"`
+	Model       string     `json:"model"`
+	IsExecutive bool       `json:"is_executive"`
 }

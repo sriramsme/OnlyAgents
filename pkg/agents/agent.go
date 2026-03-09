@@ -122,7 +122,7 @@ func (a *Agent) Status() core.AgentStatus {
 	}
 }
 
-func (a *Agent) setState(state, task string) {
+func (a *Agent) setState(state core.AgentState, task string) {
 	a.stateMu.Lock()
 	a.state = state
 	a.currentTask = task
@@ -698,6 +698,9 @@ func (a *Agent) processToolCalls(
 				"tool", tc.Function.Name,
 				"correlation_id", correlationID)
 			if exec.DirectMessage != "" {
+				if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, exec.DirectMessage, false); err != nil {
+					a.logger.Warn("failed to save tool result (direct message)", "err", err)
+				}
 				a.safeSend(core.Event{
 					Type:          core.OutboundMessage,
 					CorrelationID: correlationID,

@@ -45,8 +45,9 @@ type client struct {
 
 // OAChannel implements channels.Channel for the OnlyAgents web UI.
 type OAChannel struct {
-	eventBus  chan<- core.Event
-	subscribe func(id string) (<-chan core.UIEvent, func()) // injected by kernel
+	eventBus       chan<- core.Event
+	subscribe      func(id string) (<-chan core.UIEvent, func()) // injected by kernel
+	agentsStatusFn func() []core.AgentStatus
 
 	clients sync.Map // sessionID → *client
 
@@ -91,6 +92,12 @@ func (g *OAChannel) SetSubscribe(fn func(id string) (<-chan core.UIEvent, func()
 	g.subscribe = fn
 }
 
+// SetAgentsStatus injects the kernel's AgentsStatus function.
+// Must be called by the kernel after construction, before any client connects.
+func (g *OAChannel) SetAgentsStatus(fn func() []core.AgentStatus) {
+	g.agentsStatusFn = fn
+}
+
 // ── channels.Channel interface ────────────────────────────────────────────────
 
 func (g *OAChannel) PlatformName() string { return "onlyagents" }
@@ -101,6 +108,18 @@ func (g *OAChannel) Start() error         { return nil }
 
 func (g *OAChannel) Stop() error {
 	g.cancel()
+
+	// Close all active WebSocket connections so http.Server.Shutdown
+	// doesn't hang waiting for them to finish naturally
+	g.clients.Range(func(_, v any) bool {
+		c := v.(*client)
+		err := c.conn.Close(websocket.StatusGoingAway, "server shutting down")
+		if err != nil {
+			g.logger.Error("oaChannel: failed to close a ws connection client", "err", err)
+		}
+		return true
+	})
+
 	g.wg.Wait()
 	return nil
 }
@@ -209,7 +228,21 @@ func (g *OAChannel) WSHandler(w http.ResponseWriter, r *http.Request) {
 	// Subscribe to UIBus — war room events flow through here
 	uiCh, unsubscribe := g.subscribe(c.id)
 	defer unsubscribe()
-
+	// Send snapshot immediately after subscribing so client
+	// gets current agent states before any live events
+	if g.agentsStatusFn != nil {
+		for _, status := range g.agentsStatusFn() {
+			err := g.writeToClient(c, WSMessage{
+				Type:      WSMsgSnapshot,
+				AgentID:   status.ID,
+				Timestamp: time.Now(),
+				Payload:   status,
+			})
+			if err != nil {
+				g.logger.Error("oaChannel: failed to write agent snapshot", "err", err)
+			}
+		}
+	}
 	// Single writer goroutine — merges c.send and uiCh into one WS connection.
 	// IMPORTANT: websocket.Conn must never have concurrent writers.
 	g.wg.Add(1)
