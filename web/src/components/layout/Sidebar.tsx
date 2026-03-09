@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useEventStore } from '../../store/eventStore'
 
 const NAV = [
-  { to: '/',     label: 'War Room', icon: '⬡', exact: true },
+  { to: '/',     label: 'Council', icon: '⬡', exact: true },
   { to: '/chat', label: 'Chat',     icon: '⌨' },
 ]
 

@@ -325,9 +325,9 @@ Channels are how users and agents communicate. All channels are equal — agents
 
 **Telegram** — primary external channel. Responses and streaming where the platform supports it.
 
-**OAChannel** — the native channel for the web interface. Delivers over a single persistent WebSocket. Carries everything: streaming responses, proactive messages, the war room event stream. Not a special case — just a channel that happens to support more of the platform's capabilities.
+**OAChannel** — the native channel for the web interface. Delivers over a single persistent WebSocket. Carries everything: streaming responses, proactive messages, the council event stream. Not a special case — just a channel that happens to support more of the platform's capabilities.
 
-**War room** — OAChannel-exclusive. A live event feed of agent activity: which agents are running, tool calls in progress, delegations as they happen, workflow step status. Powered by the same `UIBus` events that drive the kernel internally.
+**Council room** — OAChannel-exclusive. A live event feed of agent activity: which agents are running, tool calls in progress, delegations as they happen, workflow step status. Powered by the same `UIBus` events that drive the kernel internally.
 
 **Sessions** — OAChannel sessions are persistent. The interface resumes the correct conversation on reconnect or page reload using a session ID stored in the browser. No visible delay.
 

@@ -80,6 +80,7 @@ Same binary on a $5/mo VPS, a spare Mac Mini, a Raspberry Pi, or a rack server. 
 │  TasksConnector                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
+Read more [here](docs/architecture.md)
 
 **Skills come in four types:**
 - Native skills: implemented in Go with formal connector interfaces - calendar, notes, tasks, web search, email.
@@ -129,7 +130,7 @@ All summarization runs in-process via a cron scheduler. On startup, catch-up log
 
 ## Default Agents
 
-Three agents ship out of the box. Their configurations and souls are tuned — modify them if you want, but the defaults are a solid starting point.
+Some agents that we believe applies for everyone, ship out of the box. Their configurations and souls are tuned — modify them if you want, but the defaults are a solid starting point.
 
 **Executive** (`configs/agents/executive.yaml`) — the orchestrator. Every message goes through here first. Knows all registered sub-agents and their capabilities. Decides routing. Never delegates when it can answer directly.
 
@@ -148,7 +149,7 @@ OnlyAgents ships with a built-in web interface connected over a single persisten
 
 **Chat panel** — conversations with the executive. Responses stream token by token. Sessions are persistent — the interface resumes your last conversation on return. Reconnects and page reloads are transparent.
 
-**War room** — live view of the system as it works. Which agents are active, what they're doing, tool calls in flight, delegations as they happen.
+**Council room** — live view of the system as it works. Which agents are active, what they're doing, tool calls in flight, delegations as they happen.
 
 OAChannel is architecturally identical to any other channel — agents have no special awareness of it. The REST API and WebSocket protocol are fully documented. Build your own interface if you want.
 

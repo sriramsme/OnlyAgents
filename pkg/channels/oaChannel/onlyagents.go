@@ -3,7 +3,7 @@
 //
 // One WebSocket connection carries:
 //   - Chat messages (UI → agent via MessageReceived, agent → UI via Send())
-//   - War room events (agent activity, tool calls, delegation) via UIBus subscription
+//   - Council room events (agent activity, tool calls, delegation) via UIBus subscription
 //   - Notifications and proactive agent messages via Send()
 //   - Voice chunks (when voice mode is added)
 //
