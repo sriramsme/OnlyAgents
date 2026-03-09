@@ -114,6 +114,11 @@ export function useEventStream(enabled: boolean) {
     ws.handlers.onConnected = () => {
       storeRef.current.setConnected(true)
       storeRef.current.setLastPing()
+      // Persist session ID so reconnects skip session creation round trip
+      const sessionId = ws.sessionId
+      if (sessionId) {
+        localStorage.setItem('oa_session_id', sessionId)
+      }
     }
 
     ws.connect()

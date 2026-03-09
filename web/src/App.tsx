@@ -8,6 +8,7 @@ import { LoginPage } from './components/auth/LoginPage'
 import { Shell } from './components/layout/Shell'
 import { WarRoom } from './components/war-room/WarRoom'
 import { ChatPage } from './components/chat/ChatPage'
+import { getWSInstance } from './api/ws'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,6 +51,7 @@ export default function App() {
         credentials: 'include' as RequestCredentials,
       })
       setAppState('authenticated')
+      getWSInstance().connect()
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setAppState('unauthenticated')

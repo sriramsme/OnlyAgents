@@ -8,7 +8,6 @@ export interface AgentRecord extends AgentStatus {
 interface AgentStore {
   agents: Record<string, AgentRecord>
 
-  // Initialise from snapshot.agent event on SSE connect
   initAgent: (status: AgentStatus) => void
 
   // Live updates from SSE

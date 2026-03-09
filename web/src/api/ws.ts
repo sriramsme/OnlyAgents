@@ -35,6 +35,7 @@ export type WSMessageType =
   | 'agent.activated'
   | 'agent.idle'
   | 'agent.error'
+  | 'agent.busy'
   | 'tool.called'
   | 'tool.result'
   | 'delegation'
@@ -136,6 +137,7 @@ export class OAWebSocket {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private manualClose = false
   private pingTimer: ReturnType<typeof setInterval> | null = null
+  private pendingMessages: Partial<WSMessage>[] = []
 
   handlers: OAWebSocketHandlers
 
@@ -147,8 +149,9 @@ export class OAWebSocket {
     }
     this.handlers = options.handlers ?? {}
     this.currentSessionId = options.sessionId
+        ?? localStorage.getItem('oa_session_id')
+        ?? undefined  // ← restored on page reload
   }
-
   // ── Public API ──────────────────────────────────────────────────────────────
 
   get sessionId(): string | undefined {
@@ -201,6 +204,11 @@ export class OAWebSocket {
 
     this.ws.onopen = () => {
       this._startPing()
+      // Flush any messages queued before connection was ready
+      this.pendingMessages.forEach(msg => {
+        this.ws!.send(JSON.stringify(msg))
+      })
+      this.pendingMessages = []
       this.handlers.onConnected?.()
     }
 
@@ -278,11 +286,13 @@ export class OAWebSocket {
 
   private _sendMsg(msg: Partial<WSMessage>): void {
     if (this.ws?.readyState !== WebSocket.OPEN) {
-      console.warn('[OAWebSocket] send called while not connected')
-      return
+      this.ws?.send(JSON.stringify(msg))
+
+    }else {
+        // Queue until connected instead of dropping
+        this.pendingMessages.push(msg)
     }
-    this.ws.send(JSON.stringify(msg))
-  }
+      }
 
   private _buildURL(): string {
     const cfg = getConnectionConfig()
