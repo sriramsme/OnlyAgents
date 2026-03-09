@@ -1,10 +1,5 @@
 version: 2
 
-before:
-  hooks:
-    # Build the web UI before compiling the binary
-    - npm --prefix web run build
-
 builds:
   - id: onlyagents
     main: ./cmd/onlyagents
