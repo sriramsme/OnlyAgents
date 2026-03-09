@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +25,7 @@ const (
 // GetHistory call — no broadcast required.
 type ConversationManager struct {
 	store storage.Storage
+	mu    sync.Map // map[sessionID]*sync.RWMutex
 }
 
 // New creates a ConversationManager. It resumes the last active session if one
@@ -54,6 +56,9 @@ func (cm *ConversationManager) EndSession(ctx context.Context, sessionID string)
 
 // SaveUserMessage persists an incoming user message turn.
 func (cm *ConversationManager) SaveUserMessage(ctx context.Context, sessionID, agentID, content string) error {
+	lock := cm.lockFor(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
 	return cm.store.SaveMessage(ctx, &storage.Message{
 		ID:             uuid.NewString(),
 		ConversationID: sessionID,
@@ -71,6 +76,9 @@ func (cm *ConversationManager) SaveAssistantMessage(
 	sessionID, agentID, content, reasoningContent string,
 	toolCalls []tools.ToolCall,
 ) error {
+	lock := cm.lockFor(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
 	tcJSON := "[]"
 	if len(toolCalls) > 0 {
 		b, err := json.Marshal(toolCalls)
@@ -98,6 +106,9 @@ func (cm *ConversationManager) SaveToolResult(
 	sessionID, agentID, toolCallID, toolName, result string,
 	isError bool,
 ) error {
+	lock := cm.lockFor(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
 	content := result
 	if isError {
 		content = fmt.Sprintf(`{"error":%q}`, result)
@@ -140,7 +151,11 @@ func (cm *ConversationManager) GetHistory(
 	sessionID, agentID string,
 	maxTurns int,
 ) ([]llm.Message, error) {
-	all, err := cm.store.GetMessages(ctx, sessionID)
+	lock := cm.lockFor(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	all, err := cm.store.GetMessagesByAgent(ctx, sessionID, agentID)
 	if err != nil {
 		return nil, fmt.Errorf("memory: get history: %w", err)
 	}
@@ -179,6 +194,11 @@ func (cm *ConversationManager) GetHistory(
 		}
 	}
 	return out, nil
+}
+
+func (cm *ConversationManager) lockFor(sessionID string) *sync.RWMutex {
+	v, _ := cm.mu.LoadOrStore(sessionID, &sync.RWMutex{})
+	return v.(*sync.RWMutex)
 }
 
 // toMessage converts a storage.Message to an llm.Message.

@@ -4,6 +4,7 @@ import "time"
 
 // Config holds OAChannel configuration.
 type Config struct {
+	Platform     string   `yaml:"platform"`
 	Enabled      bool     `yaml:"enabled"`
 	AllowOrigins []string `yaml:"allow_origins,omitempty"` // lock down in production
 }

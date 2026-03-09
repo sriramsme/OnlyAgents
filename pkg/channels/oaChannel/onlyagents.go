@@ -31,7 +31,7 @@ import (
 const version = "1.0.0"
 
 func init() {
-	channels.Register("oaChannel", NewChannel)
+	channels.Register("onlyagents", NewChannel)
 }
 
 // client represents a single connected browser tab.
@@ -101,7 +101,7 @@ func (g *OAChannel) SetEndSession(fn func(ctx context.Context, sessionID string)
 
 // ── channels.Channel interface ────────────────────────────────────────────────
 
-func (g *OAChannel) PlatformName() string { return "oaChannel" }
+func (g *OAChannel) PlatformName() string { return "onlyagents" }
 func (g *OAChannel) Version() string      { return version }
 func (g *OAChannel) Connect() error       { return nil }
 func (g *OAChannel) Disconnect() error    { g.cancel(); return nil }
@@ -305,7 +305,7 @@ func (g *OAChannel) handleMessage(_ context.Context, c *client, msg WSMessage) {
 			Channel: &core.ChannelMetadata{
 				SessionID: c.sessionID,
 				ChatID:    c.sessionID,
-				Name:      "oaChannel",
+				Name:      "onlyagents",
 				UserID:    "user",
 				Username:  "user",
 			},

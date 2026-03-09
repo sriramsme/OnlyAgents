@@ -153,8 +153,7 @@ func (k *Kernel) Bus() chan<- core.Event {
 }
 
 func (k *Kernel) OAChannel() *oaChannel.OAChannel {
-	k.logger.Info("all channels", "count", k.channels.List())
-	ch, err := k.channels.Get("oaChannel")
+	ch, err := k.channels.Get("onlyagents")
 	if err != nil {
 		k.logger.Error("failed to get channel", "name", "oaChannel", "err", err)
 		return nil
@@ -459,7 +458,7 @@ func (k *Kernel) broadcastUI(evt core.UIEvent) {
 }
 
 func (k *Kernel) wireOAChannel() {
-	ch, err := k.channels.Get("oaChannel")
+	ch, err := k.channels.Get("onlyagents")
 	if err != nil {
 		return
 	}

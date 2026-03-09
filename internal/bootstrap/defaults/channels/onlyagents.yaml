@@ -1,0 +1,6 @@
+platform: onlyagents
+
+enabled: true
+
+allowed_origins:
+  - http://localhost:8080

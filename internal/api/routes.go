@@ -44,7 +44,6 @@ func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, a *
 	// Query params: ?session_id=<uuid>&agent_id=<id>
 	// session_id: omit to start a new session, pass existing to resume
 	// agent_id:   defaults to "executive"
-	logger.Info("registering OAChannel handler", "path", "/v1/ws", "channel exists", deps.Kernel.OAChannel() != nil)
 	if deps.Kernel.OAChannel() != nil {
 		mux.HandleFunc("GET /v1/ws", authed(deps.Kernel.OAChannel().WSHandler))
 		logger.Info("registered OAChannel handler", "path", "/v1/ws")

@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bufio"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -114,4 +117,19 @@ func chain(middlewares ...func(handlerFunc) handlerFunc) middlewareFn {
 type statusWriter struct {
 	http.ResponseWriter
 	status int
+}
+
+// Unwrap lets websocket.Accept (and other hijack-needing code) reach
+// the underlying ResponseWriter through our wrapper.
+func (sw *statusWriter) Unwrap() http.ResponseWriter {
+	return sw.ResponseWriter
+}
+
+// Hijack forwards to the underlying writer — required for WebSocket upgrades.
+func (sw *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := sw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("underlying ResponseWriter does not support hijacking")
+	}
+	return h.Hijack()
 }
