@@ -1,0 +1,165 @@
+@import "tailwindcss";
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    height: 100%;
+    overflow: hidden;
+    background-color: #080c10;
+    color: #cdd9e5;
+    font-family: "JetBrains Mono", "Fira Mono", monospace;
+    font-size: 13px;
+    text-shadow: 0 0 8px rgba(0, 217, 126, 0.08);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* Scrollbars */
+
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #0d1117;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #1e2d3d;
+    border-radius: 2px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #00d97e44;
+  }
+
+  ::selection {
+    background: #00d97e33;
+    color: #e6edf3;
+  }
+}
+
+/* ------------------ Components ------------------ */
+
+@layer components {
+
+  /* Glow utilities */
+
+  .glow-green {
+    box-shadow:
+      0 0 0 1px #00d97e,
+      0 0 12px #00d97e33,
+      inset 0 0 12px #00d97e0a;
+  }
+
+  .glow-amber {
+    box-shadow:
+      0 0 0 1px #d29922,
+      0 0 12px #d2992233,
+      inset 0 0 12px #d299220a;
+  }
+
+  .glow-red {
+    box-shadow:
+      0 0 0 1px #f85149,
+      0 0 12px #f8514933,
+      inset 0 0 12px #f851490a;
+  }
+
+  .glow-blue {
+    box-shadow:
+      0 0 0 1px #388bfd,
+      0 0 12px #388bfd33,
+      inset 0 0 12px #388bfd0a;
+  }
+
+  /* Scanline overlay */
+
+  .scanlines::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Terminal input */
+
+  .terminal-input {
+    @apply w-full
+      bg-[#0d1117]
+      border border-[#1e2d3d]
+      rounded
+      px-3 py-2
+      text-[#cdd9e5]
+      font-mono
+      text-sm
+      placeholder-[#8b9eb0]/40
+      transition-colors duration-150
+      focus:outline-none
+      focus:border-[#00d97e]
+      focus:ring-1
+      focus:ring-[#00d97e];
+  }
+
+  /* Primary button */
+
+  .btn-primary {
+    @apply bg-[#00d97e]/10
+      border border-[#00d97e]
+      text-[#00d97e]
+      font-mono text-sm
+      px-4 py-2
+      rounded
+      transition-all duration-150
+      hover:bg-[#00d97e]/20
+      active:bg-[#00d97e]/30
+      focus:outline-none
+      focus:ring-1
+      focus:ring-[#00d97e]
+      disabled:opacity-40
+      disabled:cursor-not-allowed;
+  }
+
+  /* Ghost button */
+
+  .btn-ghost {
+    @apply border border-[#1e2d3d]
+      text-[#8b9eb0]
+      font-mono text-sm
+      px-4 py-2
+      rounded
+      transition-all duration-150
+      hover:border-[#cdd9e5]/40
+      hover:text-[#cdd9e5]
+      focus:outline-none;
+  }
+
+  /* Status indicator */
+
+  .status-dot {
+    @apply inline-block w-1.5 h-1.5 rounded-full flex-shrink-0;
+  }
+}
