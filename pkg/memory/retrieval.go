@@ -65,25 +65,37 @@ func FormatMemoryContext(mc *MemoryContext) string {
 	if mc.TodaySummary != nil {
 		b.WriteString("## Memory: Today So Far\n")
 		b.WriteString(mc.TodaySummary.Summary)
+
 		if len(mc.TodaySummary.KeyEvents) > 0 {
 			b.WriteString("\nKey events: ")
 			b.WriteString(strings.Join(mc.TodaySummary.KeyEvents, ", "))
 		}
+
 		b.WriteString("\n\n")
+
 	} else if mc.RecentSummary != nil {
 		b.WriteString("## Memory: Recent Week\n")
-		b.WriteString(fmt.Sprintf("(%s – %s) ",
+
+		fmt.Fprintf(&b, "(%s – %s) ",
 			mc.RecentSummary.WeekStart.Format("Jan 2"),
-			mc.RecentSummary.WeekEnd.Format("Jan 2")))
+			mc.RecentSummary.WeekEnd.Format("Jan 2"),
+		)
+
 		b.WriteString(mc.RecentSummary.Summary)
 		b.WriteString("\n\n")
 	}
 
 	if len(mc.RelevantFacts) > 0 {
 		b.WriteString("## Relevant Facts\n")
+
 		for _, f := range mc.RelevantFacts {
-			b.WriteString(fmt.Sprintf("- [%s] %s: %s\n", f.EntityType, f.Entity, f.Fact))
+			fmt.Fprintf(&b, "- [%s] %s: %s\n",
+				f.EntityType,
+				f.Entity,
+				f.Fact,
+			)
 		}
+
 		b.WriteString("\n")
 	}
 

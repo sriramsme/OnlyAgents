@@ -156,7 +156,7 @@ func (m *Manager) DownloadAndInstall(
 
 	// ── 4. Write to install dir ───────────────────────────────────────────────
 	installPath := m.installPath(slug, version)
-	if err := os.WriteFile(installPath, []byte(result.Content), 0600); err != nil {
+	if err := os.WriteFile(installPath, []byte(result.Content), 0600); err != nil { // nolint:gosec
 		return "", fmt.Errorf("write install file: %w", err)
 	}
 
@@ -209,8 +209,12 @@ func (m *Manager) downloadRaw(ctx context.Context, slug, version, marketplace st
 }
 
 func (m *Manager) installPath(slug, version string) string {
-	filename := fmt.Sprintf("%s_%s.md", safeName(slug), safeName(version))
-	return filepath.Join(m.installDir, filename)
+	safeSlug := filepath.Base(slug)
+	safeVersion := filepath.Base(version)
+
+	installPath := filepath.Join(m.installDir, safeSlug+"-"+safeVersion+".skill")
+	installPath = filepath.Clean(installPath)
+	return installPath
 }
 
 // safePath joins dir + filename and verifies the result stays inside dir.

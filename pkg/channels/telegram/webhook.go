@@ -123,12 +123,13 @@ func (c *TelegramChannel) startWebhook(ctx context.Context) error {
 
 	// Graceful shutdown when the context is cancelled.
 	c.wg.Add(1)
-	go func() {
+	go func(ctx context.Context) {
 		defer c.wg.Done()
+
 		<-ctx.Done()
 		c.logger.Debug("context cancelled, shutting down webhook server")
 
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 
 		if err := srv.Shutdown(shutdownCtx); err != nil {
@@ -137,7 +138,7 @@ func (c *TelegramChannel) startWebhook(ctx context.Context) error {
 		if err := handler.Stop(); err != nil {
 			c.logger.Error("telegram handler stop failed", "err", err)
 		}
-	}()
+	}(ctx)
 
 	return nil
 }

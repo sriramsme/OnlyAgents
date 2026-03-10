@@ -357,9 +357,9 @@ func (t *TimingTracker) logPretty(correlationID string, totalDuration time.Durat
 
 	// Add slog-style prefix
 	timestamp := time.Now().Format("15:04:05")
-	b.WriteString(fmt.Sprintf("time=%s level=INFO msg=\"\n", timestamp))
-	b.WriteString(fmt.Sprintf("╭─ Timing Summary [%s]\n", correlationID[:8]))
-	b.WriteString(fmt.Sprintf("│ Total: %s\n", formatDuration(totalDuration)))
+	fmt.Fprintf(&b, "time=%s level=INFO msg=\"\n", timestamp)
+	fmt.Fprintf(&b, "╭─ Timing Summary [%s]\n", correlationID[:8])
+	fmt.Fprintf(&b, "│ Total: %s\n", formatDuration(totalDuration))
 	b.WriteString("├─────────────────────────\n")
 
 	// Sort by start time
@@ -369,7 +369,12 @@ func (t *TimingTracker) logPretty(correlationID string, totalDuration time.Durat
 
 	for _, phase := range phases {
 		indent := strings.Repeat("  ", phase.Level)
-		b.WriteString(fmt.Sprintf("│ %s├─ %s: %s", indent, phase.Name, formatDuration(phase.Duration)))
+
+		fmt.Fprintf(&b, "│ %s├─ %s: %s",
+			indent,
+			phase.Name,
+			formatDuration(phase.Duration),
+		)
 
 		// Add metadata if present
 		if len(phase.Metadata) > 0 {
@@ -377,9 +382,11 @@ func (t *TimingTracker) logPretty(correlationID string, totalDuration time.Durat
 			for k, v := range phase.Metadata {
 				meta = append(meta, fmt.Sprintf("%s=%v", k, v))
 			}
+
 			sort.Strings(meta)
-			b.WriteString(fmt.Sprintf(" (%s)", strings.Join(meta, ", ")))
+			fmt.Fprintf(&b, " (%s)", strings.Join(meta, ", "))
 		}
+
 		b.WriteString("\n")
 	}
 

@@ -42,7 +42,8 @@ func NewEmailSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skil
 		skills.SkillTypeNative,
 	)
 
-	skillCtx, cancel := context.WithCancel(ctx)
+	skillCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is called in Stop()
+
 	return &EmailSkill{
 		BaseSkill:  base,
 		emailConns: make(map[string]connectors.EmailConnector),
@@ -73,6 +74,7 @@ func (s *EmailSkill) Initialize(deps skills.SkillDeps) error {
 
 // Shutdown cleans up resources
 func (s *EmailSkill) Shutdown() error {
+	s.cancel()
 	return nil
 }
 

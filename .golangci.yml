@@ -18,7 +18,8 @@ linters:
   exclusions:
     paths:
       - web/
-
+      - ui/dist/
+      - vendor/
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

@@ -46,7 +46,7 @@ func NewAgent(
 	agentSoul := NewSoul(cfg.Soul)
 
 	// Create agent context from parent - ties agent lifecycle to kernel
-	agentCtx, cancel := context.WithCancel(ctx)
+	agentCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is called in Stop()
 
 	return &Agent{
 		id:               cfg.ID,

@@ -77,7 +77,8 @@ func NewChannel(
 		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
 
-	channelCtx, cancel := context.WithCancel(ctx)
+	channelCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is called in Stop()
+
 	logger := slog.With(
 		"connector", "telegram",
 	)

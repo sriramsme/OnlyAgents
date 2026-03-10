@@ -182,17 +182,18 @@ func (g *GmailConnector) SendEmail(ctx context.Context, req *connectors.SendEmai
 
 	// Build email message
 	var message strings.Builder
-	message.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(req.To, ",")))
+
+	fmt.Fprintf(&message, "To: %s\r\n", strings.Join(req.To, ","))
 
 	if len(req.Cc) > 0 {
-		message.WriteString(fmt.Sprintf("Cc: %s\r\n", strings.Join(req.Cc, ",")))
+		fmt.Fprintf(&message, "Cc: %s\r\n", strings.Join(req.Cc, ","))
 	}
 
 	if len(req.Bcc) > 0 {
-		message.WriteString(fmt.Sprintf("Bcc: %s\r\n", strings.Join(req.Bcc, ",")))
+		fmt.Fprintf(&message, "Bcc: %s\r\n", strings.Join(req.Bcc, ","))
 	}
 
-	message.WriteString(fmt.Sprintf("Subject: %s\r\n", req.Subject))
+	fmt.Fprintf(&message, "Subject: %s\r\n", req.Subject)
 	message.WriteString("MIME-Version: 1.0\r\n")
 
 	if req.BodyHTML != "" {

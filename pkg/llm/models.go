@@ -167,9 +167,9 @@ func CompareModels(models []string, registry map[string]ModelCapabilities) (stri
 	}
 
 	// Header
-	sb.WriteString(fmt.Sprintf("%-20s", "Feature"))
+	fmt.Fprintf(&sb, "%-20s", "Feature")
 	for _, info := range infos {
-		sb.WriteString(fmt.Sprintf("%-20s", truncate(info.Name, 18)))
+		fmt.Fprintf(&sb, "%-20s", truncate(info.Name, 18))
 	}
 	sb.WriteString("\n" + strings.Repeat("-", 80) + "\n")
 

@@ -270,7 +270,7 @@ func (c *TelegramChannel) extractContent(message *telego.Message) string {
 		if content.Len() > 0 {
 			content.WriteString("\n")
 		}
-		content.WriteString(fmt.Sprintf("[document: %s]", message.Document.FileName))
+		fmt.Fprintf(&content, "[document: %s]", message.Document.FileName)
 	}
 
 	return content.String()

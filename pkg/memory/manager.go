@@ -251,16 +251,18 @@ func formatDigest(date time.Time, tasks []*storage.Task, reminders []*storage.Re
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("📅 *Tomorrow — %s*\n\n", date.Format("Monday, Jan 2")))
+	fmt.Fprintf(&b, "📅 *Tomorrow — %s*\n\n", date.Format("Monday, Jan 2"))
 
 	if len(tasks) > 0 {
 		b.WriteString("*Tasks due:*\n")
 		for _, t := range tasks {
 			icon := priorityIcon(t.Priority)
-			b.WriteString(fmt.Sprintf("%s %s", icon, t.Title))
+			fmt.Fprintf(&b, "%s %s", icon, t.Title)
+
 			if t.DueAt.Valid {
-				b.WriteString(fmt.Sprintf(" _%s_", t.DueAt.Time.Format("3:04 PM")))
+				fmt.Fprintf(&b, " _%s_", t.DueAt.Time.Format("3:04 PM"))
 			}
+
 			b.WriteString("\n")
 		}
 	}
@@ -269,9 +271,11 @@ func formatDigest(date time.Time, tasks []*storage.Task, reminders []*storage.Re
 		if len(tasks) > 0 {
 			b.WriteString("\n")
 		}
+
 		b.WriteString("*Reminders:*\n")
+
 		for _, r := range reminders {
-			b.WriteString(fmt.Sprintf("🔔 %s _%s_\n", r.Title, r.DueAt.Format("3:04 PM")))
+			fmt.Fprintf(&b, "🔔 %s _%s_\n", r.Title, r.DueAt.Format("3:04 PM"))
 		}
 	}
 
