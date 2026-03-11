@@ -1,15 +1,26 @@
 # Perplexity AI Search Connector Configuration
 
-name: perplexity_search
+enabled: false # Enable if you have a Perplexity API key
+max_results: 5 # Default number of results
+model: "sonar" # Perplexity model to use
+
+# DO NOT EDIT BELOW THIS LINE
+# -----------------------------
 platform: perplexity
-enabled: false  # Enable if you have a Perplexity API key
-max_results: 5  # Default number of results
-model: "sonar"  # Perplexity model to use
+name: Perplexity
+description: >
+  Perplexity is a search engine that helps you find information faster.
+  It's a great way to find answers to your questions.
 
-credentials:
-  # This is a vault key - actual secret stored in vault
-  api_key: "PERPLEXITY_API_KEY"
+instructions: >
+  To get started, you'll need to get an API key from Perplexity.
+  1. Go to https://www.perplexity.ai/
+  2. Sign up for a free account
+  3. Go to the "API Keys" section
+  4. Copy the API key
+  5. Store it in your vault (e.g., .env file)
 
-# Get your Perplexity API key from: https://www.perplexity.ai/
-# Store it in your vault (e.g., .env file):
-# PERPLEXITY_API_KEY=your_actual_api_key_here
+vault_paths:
+  api_key:
+    path: perplexity/api_key
+    prompt: Perplexity API key

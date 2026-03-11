@@ -44,7 +44,7 @@ Same binary on a $5/mo VPS, a spare Mac Mini, a Raspberry Pi, or a rack server. 
                 │                        │                          │
         ┌───────▼────────┐       ┌───────▼─────────┐        ┌───────▼─────────┐
         │ EXECUTIVE AGENT│       │ PRODUCTIVITY    │        │ GENERAL AGENT   │
-        │                │       │ AGENT (Friday)  │        │                 │
+        │                │       │ AGENT           │        │                 │
         │ Orchestration  │       │ Calendar        │        │ Fallback handler│
         │ Delegation     │       │ Notes           │        │ Searches local  │
         │ Workflow coord │       │ Reminders       │        │ skill registry  │
@@ -185,7 +185,7 @@ sudo mv onlyagents /usr/local/bin/
 
 ### Build from source
 
-Prerequisites: Go 1.21+, Node.js 18+ (for the embedded web UI)
+Prerequisites: Go 1.25+, Node.js 18+ (for the embedded web UI)
 
 ```bash
 git clone https://github.com/sriramsme/onlyagents

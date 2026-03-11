@@ -1,14 +1,25 @@
 # Brave Search Connector Configuration
 
-name: brave_search
-platform: brave
 enabled: false
-max_results: 5  # Default number of results
+max_results: 5 # Default number of results
 
-credentials:
-  # This is a vault key - actual secret stored in vault
-  api_key: "BRAVE_API_KEY"
+# DO NOT EDIT BELOW THIS LINE
+# -----------------------------
+platform: brave
+name: Brave
+description: >
+  Brave is a search engine that helps you find information faster.
+  It's a great way to find answers to your questions.
 
-# Get your Brave Search API key from: https://brave.com/search/api/
-# Store it in your vault (e.g., .env file):
-# BRAVE_API_KEY=your_actual_api_key_here
+instructions: >
+  To get started, you'll need to get an API key from Brave.
+  1. Go to https://brave.com/search/api/
+  2. Sign up for a free account
+  3. Go to the "API Keys" section
+  4. Copy the API key
+  5. Store it in your vault (e.g., .env file)
+
+vault_paths:
+  api_key:
+    path: brave/api_key
+    prompt: Brave API key

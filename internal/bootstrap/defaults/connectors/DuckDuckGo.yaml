@@ -3,7 +3,8 @@
 name: duckduckgo_search
 platform: duckduckgo
 enabled: true
-max_results: 5  # Default number of results
+max_results: 5 # Default number of results
+
 
 # DuckDuckGo doesn't require an API key
 # It uses HTML scraping (free but may be rate-limited)
