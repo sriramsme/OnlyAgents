@@ -228,6 +228,17 @@ Combine tags as needed:
 ```bash
 go install -tags "llm_anthropic channel_telegram vault_hashicorp" ./cmd/onlyagents/
 ```
+## Getting Started
+
+After installing, run the setup wizard:
+
+```bash
+onlyagents setup
+```
+
+This walks through creating your config directory, setting your user profile,
+configuring an LLM provider, choosing a channel, and setting your auth password.
+Safe to re-run — already configured steps can be skipped.
 
 ## Configuration
 
@@ -292,9 +303,36 @@ Each agent specifies its own provider, model, and vault key independently. Full 
 
 ## CLI
 
-```
+```bash
+onlyagents setup                   Interactive setup wizard — run this first
+
 onlyagents server start            Start server (API + web UI + agent kernel)
 onlyagents agent run               Run agent kernel only (headless)
+
+onlyagents agent list              List all configured agents
+onlyagents agent enable <id>       Enable an agent
+onlyagents agent disable <id>      Disable an agent
+onlyagents agent view <id>         View agent config (--raw, --field flags)
+onlyagents agent edit <id>         Edit agent config interactively
+
+onlyagents channel list            List all configured channels
+onlyagents channel setup <name>    Run interactive setup for a channel
+onlyagents channel enable <name>   Enable a channel
+onlyagents channel disable <name>  Disable a channel
+onlyagents channel view <name>     View channel config
+onlyagents channel edit <name>     Edit channel config interactively
+
+onlyagents connector list          List all configured connectors
+onlyagents connector setup <name>  Run interactive setup for a connector
+onlyagents connector enable <name> Enable a connector
+onlyagents connector disable <name> Disable a connector
+onlyagents connector view <name>   View connector config
+onlyagents connector edit <name>   Edit connector config interactively
+
+onlyagents skill list              List all skills
+onlyagents skill enable <name>     Enable a skill
+onlyagents skill disable <name>    Disable a skill
+onlyagents skill view <name>       View skill config
 
 onlyagents auth reset              Generate new password
 onlyagents auth set-password       Change password interactively
@@ -303,12 +341,11 @@ onlyagents auth status             Show auth configuration
 onlyagents models list             List all supported models across providers
 onlyagents models info <model>     Detailed model info and pricing
 onlyagents models compare m1 m2    Side-by-side comparison
-onlyagents models filter           Filter by capability (--tools, --vision, etc.)
+onlyagents models filter           Filter by capability (interactive or --flags)
 
 onlyagents convert <file> -n <n>   Convert raw skill to canonical SKILL.md format
 ```
-
-On first `server start`, credentials are generated and printed once. Reset with `onlyagents auth reset`.
+Auth credentials are configured during onlyagents setup. Reset anytime with onlyagents auth reset.
 
 ## Custom Skills
 

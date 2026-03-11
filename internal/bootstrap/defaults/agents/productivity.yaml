@@ -41,7 +41,7 @@ max_iterations: 10
 max_tool_calls_per_iteration: 10
 
 # Hard ceiling across the full request
-max_cumulative_tool_calls: 100
+max_cumulative_tool_calls: 50
 
 # Tool results are small (structured data, not web pages) — generous limit
 max_tool_result_tokens: 500
