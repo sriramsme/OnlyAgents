@@ -11,28 +11,32 @@ import (
 
 // WorkflowDefinition represents a workflow at submission time (before storage)
 type WorkflowDefinition struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	Tasks       []*WFTaskDefinition `json:"tasks"`
-	CreatedBy   string              `json:"created_by"` // Agent ID
-	Status      string              `json:"status"`
-	Metadata    map[string]string   `json:"metadata,omitempty"`
+	ID              string                `json:"id"`
+	Name            string                `json:"name"`
+	Description     string                `json:"description"`
+	Tasks           []*WFTaskDefinition   `json:"tasks"`
+	CreatedBy       string                `json:"created_by"` // Agent ID
+	Status          string                `json:"status"`
+	Channel         *core.ChannelMetadata `json:"channel,omitempty"` // ← explicit
+	OriginalMessage string                `json:"original_message,omitempty"`
+	Metadata        map[string]string     `json:"metadata,omitempty"`
 }
 
 // WFTaskDefinition represents a task at submission time
 type WFTaskDefinition struct {
-	ID                   string            `json:"id"`
-	Name                 string            `json:"name"`
-	Description          string            `json:"description"`
-	Type                 string            `json:"type"`
-	DependsOn            []string          `json:"depends_on"`
-	RequiredCapabilities []core.Capability `json:"required_capabilities"`
-	Payload              interface{}       `json:"payload"`
-	AssignedAgentID      string            `json:"assigned_agent_id,omitempty"`
-	MaxRetries           int               `json:"max_retries"`
-	Timeout              time.Duration     `json:"timeout,omitempty"`
-	Metadata             map[string]string `json:"metadata,omitempty"`
+	ID                   string                `json:"id"`
+	Name                 string                `json:"name"`
+	Description          string                `json:"description"`
+	Type                 string                `json:"type"`
+	DependsOn            []string              `json:"depends_on"`
+	RequiredCapabilities []core.Capability     `json:"required_capabilities"`
+	Payload              interface{}           `json:"payload"`
+	AssignedAgentID      string                `json:"assigned_agent_id,omitempty"`
+	MaxRetries           int                   `json:"max_retries"`
+	Timeout              time.Duration         `json:"timeout,omitempty"`
+	Channel              *core.ChannelMetadata `json:"channel,omitempty"`
+	OriginalMessage      string                `json:"original_message,omitempty"`
+	Metadata             map[string]string     `json:"metadata,omitempty"`
 }
 
 // WorkflowPayload: Submit workflow for execution
@@ -42,21 +46,25 @@ type WorkflowPayload struct {
 
 // WorkflowResultPayload: Workflow execution completed
 type WorkflowResultPayload struct {
-	WorkflowID string                     `json:"workflow_id"`
-	Status     string                     `json:"status"`  // completed, failed, cancelled
-	Results    map[string]json.RawMessage `json:"results"` // Task ID → result
-	Error      string                     `json:"error,omitempty"`
-	CreatedBy  string                     `json:"created_by"` // Executive agent ID
-	Metadata   map[string]string          `json:"metadata"`
+	WorkflowID      string                     `json:"workflow_id"`
+	Status          string                     `json:"status"`  // completed, failed, cancelled
+	Results         map[string]json.RawMessage `json:"results"` // Task ID → result
+	Error           string                     `json:"error,omitempty"`
+	CreatedBy       string                     `json:"created_by"` // Executive agent ID
+	Channel         *core.ChannelMetadata      `json:"channel"`
+	OriginalMessage string                     `json:"original_message"`
+	Metadata        map[string]string          `json:"metadata"`
 }
 
 // TaskAssignedPayload: Workflow engine assigns task to agent
 type WFTaskAssignedPayload struct {
-	WorkflowID string         `json:"workflow_id"`
-	TaskID     string         `json:"task_id"`
-	TaskName   string         `json:"task_name"`
-	Task       string         `json:"task"` // Task description
-	Context    map[string]any `json:"context,omitempty"`
+	WorkflowID      string                `json:"workflow_id"`
+	TaskID          string                `json:"task_id"`
+	TaskName        string                `json:"task_name"`
+	Task            string                `json:"task"` // Task description
+	Context         map[string]any        `json:"context,omitempty"`
+	Channel         *core.ChannelMetadata `json:"channel,omitempty"`
+	OriginalMessage string                `json:"original_message,omitempty"`
 }
 
 type WFTaskCompletedPayload struct {

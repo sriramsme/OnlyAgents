@@ -76,6 +76,29 @@ func (cm *ConversationManager) SaveAssistantMessage(
 	sessionID, agentID, content, reasoningContent string,
 	toolCalls []tools.ToolCall,
 ) error {
+
+	return cm.saveAssistantMessage(ctx, sessionID, agentID, content,
+		reasoningContent, toolCalls, time.Time{})
+}
+
+func (cm *ConversationManager) SaveAssistantMessageAt(
+	ctx context.Context,
+	sessionID, agentID, content, reasoningContent string,
+	toolCalls []tools.ToolCall,
+	saveAt time.Time,
+) error {
+	return cm.saveAssistantMessage(ctx, sessionID, agentID, content,
+		reasoningContent, toolCalls, saveAt)
+}
+
+// SaveAssistantMessage persists an assistant turn. toolCalls may be nil for
+// a plain text response.
+func (cm *ConversationManager) saveAssistantMessage(
+	ctx context.Context,
+	sessionID, agentID, content, reasoningContent string,
+	toolCalls []tools.ToolCall,
+	saveAt time.Time,
+) error {
 	lock := cm.lockFor(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -87,6 +110,9 @@ func (cm *ConversationManager) SaveAssistantMessage(
 		}
 		tcJSON = string(b)
 	}
+	if saveAt.IsZero() {
+		saveAt = time.Now()
+	}
 	return cm.store.SaveMessage(ctx, &storage.Message{
 		ID:               uuid.NewString(),
 		ConversationID:   sessionID,
@@ -95,7 +121,7 @@ func (cm *ConversationManager) SaveAssistantMessage(
 		Content:          content,
 		ReasoningContent: reasoningContent,
 		ToolCalls:        tcJSON,
-		Timestamp:        storage.DBTime{Time: time.Now()},
+		Timestamp:        storage.DBTime{Time: saveAt},
 	})
 }
 
@@ -193,6 +219,8 @@ func (cm *ConversationManager) GetHistory(
 			out = append(out, msg)
 		}
 	}
+	// Sanitize before returning — defensive against corrupt history
+	out = sanitizeToolCallSequence(out)
 	return out, nil
 }
 
@@ -268,4 +296,54 @@ func truncateToolContent(toolName, content string) string {
 	}
 	return fmt.Sprintf("[%s: full result was %d chars, truncated for context]\n%s...",
 		toolName, len(content), content[:ToolResultHistoryMaxBytes])
+}
+
+// sanitizeToolCallSequence removes malformed tool call sequences from history
+// before sending to the LLM. Specifically:
+//   - tool messages without a preceding assistant+tool_calls message
+//   - assistant messages with tool_calls that have no following tool messages
+//
+// This is a safety net — e agents' turn lock should prevent these from occurring,
+// but history loaded from DB can be corrupt from earlier bugs or crashes.
+func sanitizeToolCallSequence(msgs []llm.Message) []llm.Message {
+	out := make([]llm.Message, 0, len(msgs))
+
+	for i, msg := range msgs {
+		switch msg.Role {
+		case llm.RoleTool:
+			// Only keep if previous message in out is assistant+tool_calls
+			if len(out) == 0 {
+				continue // orphaned tool result — drop
+			}
+			prev := out[len(out)-1]
+			if prev.Role != llm.RoleAssistant || len(prev.ToolCalls) == 0 {
+				continue // tool result without tool_calls — drop
+			}
+			out = append(out, msg)
+
+		case llm.RoleAssistant:
+			if len(msg.ToolCalls) > 0 {
+				// Peek ahead — if no tool messages follow before next user/assistant, drop
+				hasToolResults := false
+				for j := i + 1; j < len(msgs); j++ {
+					if msgs[j].Role == llm.RoleTool {
+						hasToolResults = true
+						break
+					}
+					if msgs[j].Role == llm.RoleUser || msgs[j].Role == llm.RoleAssistant {
+						break // hit next turn before finding tool results
+					}
+				}
+				if !hasToolResults {
+					continue // dangling tool_calls with no results — drop
+				}
+			}
+			out = append(out, msg)
+
+		default:
+			out = append(out, msg)
+		}
+	}
+
+	return out
 }

@@ -3,6 +3,7 @@ package gemini
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -539,10 +540,8 @@ func (c *GeminiClient) toGeminiAssistantContent(msg llm.Message) (*genai.Content
 			return nil, fmt.Errorf("gemini: failed to parse tool call args for %s: %w", tc.Function.Name, err)
 		}
 		// Decode our string ID back into the original []byte ThoughtSignature
-		sigBytes, err := base64.StdEncoding.DecodeString(tc.ID)
-		if err != nil {
-			return nil, fmt.Errorf("gemini: failed to decode tool call ID: %w", err)
-		}
+		sum := sha256.Sum256([]byte(tc.ID))
+		sigBytes := sum[:]
 
 		parts = append(parts, &genai.Part{
 			ThoughtSignature: sigBytes,

@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
@@ -239,6 +240,11 @@ func (a *Agent) processEvents() {
 	}
 }
 
+func (a *Agent) turnLockFor(sessionID string) *sync.Mutex {
+	v, _ := a.executeMu.LoadOrStore(sessionID, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
 // handleEvent is the event handler that processes delegation/workflow results
 func (a *Agent) handleEvent(evt core.Event) {
 	switch evt.Type {
@@ -323,6 +329,22 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 		if sendDirectlyToUser {
 			// Task was delegated to this agent - send result back
 			a.sendOutboundMessage(payload, evt.CorrelationID, response)
+
+			// Inject into executive's history immediately after the ack
+			if payload.Delegation.FromAgentID != "" {
+				attribution := fmt.Sprintf("[%s responded directly to user]\n\n%s", a.name, response)
+				if err := a.cm.SaveAssistantMessageAt(
+					a.ctx,
+					payload.Channel.SessionID,
+					payload.Delegation.FromAgentID, // saves under executive's agent_id
+					attribution,
+					"",
+					nil,
+					payload.Delegation.DelegatedAt,
+				); err != nil {
+					a.logger.Warn("failed to inject response into executive history", "err", err)
+				}
+			}
 		} else {
 			// Task was delegated to this agent - send result back
 			a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response)
@@ -409,6 +431,17 @@ func (a *Agent) execute(
 	payload core.AgentExecutePayload,
 	correlationID string,
 ) (string, error) {
+	if payload.Channel == nil {
+		return "", fmt.Errorf("execute: nil channel in payload (correlation_id: %s)", correlationID)
+	}
+	sessionID := payload.Channel.SessionID
+
+	// Serialize turns for this agent+session — prevents turn 2 reading
+	// history before turn 1 has finished writing all its tool results
+	lock := a.turnLockFor(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
+
 	sessionID, messages, err := a.prepareExecution(ctx, payload, correlationID)
 	if err != nil {
 		return "", err
@@ -458,7 +491,7 @@ func (a *Agent) execute(
 		var processErr error
 		messages, halt, processErr = a.processToolCalls(ctx, sessionID, correlationID, payload, messages, resp)
 		if processErr != nil {
-			return "", err
+			return "", processErr
 		}
 		if halt {
 			return "", nil
@@ -473,6 +506,17 @@ func (a *Agent) executeStream(
 	payload core.AgentExecutePayload,
 	correlationID string,
 ) (string, error) {
+	if payload.Channel == nil {
+		return "", fmt.Errorf("execute: nil channel in payload (correlation_id: %s)", correlationID)
+	}
+	sessionID := payload.Channel.SessionID
+
+	// Serialize turns for this agent+session — prevents turn 2 reading
+	// history before turn 1 has finished writing all its tool results
+	lock := a.turnLockFor(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
+
 	sessionID, messages, err := a.prepareExecution(ctx, payload, correlationID)
 	if err != nil {
 		return "", err
@@ -681,7 +725,7 @@ func (a *Agent) processToolCalls(
 				a.logger.Warn("failed to save tool error result", "err", err)
 			}
 			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, errContent))
-		} else {
+		} else if exec.Control != tools.ExecHalt {
 			resultJSON, err := json.Marshal(exec.Result)
 			if err != nil {
 				return nil, false, fmt.Errorf("marshal tool result: %w", err)
@@ -697,6 +741,7 @@ func (a *Agent) processToolCalls(
 			a.logger.Info("halting execution loop",
 				"tool", tc.Function.Name,
 				"correlation_id", correlationID)
+
 			if exec.DirectMessage != "" {
 				if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, exec.DirectMessage, false); err != nil {
 					a.logger.Warn("failed to save tool result (direct message)", "err", err)

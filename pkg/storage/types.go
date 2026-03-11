@@ -192,14 +192,16 @@ const (
 )
 
 type Workflow struct {
-	ID          string         `db:"id"`
-	Name        string         `db:"name"`
-	Description string         `db:"description"`
-	CreatedBy   string         `db:"created_by"`
-	Status      WorkflowStatus `db:"status"`
-	Metadata    string         `db:"metadata"` // JSON
-	CreatedAt   DBTime         `db:"created_at"`
-	UpdatedAt   DBTime         `db:"updated_at"`
+	ID              string         `db:"id"`
+	Name            string         `db:"name"`
+	Description     string         `db:"description"`
+	CreatedBy       string         `db:"created_by"`
+	Status          WorkflowStatus `db:"status"`
+	ChannelJSON     string         `db:"channel_json"`
+	OriginalMessage string         `db:"original_message"`
+	Metadata        string         `db:"metadata"` // JSON
+	CreatedAt       DBTime         `db:"created_at"`
+	UpdatedAt       DBTime         `db:"updated_at"`
 }
 
 type WFTaskType string
@@ -230,6 +232,7 @@ type WFTask struct {
 	Name                 string         `db:"name"`
 	Description          string         `db:"description"`
 	Type                 WFTaskType     `db:"type"`
+	ChannelJSON          string         `db:"channel_json"`
 	DependsOn            string         `db:"depends_on"`            // JSON array
 	RequiredCapabilities string         `db:"required_capabilities"` // JSON array
 	Payload              string         `db:"payload"`               // JSON

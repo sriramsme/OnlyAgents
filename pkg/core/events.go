@@ -1,5 +1,7 @@
 package core
 
+import "time"
+
 // EventType identifies the type of event
 type EventType string
 
@@ -134,7 +136,7 @@ type OutboundMessagePayload struct {
 type AgentExecutePayload struct {
 	Message     string              `json:"user_message"`
 	MessageType MessageType         `json:"message_type"`
-	Channel     *ChannelMetadata    `json:"channel,omitempty"`
+	Channel     *ChannelMetadata    `json:"channel"`
 	Delegation  *DelegationMetadata `json:"delegation,omitempty"`
 	Workflow    *WorkflowMetadata   `json:"workflow,omitempty"`
 	Agent       *AgentMetadata      `json:"agent,omitempty"`
@@ -155,8 +157,10 @@ type ChannelMetadata struct {
 }
 
 type DelegationMetadata struct {
-	DelegationID       string `json:"delegation_id"`
-	SendDirectlyToUser bool   `json:"send_directly_to_user"`
+	DelegationID       string    `json:"delegation_id"`
+	SendDirectlyToUser bool      `json:"send_directly_to_user"`
+	FromAgentID        string    `json:"from_agent_id"`
+	DelegatedAt        time.Time `json:"delegated_at"`
 }
 
 type WorkflowMetadata struct {

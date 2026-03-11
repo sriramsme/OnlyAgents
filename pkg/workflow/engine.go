@@ -67,16 +67,26 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 	if err != nil {
 		return fmt.Errorf("marshal workflow metadata: %w", err)
 	}
+	channelJSON := ""
+	if workflow.Channel != nil {
+		b, err := json.Marshal(workflow.Channel)
+		if err != nil {
+			return fmt.Errorf("marshal channel: %w", err)
+		}
+		channelJSON = string(b)
+	}
 
 	w := &storage.Workflow{
-		ID:          workflow.ID,
-		Name:        workflow.Name,
-		Description: workflow.Description,
-		CreatedBy:   workflow.CreatedBy,
-		Status:      storage.WorkflowStatusRunning,
-		Metadata:    string(metadataJSON),
-		CreatedAt:   storage.DBTime{Time: time.Now()},
-		UpdatedAt:   storage.DBTime{Time: time.Now()},
+		ID:              workflow.ID,
+		Name:            workflow.Name,
+		Description:     workflow.Description,
+		CreatedBy:       workflow.CreatedBy,
+		Status:          storage.WorkflowStatusRunning,
+		ChannelJSON:     channelJSON,
+		OriginalMessage: workflow.OriginalMessage,
+		Metadata:        string(metadataJSON),
+		CreatedAt:       storage.DBTime{Time: time.Now()},
+		UpdatedAt:       storage.DBTime{Time: time.Now()},
 	}
 
 	if err := e.store.CreateWorkflow(ctx, w); err != nil {
@@ -96,6 +106,7 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 		}
 
 		taskDef.AssignedAgentID = agentInfo.ID
+		taskDef.Channel = workflow.Channel
 		task := e.taskDefToStorage(taskDef, workflow.ID)
 
 		if err := e.store.CreateWFTask(ctx, task); err != nil {
@@ -105,7 +116,8 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 		e.logger.Debug("task created and assigned",
 			"task_id", task.ID,
 			"agent_id", agentInfo.ID,
-			"agent_name", agentInfo.Name)
+			"agent_name", agentInfo.Name,
+			"channel", taskDef.Channel)
 	}
 
 	// Fire TaskAssigned events for root tasks (no dependencies)
@@ -190,7 +202,13 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload WFTaskComplete
 		if satisfied {
 			e.logger.Debug("dependencies satisfied, firing task",
 				"dependent_task_id", dep.ID)
-
+			var channel *core.ChannelMetadata
+			if dep.ChannelJSON != "" {
+				err := json.Unmarshal([]byte(dep.ChannelJSON), &channel)
+				if err != nil {
+					e.logger.Warn("failed to unmarshal channel", "error", err)
+				}
+			}
 			// Fire TaskAssigned for this dependent
 			e.bus <- core.Event{
 				Type:          core.TaskAssigned,
@@ -201,6 +219,7 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload WFTaskComplete
 					TaskID:     dep.ID,
 					TaskName:   dep.Name,
 					Task:       dep.Description,
+					Channel:    channel,
 				},
 			}
 		}
@@ -263,6 +282,15 @@ func (e *Engine) checkWorkflowCompletion(ctx context.Context, workflowID string)
 		metadata = make(map[string]string)
 	}
 
+	// Extract channel metadata
+	var channel *core.ChannelMetadata
+	if workflow.ChannelJSON != "" {
+		err := json.Unmarshal([]byte(workflow.ChannelJSON), &channel)
+		if err != nil {
+			e.logger.Warn("failed to unmarshal channel", "error", err)
+		}
+	}
+
 	status := "completed"
 	if anyFailed {
 		status = "failed"
@@ -276,11 +304,13 @@ func (e *Engine) checkWorkflowCompletion(ctx context.Context, workflowID string)
 	e.bus <- core.Event{
 		Type: core.WorkflowCompleted,
 		Payload: WorkflowResultPayload{
-			WorkflowID: workflowID,
-			CreatedBy:  workflow.CreatedBy,
-			Status:     status,
-			Results:    results,
-			Metadata:   metadata,
+			WorkflowID:      workflowID,
+			CreatedBy:       workflow.CreatedBy,
+			Status:          status,
+			Results:         results,
+			Channel:         channel,
+			OriginalMessage: workflow.OriginalMessage,
+			Metadata:        metadata,
 		},
 	}
 
@@ -310,10 +340,12 @@ func (e *Engine) fireTaskAssigned(taskDef *WFTaskDefinition, workflowID string) 
 		CorrelationID: taskDef.ID,
 		AgentID:       taskDef.AssignedAgentID,
 		Payload: WFTaskAssignedPayload{
-			WorkflowID: workflowID,
-			TaskID:     taskDef.ID,
-			TaskName:   taskDef.Name,
-			Task:       taskDef.Description,
+			WorkflowID:      workflowID,
+			TaskID:          taskDef.ID,
+			TaskName:        taskDef.Name,
+			Task:            taskDef.Description,
+			Channel:         taskDef.Channel,
+			OriginalMessage: taskDef.OriginalMessage,
 		},
 	}
 }
@@ -353,6 +385,12 @@ func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *sto
 		maxRetries = 3 // default
 	}
 
+	channelJSON, err := json.Marshal(def.Channel)
+	if err != nil {
+		e.logger.Warn("failed to marshal channel", "error", err)
+		channelJSON = []byte("{}")
+	}
+
 	return &storage.WFTask{
 		ID:                   def.ID,
 		WorkflowID:           workflowID,
@@ -360,6 +398,7 @@ func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *sto
 		Description:          def.Description,
 		Type:                 storage.WFTaskType(def.Type),
 		DependsOn:            string(depsJSON),
+		ChannelJSON:          string(channelJSON),
 		RequiredCapabilities: string(capsJSON),
 		Payload:              string(payloadJSON),
 		Status:               storage.WFTaskStatusPending,

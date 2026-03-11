@@ -4,6 +4,8 @@ CREATE TABLE workflows (
     description TEXT,
     created_by TEXT NOT NULL,
     status TEXT NOT NULL,
+    channel_json TEXT NOT NULL,
+    original_message TEXT NOT NULL,
     metadata TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -15,6 +17,7 @@ CREATE TABLE wf_tasks (
     name TEXT NOT NULL,
     description TEXT,
     type TEXT NOT NULL,
+    channel_json TEXT NOT NULL,
     depends_on TEXT,
     required_capabilities TEXT,
     payload TEXT,

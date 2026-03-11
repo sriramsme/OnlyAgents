@@ -11,10 +11,10 @@ import (
 // CreateWorkflow creates a new workflow
 func (d *DB) CreateWorkflow(ctx context.Context, workflow *storage.Workflow) error {
 	_, err := d.db.ExecContext(ctx, `
-        INSERT INTO workflows (id, name, description, created_by, status, metadata, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO workflows (id, name, description, created_by, status, channel_json, original_message, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, workflow.ID, workflow.Name, workflow.Description, workflow.CreatedBy,
-		workflow.Status, workflow.Metadata, workflow.CreatedAt, workflow.UpdatedAt)
+		workflow.Status, workflow.ChannelJSON, workflow.OriginalMessage, workflow.Metadata, workflow.CreatedAt, workflow.UpdatedAt)
 
 	return wrap(err, "CreateWorkflow")
 }
@@ -23,8 +23,7 @@ func (d *DB) CreateWorkflow(ctx context.Context, workflow *storage.Workflow) err
 func (d *DB) GetWorkflow(ctx context.Context, id string) (*storage.Workflow, error) {
 	var w storage.Workflow
 	err := d.db.GetContext(ctx, &w, `
-        SELECT id, name, description, created_by, status, metadata, created_at, updated_at
-        FROM workflows WHERE id = ?
+        SELECT * FROM workflows WHERE id = ?
     `, id)
 
 	if err != nil {
@@ -46,12 +45,12 @@ func (d *DB) UpdateWorkflowStatus(ctx context.Context, id string, status storage
 func (d *DB) CreateWFTask(ctx context.Context, task *storage.WFTask) error {
 	_, err := d.db.ExecContext(ctx, `
         INSERT INTO wf_tasks (
-            id, workflow_id, name, description, type, depends_on, required_capabilities,
+            id, workflow_id, name, description, type, depends_on, channel_json, required_capabilities,
             payload, status, assigned_agent_id, created_at, retry_count, max_retries,
             timeout_seconds, metadata, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
     `, task.ID, task.WorkflowID, task.Name, task.Description, task.Type,
-		task.DependsOn, task.RequiredCapabilities, task.Payload, task.Status,
+		task.DependsOn, task.ChannelJSON, task.RequiredCapabilities, task.Payload, task.Status,
 		task.AssignedAgentID, task.CreatedAt, task.RetryCount, task.MaxRetries,
 		task.TimeoutSeconds, task.Metadata, task.UpdatedAt)
 
@@ -62,10 +61,7 @@ func (d *DB) CreateWFTask(ctx context.Context, task *storage.WFTask) error {
 func (d *DB) GetWFTask(ctx context.Context, id string) (*storage.WFTask, error) {
 	var t storage.WFTask
 	err := d.db.GetContext(ctx, &t, `
-        SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
-               payload, status, result, error, assigned_agent_id, created_at, started_at,
-               completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
-        FROM wf_tasks WHERE id = ?
+        SELECT * FROM wf_tasks WHERE id = ?
     `, id)
 
 	if err != nil {
@@ -111,10 +107,7 @@ func (d *DB) UpdateWFTaskResult(ctx context.Context, id string, result json.RawM
 func (d *DB) GetWFTasks(ctx context.Context, workflowID string) ([]*storage.WFTask, error) {
 	var tasks []*storage.WFTask
 	err := d.db.SelectContext(ctx, &tasks, `
-        SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
-               payload, status, result, error, assigned_agent_id, created_at, started_at,
-               completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
-        FROM wf_tasks
+        SELECT * FROM wf_tasks
         WHERE workflow_id = ?
         ORDER BY created_at ASC
     `, workflowID)
@@ -129,10 +122,7 @@ func (d *DB) GetWFTasks(ctx context.Context, workflowID string) ([]*storage.WFTa
 func (d *DB) GetReadyWFTasks(ctx context.Context, limit int) ([]*storage.WFTask, error) {
 	var tasks []*storage.WFTask
 	err := d.db.SelectContext(ctx, &tasks, `
-        SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
-               payload, status, result, error, assigned_agent_id, created_at, started_at,
-               completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
-        FROM wf_tasks
+        SELECT * FROM wf_tasks
         WHERE status = ?
         ORDER BY created_at ASC
         LIMIT ?
@@ -148,10 +138,7 @@ func (d *DB) GetReadyWFTasks(ctx context.Context, limit int) ([]*storage.WFTask,
 func (d *DB) GetDependentWFTasks(ctx context.Context, taskID string) ([]*storage.WFTask, error) {
 	var tasks []*storage.WFTask
 	err := d.db.SelectContext(ctx, &tasks, `
-        SELECT id, workflow_id, name, description, type, depends_on, required_capabilities,
-               payload, status, result, error, assigned_agent_id, created_at, started_at,
-               completed_at, retry_count, max_retries, timeout_seconds, metadata, updated_at
-        FROM wf_tasks
+        SELECT * FROM wf_tasks
         WHERE depends_on LIKE ?
     `, "%"+taskID+"%")
 

@@ -131,7 +131,7 @@ func (a *Agent) submitWorkflow(ctx context.Context, correlationID string, wf *wo
 
 	select {
 	case a.outbox <- event:
-		a.logger.Debug("workflow submitted", "workflow_id", wf.ID)
+		a.logger.Debug("workflow submitted", "workflow_id", wf.ID, "channel", wf.Channel)
 		return nil
 	case <-ctx.Done():
 		return fmt.Errorf("request cancelled")
@@ -195,25 +195,19 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 
 	// Store original context in metadata
 	metadata := map[string]string{
-		"original_message": originalMessage,
-		"correlation_id":   correlationID,
-	}
-	if channel != nil {
-		if channelJSON, err := json.Marshal(channel); err == nil {
-			metadata["channel"] = string(channelJSON)
-		} else {
-			a.logger.Warn("failed to marshal channel metadata", "err", err)
-		}
+		"correlation_id": correlationID,
 	}
 
 	return &workflow.WorkflowDefinition{
-		ID:          uuid.NewString(),
-		Name:        input.Name,
-		Description: fmt.Sprintf("Workflow created by executive for: %s", input.Name),
-		Tasks:       tasks,
-		CreatedBy:   a.id,
-		Status:      "pending",
-		Metadata:    metadata,
+		ID:              uuid.NewString(),
+		Name:            input.Name,
+		Description:     fmt.Sprintf("Workflow created by executive for: %s", input.Name),
+		Tasks:           tasks,
+		CreatedBy:       a.id,
+		Status:          "pending",
+		Channel:         channel,
+		OriginalMessage: originalMessage,
+		Metadata:        metadata,
 	}, nil
 }
 

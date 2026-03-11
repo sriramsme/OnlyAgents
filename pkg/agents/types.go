@@ -58,6 +58,8 @@ type Agent struct {
 	uiBus       chan<- core.UIEvent
 	activeSince time.Time // when the current task started; used for idle duration
 
+	executeMu sync.Map // map[sessionID]*sync.Mutex — serializes turns per session
+
 	// Runtime state — owned by the agent, read by KernelReader.Agents()
 	stateMu     sync.RWMutex
 	state       core.AgentState

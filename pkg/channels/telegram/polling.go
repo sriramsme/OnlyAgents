@@ -10,6 +10,13 @@ import (
 
 // startPolling starts long polling mode
 func (c *TelegramChannel) startPolling(ctx context.Context) error {
+	// Ensure webhook is disabled
+	err := c.bot.DeleteWebhook(ctx, &telego.DeleteWebhookParams{
+		DropPendingUpdates: true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to delete webhook before polling: %w", err)
+	}
 	timeout := 30
 	if c.config.Polling != nil && c.config.Polling.Timeout > 0 {
 		timeout = c.config.Polling.Timeout

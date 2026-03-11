@@ -161,6 +161,8 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 			Delegation: &core.DelegationMetadata{
 				DelegationID:       payload.DelegationID,
 				SendDirectlyToUser: payload.SendDirectlyToUser,
+				FromAgentID:        evt.AgentID,
+				DelegatedAt:        time.Now(),
 			},
 		},
 		ReplyTo: evt.ReplyTo, // Result goes back to delegating agent
@@ -253,18 +255,6 @@ func (k *Kernel) handleWorkflowCompleted(evt core.Event) {
 		return
 	}
 
-	// Extract original context from metadata
-	originalMessage := payload.Metadata["original_message"]
-
-	// Extract channel metadata
-	var channel *core.ChannelMetadata
-	if channelJSON, ok := payload.Metadata["channel"]; ok {
-		var ch core.ChannelMetadata
-		if err := json.Unmarshal([]byte(channelJSON), &ch); err == nil {
-			channel = &ch
-		}
-	}
-
 	// Format workflow results into a prompt for executive to synthesize
 	var message string
 	if payload.Error != "" {
@@ -278,7 +268,7 @@ func (k *Kernel) handleWorkflowCompleted(evt core.Event) {
 			resultsJSON = []byte("failed to marshal results")
 		}
 		message = fmt.Sprintf("The user asked: \"%s\"\n\nYou created a workflow to handle this request. The workflow has completed successfully with the following task results:\n\n%s\n\nPlease synthesize these results into a coherent, natural response for the user that answers their original question.",
-			originalMessage, string(resultsJSON))
+			payload.OriginalMessage, string(resultsJSON))
 	}
 
 	// Trigger executive to synthesize results
@@ -289,7 +279,7 @@ func (k *Kernel) handleWorkflowCompleted(evt core.Event) {
 		Payload: core.AgentExecutePayload{
 			Message:     message,
 			MessageType: core.MessageTypeWorkflowCompleted,
-			Channel:     channel,
+			Channel:     payload.Channel,
 		},
 	}
 
@@ -353,7 +343,8 @@ func (k *Kernel) handleTaskAssigned(evt core.Event) {
 	k.logger.Debug("assigning task to agent",
 		"agent_id", agent.ID(),
 		"task_id", payload.TaskID,
-		"workflow_id", payload.WorkflowID)
+		"workflow_id", payload.WorkflowID,
+		"channel", payload.Channel)
 
 	// Create agent execute event
 	agentEvent := core.Event{
@@ -368,6 +359,7 @@ func (k *Kernel) handleTaskAssigned(evt core.Event) {
 				TaskID:     payload.TaskID,
 				TaskName:   payload.TaskName,
 			},
+			Channel: payload.Channel,
 		},
 		ReplyTo: evt.ReplyTo, // Result goes back to workflow engine
 	}
