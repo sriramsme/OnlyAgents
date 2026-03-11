@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -26,16 +27,10 @@ func init() {
 
 // Config holds Perplexity-specific configuration
 type Config struct {
-	Platform   string `yaml:"platform"` // "perplexity"
-	Enabled    bool   `yaml:"enabled"`
-	MaxResults int    `yaml:"max_results"` // Default max results
+	config.ConnectorConfig
+	MaxResults int `mapstructure:"max_results"` // Default max results
 
-	Credentials Credentials `yaml:"credentials"`
-	Model       string      `yaml:"model"` // Default: "sonar"
-}
-
-type Credentials struct {
-	APIKey string `yaml:"api_key"` // Vault key
+	Model string `mapstructure:"model"` // Default: "sonar"
 }
 
 // PerplexityConnector implements WebSearchConnector interface
@@ -50,45 +45,43 @@ type PerplexityConnector struct {
 // NewConnector creates a new Perplexity connector
 func NewConnector(
 	ctx context.Context,
-	rawConfig map[string]interface{},
+	cfg config.ConnectorConfig,
 	v vault.Vault,
 	bus chan<- core.Event,
 ) (connectors.Connector, error) {
-	var cfg Config
+	ppCfg := &Config{
+		ConnectorConfig: cfg,
+	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &cfg,
+		Result:           &ppCfg,
 		WeaklyTypedInput: true,
-		TagName:          "yaml",
+		TagName:          "mapstructure",
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create decoder: %w", err)
 	}
-
-	if err := decoder.Decode(rawConfig); err != nil {
-		return nil, fmt.Errorf("decode perplexity config: %w", err)
+	if err := decoder.Decode(cfg.RawConfig); err != nil {
+		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
 
-	// Extract name from rawConfig if present
-	name := "perplexity"
-	if n, ok := rawConfig["name"].(string); ok {
-		name = n
+	if ppCfg.MaxResults == 0 {
+		ppCfg.MaxResults = 5
 	}
 
-	if cfg.MaxResults == 0 {
-		cfg.MaxResults = 5
-	}
-
-	if cfg.Model == "" {
-		cfg.Model = "sonar"
+	if ppCfg.Model == "" {
+		ppCfg.Model = "sonar"
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
 
 	return &PerplexityConnector{
-		config: &cfg,
+		config: ppCfg,
 		vault:  v,
-		name:   name,
 		ctx:    connCtx,
 		cancel: cancel,
 	}, nil
@@ -103,7 +96,7 @@ func (p *PerplexityConnector) Type() string { return "perplexity" }
 
 func (p *PerplexityConnector) Connect() error {
 	// Validate API key exists in vault
-	_, err := p.vault.GetSecret(p.ctx, p.config.Credentials.APIKey)
+	_, err := p.vault.GetSecret(p.ctx, p.config.VaultPaths["api_key"].Path)
 	if err != nil {
 		return fmt.Errorf("perplexity API key not found in vault: %w", err)
 	}
@@ -135,7 +128,7 @@ func (p *PerplexityConnector) HealthCheck() error {
 // ====================
 
 func (p *PerplexityConnector) Search(ctx context.Context, req *connectors.SearchRequest) (*connectors.SearchResponse, error) {
-	apiKey, err := p.vault.GetSecret(ctx, p.config.Credentials.APIKey)
+	apiKey, err := p.vault.GetSecret(ctx, p.config.VaultPaths["api_key"].Path)
 	if err != nil {
 		return nil, fmt.Errorf("get API key: %w", err)
 	}

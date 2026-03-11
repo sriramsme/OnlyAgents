@@ -38,7 +38,7 @@ func NewRegistry(
 			return nil, fmt.Errorf("channel %s: %w", name, err)
 		}
 
-		channel, err := factory(ctx, cfg.RawConfig, vault, bus)
+		channel, err := factory(ctx, *cfg, vault, bus)
 		if err != nil {
 			return nil, fmt.Errorf("channel %s: create: %w", name, err)
 		}

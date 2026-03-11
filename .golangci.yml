@@ -20,6 +20,9 @@ linters:
       - web/
       - ui/dist/
       - vendor/
+    rules:
+      - linters: [errcheck]
+        text: "Error return value of `fmt.Fp"
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

@@ -57,5 +57,5 @@ release:
     owner: sriramsme
     name: OnlyAgents
   draft: false
-  prerelease: auto  # tags like v0.1.0-beta become prereleases automatically
+  prerelease: auto # tags like v0.1.0-beta become prereleases automatically
   name_template: "v{{.Version}}"

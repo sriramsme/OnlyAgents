@@ -3,5 +3,5 @@
 package bootstrap
 
 import (
-	_ "github.com/sriramsme/OnlyAgents/pkg/channels/onlyagents"
+	_ "github.com/sriramsme/OnlyAgents/pkg/channels/oaChannel"
 )

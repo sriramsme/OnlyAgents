@@ -5,64 +5,53 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 )
 
-// ChannelConfigFile represents a loaded channel config file
-type ChannelConfigFile struct {
-	Name      string                 // derived from filename
-	Priority  int                    `mapstructure:"priority"`
-	Platform  string                 `mapstructure:"platform"`
-	Enabled   bool                   `mapstructure:"enabled"`
-	RawConfig map[string]interface{} // the entire config for platform-specific unmarshaling
-}
-
 // LoadConnectorConfig loads a single connector config file
-func loadChannelConfig(configPath string) (*ChannelConfigFile, error) {
-
+func loadChannelConfig(configPath string) (*ChannelConfig, error) {
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
 	}
-
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("channel config not found: %s", configPath)
 	}
 
 	v := viper.New()
 	v.SetConfigFile(configPath)
-
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg ChannelConfigFile
-	if err := v.Unmarshal(&cfg); err != nil {
+	var cfg ChannelConfig
+	if err := v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
+		dc.TagName = "mapstructure"
+		dc.WeaklyTypedInput = true
+		dc.DecodeHook = mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+			mapstructure.TextUnmarshallerHookFunc(),
+		)
+	}); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
-
-	// Store raw config for platform-specific unmarshaling
-	cfg.RawConfig = v.AllSettings()
-
-	// Extract name from filename (without extension)
-	cfg.Name = filepath.Base(configPath)
-	cfg.Name = cfg.Name[:len(cfg.Name)-len(filepath.Ext(cfg.Name))]
 
 	if cfg.Platform == "" {
 		return nil, fmt.Errorf("platform field is required")
 	}
-
 	return &cfg, nil
 }
 
 // LoadAllConnectorConfigs loads all connector configs from a directory
-func LoadAllChannelConfigs() (map[string]*ChannelConfigFile, error) {
+func LoadAllChannelConfigs() (map[string]*ChannelConfig, error) {
 	dir := ChannelsDir()
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read connectors dir: %w", err)
 	}
 
-	configs := make(map[string]*ChannelConfigFile)
+	configs := make(map[string]*ChannelConfig)
 
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
@@ -74,7 +63,7 @@ func LoadAllChannelConfigs() (map[string]*ChannelConfigFile, error) {
 			return nil, fmt.Errorf("load %s: %w", f.Name(), err)
 		}
 
-		configs[cfg.Name] = cfg
+		configs[cfg.Platform] = cfg
 	}
 
 	return configs, nil

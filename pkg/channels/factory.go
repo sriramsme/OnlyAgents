@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
@@ -12,7 +13,7 @@ import (
 // Factory creates a connector from raw config
 type Factory func(
 	ctx context.Context,
-	rawConfig map[string]interface{},
+	config config.ChannelConfig,
 	vault vault.Vault,
 	bus chan<- core.Event,
 ) (Channel, error)

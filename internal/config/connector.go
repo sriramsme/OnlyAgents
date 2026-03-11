@@ -8,16 +8,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-// ConnectorConfigFile represents a loaded connector config file
-type ConnectorConfigFile struct {
-	Name      string                 // derived from filename
-	Platform  string                 `mapstructure:"platform"`
-	Enabled   bool                   `mapstructure:"enabled"`
-	RawConfig map[string]interface{} // the entire config for platform-specific unmarshaling
-}
-
 // LoadConnectorConfig loads a single connector config file
-func loadConnectorConfig(configPath string) (*ConnectorConfigFile, error) {
+func loadConnectorConfig(configPath string) (*ConnectorConfig, error) {
 
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
@@ -34,7 +26,7 @@ func loadConnectorConfig(configPath string) (*ConnectorConfigFile, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg ConnectorConfigFile
+	var cfg ConnectorConfig
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
@@ -54,14 +46,14 @@ func loadConnectorConfig(configPath string) (*ConnectorConfigFile, error) {
 }
 
 // LoadAllConnectorConfigs loads all connector configs from a directory
-func LoadAllConnectorConfigs() (map[string]*ConnectorConfigFile, error) {
+func LoadAllConnectorConfigs() (map[string]*ConnectorConfig, error) {
 	dir := ConnectorsDir()
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read connectors dir: %w", err)
 	}
 
-	configs := make(map[string]*ConnectorConfigFile)
+	configs := make(map[string]*ConnectorConfig)
 
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {

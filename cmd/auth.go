@@ -5,8 +5,10 @@ import (
 	"os"
 	"syscall"
 
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/sriramsme/OnlyAgents/internal/auth"
+	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
 	"golang.org/x/term"
 )
 
@@ -20,24 +22,50 @@ var authCmd = &cobra.Command{
 // Use when you've forgotten your password.
 var authResetCmd = &cobra.Command{
 	Use:   "reset",
-	Short: "Reset password — generates a new random password",
-	Long: `Generates a new random password, saves the bcrypt hash to auth.yaml,
-and invalidates all active sessions. Use when you've forgotten your password.
-
-The new password is printed once. Save it somewhere safe.`,
+	Short: "Reset OnlyAgents password",
+	Long: `Reset your OnlyAgents password.
+This invalidates all active sessions. Enter a new password manually.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dir := dataDir()
-		newPass, err := auth.ResetPassword(dir)
+		var newPass, confirm string
+
+		// Prompt for new password
+		if err := cmdutil.RunForm(
+			huh.NewGroup(
+				cmdutil.SecretInput("New password (min 8 chars)", &newPass).Validate(func(s string) error {
+					if len(s) < 8 {
+						return fmt.Errorf("must be at least 8 characters")
+					}
+					return nil
+				}),
+				cmdutil.SecretInput("Confirm password", &confirm).Validate(func(s string) error {
+					if s != newPass {
+						return fmt.Errorf("passwords do not match")
+					}
+					return nil
+				}),
+			),
+		); err != nil {
+			return err
+		}
+
+		// Fetch the single username from auth.yaml
+		username, err := auth.GetUsername(dir)
 		if err != nil {
+			return fmt.Errorf("reading username: %w", err)
+		}
+
+		// Force password change — current password not required
+		if err := auth.ChangePassword(dir, username, args[0], newPass); err != nil {
 			return fmt.Errorf("resetting password: %w", err)
 		}
+
 		fmt.Println()
 		fmt.Println("Password reset successfully.")
-		fmt.Printf("New password: %s\n", newPass)
-		fmt.Println()
 		fmt.Println("All existing sessions have been invalidated.")
 		fmt.Println("Log in again at your OnlyAgents server.")
 		fmt.Println()
+
 		return nil
 	},
 }

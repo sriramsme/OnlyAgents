@@ -20,9 +20,9 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/google/uuid"
-	"github.com/mitchellh/mapstructure"
-
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -60,23 +60,30 @@ type OAChannel struct {
 // NewChannel satisfies the channels.ChannelConstructor signature.
 func NewChannel(
 	ctx context.Context,
-	rawConfig map[string]interface{},
+	cfg config.ChannelConfig,
 	v vault.Vault,
 	eventBus chan<- core.Event,
 ) (channels.Channel, error) {
-	var cfg Config
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &cfg,
-		WeaklyTypedInput: true,
-		TagName:          "yaml",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("oaChannel: create decoder: %w", err)
-	}
-	if err := decoder.Decode(rawConfig); err != nil {
-		return nil, fmt.Errorf("oaChannel: decode config: %w", err)
+	oaCfg := &Config{
+		ChannelConfig: cfg,
 	}
 
+	// Decode RawConfig on top for telegram-specific fields only
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		Result:           oaCfg,
+		WeaklyTypedInput: true,
+		TagName:          "mapstructure",
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create decoder: %w", err)
+	}
+	if err := decoder.Decode(cfg.RawConfig); err != nil {
+		return nil, fmt.Errorf("decode oaChannel config: %w", err)
+	}
 	chanCtx, cancel := context.WithCancel(ctx)
 	return &OAChannel{
 		eventBus: eventBus,

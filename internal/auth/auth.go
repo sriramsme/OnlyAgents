@@ -5,24 +5,24 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
 const (
 	SessionCookieName = "onlyagents_session"
-	sessionTokenBytes = 32 // 256 bits of entropy
+	sessionTokenBytes = 32 // 256 bits entropy
+	maxSessions       = 1000
 )
 
-// RateLimiter is satisfied by golang.org/x/time/rate.Limiter wrapped per-IP.
-// Defined here as an interface so the handler layer can swap implementations.
+// LoginAttemptLimiter is implemented by an IP-based rate limiter.
 type LoginAttemptLimiter interface {
-	// Allow returns true if the attempt should be permitted.
 	Allow(ip string) bool
 }
 
-// Auth is the central auth coordinator. Holds the session store and
-// exposes the operations needed by HTTP handlers and middleware.
+// Auth coordinates login, sessions, and auth validation.
 type Auth struct {
 	dataDir  string
 	sessions *SessionStore
@@ -30,7 +30,7 @@ type Auth struct {
 	done     chan struct{}
 }
 
-// New creates an Auth instance. Call Start() to begin the session cleanup goroutine.
+// New creates a new Auth instance.
 func New(dataDir string, limiter LoginAttemptLimiter) *Auth {
 	return &Auth{
 		dataDir:  dataDir,
@@ -40,17 +40,19 @@ func New(dataDir string, limiter LoginAttemptLimiter) *Auth {
 	}
 }
 
-// Start begins background session cleanup. Call Stop() on shutdown.
+// Start begins background session cleanup.
 func (a *Auth) Start() {
 	a.sessions.start(a.done)
 }
 
-// Stop shuts down background goroutines.
+// Stop stops background workers.
 func (a *Auth) Stop() {
 	close(a.done)
 }
 
-// ─── Login ────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────
+// Login
+// ─────────────────────────────────────────
 
 type LoginRequest struct {
 	Username string `json:"username"`
@@ -58,11 +60,10 @@ type LoginRequest struct {
 }
 
 type LoginResult struct {
-	Token string // set as cookie by the handler
+	Token string
 }
 
 // Login verifies credentials and creates a session.
-// Returns ErrRateLimited, ErrBadCredentials, or nil.
 func (a *Auth) Login(r *http.Request, req LoginRequest) (LoginResult, error) {
 	ip := clientIP(r)
 
@@ -70,46 +71,43 @@ func (a *Auth) Login(r *http.Request, req LoginRequest) (LoginResult, error) {
 		return LoginResult{}, ErrRateLimited
 	}
 
-	// Username check — constant time to prevent user enumeration
-	expectedUser, err := GetUsername(a.dataDir)
-	if err != nil {
-		return LoginResult{}, fmt.Errorf("reading credentials: %w", err)
-	}
-	if subtle.ConstantTimeCompare([]byte(req.Username), []byte(expectedUser)) == 0 {
+	if err := VerifyPassword(a.dataDir, req.Username, req.Password); err != nil {
 		return LoginResult{}, ErrBadCredentials
 	}
 
-	// Password check — bcrypt is timing-safe by design
-	if err := VerifyPassword(a.dataDir, req.Password); err != nil {
-		return LoginResult{}, ErrBadCredentials
+	// Prevent session store exhaustion
+	if a.sessions.count() >= maxSessions {
+		return LoginResult{}, fmt.Errorf("too many active sessions")
 	}
 
 	token, err := generateSessionToken()
 	if err != nil {
-		return LoginResult{}, fmt.Errorf("generating session token: %w", err)
+		return LoginResult{}, fmt.Errorf("generate session: %w", err)
 	}
 
 	a.sessions.create(token)
+
 	return LoginResult{Token: token}, nil
 }
 
-// ─── Session validation ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────
+// Session validation
+// ─────────────────────────────────────────
 
-// ValidateRequest checks the session cookie on an incoming request.
-// Returns true if the session is valid.
-// Also accepts API key via header/query for non-browser clients (headless API).
+// ValidateRequest checks session cookie or API key.
 func (a *Auth) ValidateRequest(r *http.Request, apiKeyVault string) bool {
-	// Check session cookie first (browser flow)
+	// Session cookie (browser)
 	if cookie, err := r.Cookie(SessionCookieName); err == nil {
 		if a.sessions.validate(cookie.Value) {
 			return true
 		}
 	}
 
-	// Fall back to API key (headless / programmatic clients)
+	// API key fallback
 	if apiKeyVault != "" {
 		key := extractAPIKey(r)
-		if key != "" && subtle.ConstantTimeCompare([]byte(key), []byte(apiKeyVault)) == 1 {
+		if key != "" &&
+			subtle.ConstantTimeCompare([]byte(key), []byte(apiKeyVault)) == 1 {
 			return true
 		}
 	}
@@ -117,66 +115,70 @@ func (a *Auth) ValidateRequest(r *http.Request, apiKeyVault string) bool {
 	return false
 }
 
-// ─── Logout ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────
+// Logout
+// ─────────────────────────────────────────
 
-// Logout removes the session token from the store.
 func (a *Auth) Logout(r *http.Request) {
 	cookie, err := r.Cookie(SessionCookieName)
 	if err != nil {
 		return
 	}
+
 	a.sessions.delete(cookie.Value)
 }
 
-// ─── Password change ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────
+// Password change
+// ─────────────────────────────────────────
 
 type ChangePasswordRequest struct {
+	Username        string `json:"username"`
 	CurrentPassword string `json:"current_password"`
 	NewPassword     string `json:"new_password"`
 }
 
-// ChangePassword verifies the current password, updates the hash, and
-// invalidates all active sessions (forces re-login on all devices).
 func (a *Auth) ChangePassword(req ChangePasswordRequest) error {
-	if err := VerifyPassword(a.dataDir, req.CurrentPassword); err != nil {
-		return ErrBadCredentials
-	}
-
 	if len(req.NewPassword) < 8 {
 		return ErrPasswordTooShort
 	}
 
-	if err := UpdatePassword(a.dataDir, req.NewPassword); err != nil {
-		return fmt.Errorf("updating password: %w", err)
+	if err := ChangePassword(
+		a.dataDir,
+		req.Username,
+		req.CurrentPassword,
+		req.NewPassword,
+	); err != nil {
+		return err
 	}
 
-	// Invalidate all sessions — user must re-login everywhere
+	// Force re-login everywhere
 	a.sessions.invalidateAll()
+
 	return nil
 }
 
-// SessionCount returns the number of active sessions (useful for /auth/me).
+// SessionCount returns the active session count.
 func (a *Auth) SessionCount() int {
 	return a.sessions.count()
 }
 
-// ─── Cookie helpers ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────
+// Cookie helpers
+// ─────────────────────────────────────────
 
-// NewSessionCookie returns a configured session cookie.
-// secure=true when the request came in over HTTPS.
 func NewSessionCookie(token string, secure bool) *http.Cookie {
 	return &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    token,
 		Path:     "/",
-		HttpOnly: true,                    // JS cannot read — XSS protection
-		Secure:   secure,                  // HTTPS only when behind TLS
-		SameSite: http.SameSiteStrictMode, // CSRF protection
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int((30 * 24 * time.Hour).Seconds()),
 	}
 }
 
-// ClearSessionCookie returns an expired cookie that clears the session.
 func ClearSessionCookie() *http.Cookie {
 	return &http.Cookie{
 		Name:     SessionCookieName,
@@ -187,7 +189,9 @@ func ClearSessionCookie() *http.Cookie {
 	}
 }
 
-// ─── Errors ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────
+// Errors
+// ─────────────────────────────────────────
 
 type authError string
 
@@ -199,30 +203,43 @@ const (
 	ErrPasswordTooShort = authError("password must be at least 8 characters")
 )
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────
+// Internal helpers
+// ─────────────────────────────────────────
 
 func generateSessionToken() (string, error) {
 	b := make([]byte, sessionTokenBytes)
+
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
+
 	return hex.EncodeToString(b), nil
 }
 
+// Extract client IP safely when behind proxies.
 func clientIP(r *http.Request) string {
-	// Respect X-Forwarded-For when behind a reverse proxy
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		return xff
+		ip := strings.Split(xff, ",")[0]
+		return strings.TrimSpace(ip)
 	}
-	return r.RemoteAddr
+
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+
+	return host
 }
 
 func extractAPIKey(r *http.Request) string {
 	if key := r.Header.Get("X-API-Key"); key != "" {
 		return key
 	}
-	if auth := r.Header.Get("Authorization"); len(auth) > 7 && auth[:7] == "Bearer " {
+
+	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		return auth[7:]
 	}
+
 	return r.URL.Query().Get("key")
 }

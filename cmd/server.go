@@ -99,7 +99,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Auth — initAuth lives in shared.go, also used by cmd/auth.go
 	a := initAuth(dataDir())
 	defer a.Stop()
-
+	username, err := auth.GetUsername(dataDir())
+	if err != nil {
+		return fmt.Errorf("loading auth: %w", err)
+	}
+	fmt.Printf("Username : %s\n", username)
 	server := api.NewServer(
 		config.ServerConfig{
 			Host:         serverConfig.Host,
@@ -170,37 +174,17 @@ func dataDir() string {
 	return filepath.Join(home, ".onlyagents")
 }
 
-// initAuth sets up the Auth subsystem and handles first-run credential generation.
-// Prints a credential box on first run. Returns a started *auth.Auth.
-// Caller is responsible for calling a.Stop() on shutdown.
+// initAuth initializes the Auth subsystem.
 func initAuth(dir string) *auth.Auth {
-	username, firstRunPassword, err := auth.LoadOrCreate(dir)
-	if err != nil {
-		slog.Error("auth initialisation failed", "error", err)
+	if _, err := os.Stat(filepath.Join(dir, "auth.yaml")); err != nil {
+		slog.Error("auth not configured — run `onlyagents setup` first")
 		os.Exit(1)
 	}
 
-	if firstRunPassword != "" {
-		printFirstRunBox(username, firstRunPassword)
-	}
+	limiter := auth.NewIPRateLimiter(rate.Every(60*time.Second), 5)
 
-	// 5 login attempts per IP, refilling at 1 per minute
-	limiter := auth.NewIPRateLimiter(rate.Every(60e9), 5)
 	a := auth.New(dir, limiter)
 	a.Start()
-	return a
-}
 
-func printFirstRunBox(username, password string) {
-	fmt.Println()
-	fmt.Println("╔══════════════════════════════════════════╗")
-	fmt.Println("║           FIRST RUN — SAVE THIS          ║")
-	fmt.Println("╠══════════════════════════════════════════╣")
-	fmt.Printf("║  Username : %-29s║\n", username)
-	fmt.Printf("║  Password : %-29s║\n", password)
-	fmt.Println("║                                          ║")
-	fmt.Println("║  Change at: Settings → Change Password   ║")
-	fmt.Println("║  Or run:    onlyagents auth reset        ║")
-	fmt.Println("╚══════════════════════════════════════════╝")
-	fmt.Println()
+	return a
 }

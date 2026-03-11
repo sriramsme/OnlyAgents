@@ -9,7 +9,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -22,11 +23,8 @@ func init() {
 
 // Config holds Brave-specific configuration
 type Config struct {
-	Platform string `yaml:"platform"` // "brave"
-	Enabled  bool   `yaml:"enabled"`
-
-	Credentials Credentials `yaml:"credentials"`
-	MaxResults  int         `yaml:"max_results"` // Default max results
+	config.ConnectorConfig
+	MaxResults int `yaml:"max_results"` // Default max results
 }
 
 type Credentials struct {
@@ -45,41 +43,39 @@ type BraveConnector struct {
 // NewConnector creates a new Brave connector
 func NewConnector(
 	ctx context.Context,
-	rawConfig map[string]interface{},
+	cfg config.ConnectorConfig,
 	v vault.Vault,
 	bus chan<- core.Event,
 ) (connectors.Connector, error) {
-	var cfg Config
+	braveCfg := &Config{
+		ConnectorConfig: cfg,
+	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &cfg,
+		Result:           &braveCfg,
 		WeaklyTypedInput: true,
-		TagName:          "yaml",
+		TagName:          "mapstructure",
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create decoder: %w", err)
 	}
-
-	if err := decoder.Decode(rawConfig); err != nil {
+	if err := decoder.Decode(cfg.RawConfig); err != nil {
 		return nil, fmt.Errorf("decode brave config: %w", err)
 	}
 
-	// Extract name from rawConfig if present
-	name := "brave"
-	if n, ok := rawConfig["name"].(string); ok {
-		name = n
-	}
-
-	if cfg.MaxResults == 0 {
-		cfg.MaxResults = 5
+	if braveCfg.MaxResults == 0 {
+		braveCfg.MaxResults = 5
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
 
 	return &BraveConnector{
-		config: &cfg,
+		config: braveCfg,
 		vault:  v,
-		name:   name,
 		ctx:    connCtx,
 		cancel: cancel,
 	}, nil
@@ -94,7 +90,7 @@ func (b *BraveConnector) Type() string { return "brave" }
 
 func (b *BraveConnector) Connect() error {
 	// Validate API key exists in vault
-	_, err := b.vault.GetSecret(b.ctx, b.config.Credentials.APIKey)
+	_, err := b.vault.GetSecret(b.ctx, b.config.VaultPaths["api_key"].Path)
 	if err != nil {
 		return fmt.Errorf("brave API key not found in vault: %w", err)
 	}
@@ -126,7 +122,7 @@ func (b *BraveConnector) HealthCheck() error {
 // ====================
 
 func (b *BraveConnector) Search(ctx context.Context, req *connectors.SearchRequest) (*connectors.SearchResponse, error) {
-	apiKey, err := b.vault.GetSecret(ctx, b.config.Credentials.APIKey)
+	apiKey, err := b.vault.GetSecret(ctx, b.config.VaultPaths["api_key"].Path)
 	if err != nil {
 		return nil, fmt.Errorf("get API key: %w", err)
 	}

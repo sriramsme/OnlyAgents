@@ -12,10 +12,11 @@ import (
 type AgentConfig struct {
 	ID               string            `mapstructure:"id"`
 	Name             string            `mapstructure:"name"`
+	Description      string            `mapstructure:"description"`
 	IsExecutive      bool              `mapstructure:"is_executive"`
 	IsGeneral        bool              `mapstructure:"is_general"`
+	Enabled          bool              `mapstructure:"enabled"`
 	Role             string            `mapstructure:"role"`
-	UserRef          string            `mapstructure:"user_ref"`
 	StreamingEnabled bool              `mapstructure:"streaming_enabled"`
 	MaxConcurrency   int               `mapstructure:"max_concurrency"`
 	BufferSize       int               `mapstructure:"buffer_size"`
@@ -24,7 +25,6 @@ type AgentConfig struct {
 	LLM              LLMConfig         `mapstructure:"llm"`
 	Vault            vault.Config      `mapstructure:"vault"`
 	Skills           []tools.SkillName `mapstructure:"skills"`
-	Platforms        []PlatformConfig  `mapstructure:"platforms"`
 	Connectors       []string          `mapstructure:"connectors"`
 	Channels         []string          `mapstructure:"channels"`
 	Soul             SoulConfig        `mapstructure:"soul"`
@@ -118,23 +118,42 @@ type LLMConfig struct {
 }
 
 type SkillConfig struct {
-	Name    string         `mapstructure:"name"`
-	Enabled bool           `mapstructure:"enabled"`
-	Config  map[string]any `mapstructure:"config"`
-}
-
-type PlatformConfig struct {
-	Name        string         `mapstructure:"name"`
-	Type        string         `mapstructure:"type"`
-	Enabled     bool           `mapstructure:"enabled"`
-	Credentials map[string]any `mapstructure:"credentials"` // vault paths
+	Name         string         `mapstructure:"name"`
+	Description  string         `mapstructure:"description"`
+	Instructions string         `mapstructure:"instructions"`
+	Capabilities []string       `mapstructure:"capabilities"`
+	Enabled      bool           `mapstructure:"enabled"`
+	Config       map[string]any `mapstructure:"config"`
 }
 
 type ConnectorConfig struct {
-	Name        string         `mapstructure:"name"`
-	Type        string         `mapstructure:"type"`
-	Enabled     bool           `mapstructure:"enabled"`
-	Credentials map[string]any `mapstructure:"credentials"` // vault paths
+	Name         string                    `mapstructure:"name"`
+	Platform     string                    `mapstructure:"platform"`
+	Description  string                    `mapstructure:"description"`
+	Instructions string                    `mapstructure:"instructions"`
+	Type         string                    `mapstructure:"type"`
+	Enabled      bool                      `mapstructure:"enabled"`
+	VaultPaths   map[string]VaultPathEntry `mapstructure:"vault_paths"`
+	RawConfig    map[string]any            `mapstructure:",remain"`
+}
+
+// ChannelConfig represents a loaded channel config file
+type ChannelConfig struct {
+	Name         string                    `mapstructure:"name"`
+	Description  string                    `mapstructure:"description"`
+	Instructions string                    `mapstructure:"instructions"`
+	Priority     int                       `mapstructure:"priority"`
+	Platform     string                    `mapstructure:"platform"`
+	Enabled      bool                      `mapstructure:"enabled"`
+	VaultPaths   map[string]VaultPathEntry `mapstructure:"vault_paths"`
+	RawConfig    map[string]interface{}    `mapstructure:",remain"` // the entire config for platform-specific unmarshaling
+}
+
+// VaultPathEntry is shared across channels, connectors, or any resource
+// that needs to collect secrets from the user.
+type VaultPathEntry struct {
+	Path   string `mapstructure:"path"`   // e.g. brave/api_key
+	Prompt string `mapstructure:"prompt"` // shown to user
 }
 
 type ServerConfig struct {
@@ -180,10 +199,8 @@ type RelationshipConfig struct {
 type UserConfig struct {
 	Identity     UserIdentity    `mapstructure:"identity"`
 	Background   UserBackground  `mapstructure:"background"`
-	Work         UserWork        `mapstructure:"work"`
 	DailyRoutine DailyRoutine    `mapstructure:"daily_routine"`
 	Preferences  UserPreferences `mapstructure:"preferences"`
-	Learned      UserLearned     `mapstructure:"learned"`
 }
 
 type UserIdentity struct {
@@ -205,38 +222,15 @@ type UserCommunication struct {
 	Preferences        []string `mapstructure:"preferences"`
 }
 
-type UserWork struct {
-	CurrentProjects []Project `mapstructure:"current_projects"`
-	Goals           Goals     `mapstructure:"goals"`
-}
-
-type Goals struct {
-	ShortTerm []string `mapstructure:"short_term"`
-	LongTerm  []string `mapstructure:"long_term"`
-}
-
 type DailyRoutine struct {
 	WorkingHours  string `mapstructure:"working_hours"`
 	SleepingHours string `mapstructure:"sleeping_hours"`
 }
 
-type Project struct {
-	Name        string `mapstructure:"name"`
-	Description string `mapstructure:"description"`
-	Status      string `mapstructure:"status"`
-	Priority    string `mapstructure:"priority"`
-}
 type UserPreferences struct {
 	Technical     []string `mapstructure:"technical"`
 	Collaboration []string `mapstructure:"collaboration"`
 	WhatIValue    []string `mapstructure:"what_i_value"`
-}
-
-type UserLearned struct {
-	Likes    []string `mapstructure:"likes"`
-	Dislikes []string `mapstructure:"dislikes"`
-	Patterns []string `mapstructure:"patterns"`
-	Context  []string `mapstructure:"context"`
 }
 
 // GetVault returns the vault instance attached to this config.

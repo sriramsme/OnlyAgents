@@ -1,12 +1,15 @@
 package oaChannel
 
-import "time"
+import (
+	"time"
+
+	"github.com/sriramsme/OnlyAgents/internal/config"
+)
 
 // Config holds OAChannel configuration.
 type Config struct {
-	Platform     string   `yaml:"platform"`
-	Enabled      bool     `yaml:"enabled"`
-	AllowOrigins []string `yaml:"allow_origins,omitempty"` // lock down in production
+	ChannelConfig config.ChannelConfig
+	AllowOrigins  []string `yaml:"allow_origins,omitempty"` // lock down in production
 }
 
 // WSMessageType identifies inbound and outbound WebSocket message types.

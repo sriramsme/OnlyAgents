@@ -8,12 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
 
+	"github.com/go-viper/mapstructure/v2"
+
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -27,21 +29,9 @@ func init() {
 
 // Config holds Gmail-specific configuration
 type Config struct {
-	// Base fields
-	Platform string `yaml:"platform"` // "gmail"
-	Enabled  bool   `yaml:"enabled"`
-
-	// Credentials (vault keys)
-	Credentials Credentials `yaml:"credentials"`
-
+	config.ConnectorConfig
 	// OAuth
 	OAuthConfig *oauth2.Config `yaml:"-"` // Built from credentials
-}
-
-type Credentials struct {
-	ClientID     string `yaml:"client_id"`     // Vault key
-	ClientSecret string `yaml:"client_secret"` // Vault key
-	RefreshToken string `yaml:"refresh_token"` // Vault key
 }
 
 // GmailConnector implements EmailConnector interface
@@ -58,37 +48,36 @@ type GmailConnector struct {
 // NewConnector creates a new Gmail connector
 func NewConnector(
 	ctx context.Context,
-	rawConfig map[string]interface{},
+	cfg config.ConnectorConfig,
 	v vault.Vault,
 	eventBus chan<- core.Event,
 ) (connectors.Connector, error) {
-	var cfg Config
+	gmailCfg := &Config{
+		ConnectorConfig: cfg,
+	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &cfg,
+		Result:           &gmailCfg,
 		WeaklyTypedInput: true,
-		TagName:          "yaml",
+		TagName:          "mapstructure",
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create decoder: %w", err)
 	}
-
-	if err := decoder.Decode(rawConfig); err != nil {
+	if err := decoder.Decode(cfg.RawConfig); err != nil {
 		return nil, fmt.Errorf("decode gmail config: %w", err)
 	}
 
-	// Extract name from rawConfig if present
-	name := "gmail"
-	if n, ok := rawConfig["name"].(string); ok {
-		name = n
-	}
-	connCtx, cancel := context.WithCancel(ctx)
+	connCtx, cancel := context.WithCancel(ctx) //nolint:gosec
 	return &GmailConnector{
 		ctx:      connCtx,
 		cancel:   cancel,
-		config:   &cfg,
+		config:   gmailCfg,
 		vault:    v,
-		name:     name,
 		eventBus: eventBus,
 	}, nil
 }
@@ -102,17 +91,19 @@ func (g *GmailConnector) Type() string { return "gmail" }
 
 func (g *GmailConnector) Connect() error {
 	// Get credentials from vault
-	clientID, err := g.vault.GetSecret(g.ctx, g.config.Credentials.ClientID)
+	clientID, err := g.vault.GetSecret(g.ctx, g.config.VaultPaths["client_id"].Path)
+
 	if err != nil {
 		return fmt.Errorf("get client_id: %w", err)
 	}
 
-	clientSecret, err := g.vault.GetSecret(g.ctx, g.config.Credentials.ClientSecret)
+	clientSecret, err := g.vault.GetSecret(g.ctx, g.config.VaultPaths["client_secret"].Path)
+
 	if err != nil {
 		return fmt.Errorf("get client_secret: %w", err)
 	}
 
-	refreshToken, err := g.vault.GetSecret(g.ctx, g.config.Credentials.RefreshToken)
+	refreshToken, err := g.vault.GetSecret(g.ctx, g.config.VaultPaths["refresh_token"].Path)
 	if err != nil {
 		return fmt.Errorf("get refresh_token: %w", err)
 	}

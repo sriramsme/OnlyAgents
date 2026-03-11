@@ -1,44 +1,36 @@
 package telegram
 
+import "github.com/sriramsme/OnlyAgents/internal/config"
+
 // Config holds Telegram-specific configuration
 type Config struct {
-	// Base fields (every connector has these)
-	Platform string `yaml:"platform"` // "telegram"
-	Enabled  bool   `yaml:"enabled"`
-
-	// Telegram-specific fields
-	Credentials Credentials `yaml:"credentials"`
-	Mode        string      `yaml:"mode"` // "polling" or "webhook"
+	config.ChannelConfig `mapstructure:",squash"`
+	Mode                 string `mapstructure:"mode"` // "polling" or "webhook"
 
 	// Routing
-	DefaultAgent string `yaml:"default_agent"` // Usually "executive"
+	DefaultAgent string `mapstructure:"default_agent"` // Usually "executive"
 
 	// Security
-	AllowFrom []string `yaml:"allow_from,omitempty"`
-	Proxy     string   `yaml:"proxy,omitempty"`
+	AllowFrom []string `mapstructure:"allow_from,omitempty"`
+	Proxy     string   `mapstructure:"proxy,omitempty"`
 
 	// Mode-specific
-	Webhook *WebhookConfig `yaml:"webhook,omitempty"`
-	Polling *PollingConfig `yaml:"polling,omitempty"`
-}
-
-// Credentials holds vault references
-type Credentials struct {
-	BotToken string `yaml:"bot_token"` // Vault key name
+	Webhook *WebhookConfig `mapstructure:"webhook,omitempty"`
+	Polling *PollingConfig `mapstructure:"polling,omitempty"`
 }
 
 type WebhookConfig struct {
-	URL                string `yaml:"url"`
-	ListenAddr         string `yaml:"listen_addr"`
-	Path               string `yaml:"path"`
-	DropPendingUpdates bool   `yaml:"drop_pending_updates"`
-	MaxConnections     int    `yaml:"max_connections"`
+	URL                string `mapstructure:"url"`
+	ListenAddr         string `mapstructure:"listen_addr"`
+	Path               string `mapstructure:"path"`
+	DropPendingUpdates bool   `mapstructure:"drop_pending_updates"`
+	MaxConnections     int    `mapstructure:"max_connections"`
 }
 
 // PollingConfig holds polling settings
 type PollingConfig struct {
-	Timeout    int `yaml:"timeout"`
-	Limit      int `yaml:"limit"`
-	RetryDelay int `yaml:"retry_delay"`
-	MaxRetries int `yaml:"max_retries"`
+	Timeout    int `mapstructure:"timeout"`
+	Limit      int `mapstructure:"limit"`
+	RetryDelay int `mapstructure:"retry_delay"`
+	MaxRetries int `mapstructure:"max_retries"`
 }

@@ -43,7 +43,7 @@ func NewRegistry(
 		}
 
 		if cfg.Enabled {
-			connector, err := factory(ctx, cfg.RawConfig, vault, bus)
+			connector, err := factory(ctx, *cfg, vault, bus)
 			if err != nil {
 				return nil, fmt.Errorf("connector %s: create: %w", name, err)
 			}

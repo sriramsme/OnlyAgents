@@ -9,10 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -56,24 +57,30 @@ type TelegramChannel struct {
 // NewChannel creates a new Telegram channel
 func NewChannel(
 	ctx context.Context,
-	rawConfig map[string]interface{},
+	cfg config.ChannelConfig,
 	vault vault.Vault,
 	eventBus chan<- core.Event,
 ) (channels.Channel, error) {
 
-	var cfg Config
+	// Decode RawConfig into telegram-specific fields only
+	// Start with base fields already decoded — VaultPaths, Enabled, etc. all present
+	telegramCfg := &Config{
+		ChannelConfig: cfg,
+	}
 
-	// Decode raw config into telegram-specific Config struct
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &cfg,
+		Result:           &telegramCfg,
 		WeaklyTypedInput: true,
-		TagName:          "yaml",
+		TagName:          "mapstructure",
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create decoder: %w", err)
 	}
-
-	if err := decoder.Decode(rawConfig); err != nil {
+	if err := decoder.Decode(cfg.RawConfig); err != nil {
 		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
 
@@ -84,7 +91,7 @@ func NewChannel(
 	)
 
 	return &TelegramChannel{
-		config:       &cfg,
+		config:       telegramCfg,
 		vault:        vault,
 		eventBus:     eventBus,
 		ctx:          channelCtx,
@@ -141,14 +148,15 @@ func (c *TelegramChannel) Connect() error {
 	c.logger.Info("connecting to telegram")
 
 	// Get bot token from vault (always required)
-	if c.config.Credentials.BotToken == "" {
+	vp, ok := c.config.VaultPaths["bot_token"]
+	if !ok || vp.Path == "" {
 		return fmt.Errorf("bot token vault key is required in credentials")
 	}
 
-	botToken, err := c.vault.GetSecret(c.ctx, c.config.Credentials.BotToken)
+	botToken, err := c.vault.GetSecret(c.ctx, c.config.VaultPaths["bot_token"].Path)
 	if err != nil {
 		return fmt.Errorf("failed to get bot token from vault (key: %s): %w",
-			c.config.Credentials.BotToken, err)
+			c.config.VaultPaths["bot_token"].Path, err)
 	}
 
 	if botToken == "" {

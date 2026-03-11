@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -27,9 +28,8 @@ func init() {
 
 // Config holds DuckDuckGo-specific configuration
 type Config struct {
-	Platform   string `yaml:"platform"` // "duckduckgo"
-	Enabled    bool   `yaml:"enabled"`
-	MaxResults int    `yaml:"max_results"` // Default max results
+	config.ConnectorConfig
+	MaxResults int `mapstructure:"max_results"` // Default max results
 }
 
 // DuckDuckGoConnector implements WebSearchConnector interface
@@ -43,40 +43,39 @@ type DuckDuckGoConnector struct {
 // NewConnector creates a new DuckDuckGo connector
 func NewConnector(
 	ctx context.Context,
-	rawConfig map[string]interface{},
+	cfg config.ConnectorConfig,
 	v vault.Vault,
 	bus chan<- core.Event,
 ) (connectors.Connector, error) {
-	var cfg Config
+
+	ddgoCfg := &Config{
+		ConnectorConfig: cfg,
+	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &cfg,
+		Result:           &ddgoCfg,
 		WeaklyTypedInput: true,
-		TagName:          "yaml",
+		TagName:          "mapstructure",
+		DecodeHook: mapstructure.ComposeDecodeHookFunc(
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create decoder: %w", err)
 	}
-
-	if err := decoder.Decode(rawConfig); err != nil {
-		return nil, fmt.Errorf("decode duckduckgo config: %w", err)
+	if err := decoder.Decode(cfg.RawConfig); err != nil {
+		return nil, fmt.Errorf("decode duckduckgo  config: %w", err)
 	}
 
-	// Extract name from rawConfig if present
-	name := "duckduckgo"
-	if n, ok := rawConfig["name"].(string); ok {
-		name = n
-	}
-
-	if cfg.MaxResults == 0 {
-		cfg.MaxResults = 5
+	if ddgoCfg.MaxResults == 0 {
+		ddgoCfg.MaxResults = 5
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
 
 	return &DuckDuckGoConnector{
-		config: &cfg,
-		name:   name,
+		config: ddgoCfg,
 		ctx:    connCtx,
 		cancel: cancel,
 	}, nil

@@ -38,9 +38,7 @@ func SaveUserConfig(cfg *UserConfig) error {
 	data := map[string]interface{}{
 		"identity":      cfg.Identity,
 		"background":    cfg.Background,
-		"work":          cfg.Work,
 		"preferences":   cfg.Preferences,
-		"learned":       cfg.Learned,
 		"daily_routine": cfg.DailyRoutine,
 	}
 
