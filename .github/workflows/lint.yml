@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: go.mod
           cache: true
 
       - name: Set up Node.js
@@ -36,21 +36,3 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           args: --timeout=5m
-
-  gofmt:
-    name: gofmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: stable
-
-      - name: Check formatting
-        run: |
-          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-            echo "Code not formatted. Run 'gofmt -s -w .'"
-            gofmt -s -l .
-            exit 1
-          fi

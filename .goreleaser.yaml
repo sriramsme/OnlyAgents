@@ -1,5 +1,10 @@
 version: 2
 
+before:
+  hooks:
+    - cd web && npm ci
+    - cd web && npm run build
+
 builds:
   - id: onlyagents
     main: ./cmd/onlyagents
@@ -22,7 +27,7 @@ builds:
 
 archives:
   - id: onlyagents
-    name_template: "onlyagents_{{ .Os }}_{{ .Arch }}"
+    name_template: "onlyagents_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats:
       - tar.gz
     format_overrides:
@@ -31,6 +36,9 @@ archives:
 
 checksum:
   name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
 
 changelog:
   sort: asc
@@ -42,20 +50,10 @@ changelog:
       - "^chore:"
       - Merge pull request
       - Merge branch
-  groups:
-    - title: "New Features"
-      regexp: "^feat"
-      order: 0
-    - title: "Bug Fixes"
-      regexp: "^fix"
-      order: 1
-    - title: "Other"
-      order: 999
 
 release:
   github:
     owner: sriramsme
     name: OnlyAgents
-  draft: false
   prerelease: auto # tags like v0.1.0-beta become prereleases automatically
   name_template: "v{{.Version}}"
