@@ -47,7 +47,6 @@ func NewConnector(
 	v vault.Vault,
 	bus chan<- core.Event,
 ) (connectors.Connector, error) {
-
 	ddgoCfg := &Config{
 		ConnectorConfig: cfg,
 	}

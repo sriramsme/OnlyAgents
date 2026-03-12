@@ -76,7 +76,6 @@ func (cm *ConversationManager) SaveAssistantMessage(
 	sessionID, agentID, content, reasoningContent string,
 	toolCalls []tools.ToolCall,
 ) error {
-
 	return cm.saveAssistantMessage(ctx, sessionID, agentID, content,
 		reasoningContent, toolCalls, time.Time{})
 }

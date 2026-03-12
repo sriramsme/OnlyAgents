@@ -78,7 +78,6 @@ type Kernel struct {
 }
 
 func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus) (*Kernel, error) {
-
 	paths, err := bootstrap.Init()
 	if err != nil {
 		return nil, fmt.Errorf("init paths: %w", err)
@@ -438,8 +437,7 @@ func (k *Kernel) route(evt core.Event) {
 	}
 }
 
-//reads UIBus, fans out to all SSE subscribers
-
+// reads UIBus, fans out to all SSE subscribers
 func (k *Kernel) runUI() {
 	defer k.wg.Done()
 	for {

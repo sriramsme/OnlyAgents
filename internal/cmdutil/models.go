@@ -131,7 +131,8 @@ func ProviderDefaultModel(provider string) string {
 // non-empty vault secret. Returns the provider name, vault key, and ok=true.
 func AutoDetectProvider(ctx context.Context, v interface {
 	GetSecret(context.Context, string) (string, error)
-}) (provider, vaultKey string, ok bool) {
+},
+) (provider, vaultKey string, ok bool) {
 	for _, p := range KnownProviders() {
 		key := ProviderVaultPath(p)
 		secret, err := v.GetSecret(ctx, key)

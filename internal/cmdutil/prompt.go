@@ -101,6 +101,7 @@ func Success(format string, args ...any) {
 func Warn(format string, args ...any) {
 	fmt.Fprintln(os.Stdout, styleYellow.Render("  ! "+fmt.Sprintf(format, args...)))
 }
+
 func Warnf(format string, args ...any) {
 	fmt.Fprintln(os.Stdout, styleYellow.Render("  ! "+fmt.Sprintf(format, args...)))
 }

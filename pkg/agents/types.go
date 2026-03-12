@@ -116,5 +116,7 @@ type Purpose struct {
 	Philosophy string   // Guiding worldview
 }
 
-type findSkillFunc func(ctx context.Context, capability core.Capability) (interface{}, error)
-type useSkillToolFunc func(ctx context.Context, skillName tools.SkillName, toolName string, params map[string]interface{}) (interface{}, error)
+type (
+	findSkillFunc    func(ctx context.Context, capability core.Capability) (interface{}, error)
+	useSkillToolFunc func(ctx context.Context, skillName tools.SkillName, toolName string, params map[string]interface{}) (interface{}, error)
+)

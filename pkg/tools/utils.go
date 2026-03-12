@@ -164,6 +164,7 @@ func ValidateToolCall(call ToolCall) error {
 	// Arguments can be empty for tools with no parameters
 	return nil
 }
+
 func UnmarshalParams[T any](params []byte) (T, error) {
 	var input T
 	if err := json.Unmarshal(params, &input); err != nil {

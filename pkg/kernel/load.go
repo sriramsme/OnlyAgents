@@ -199,7 +199,6 @@ func loadChannels(
 ) (*channels.Registry, error) {
 	// Create connector registry
 	registry, err := channels.NewRegistry(ctx, v, kernelBus)
-
 	if err != nil {
 		return nil, fmt.Errorf("create channel registry: %w", err)
 	}
@@ -214,8 +213,8 @@ func loadChannels(
 
 func loadSkills(ctx context.Context, configDir string, kernelBus chan<- core.Event,
 	capabilityRegistry *core.CapabilityRegistry,
-	cliExecutor *cli.CLIExecutor) (*skills.Registry, error) {
-
+	cliExecutor *cli.CLIExecutor,
+) (*skills.Registry, error) {
 	// Create connector registr
 	registry, err := skills.NewRegistry(ctx, configDir, kernelBus, capabilityRegistry, cliExecutor)
 	if err != nil {

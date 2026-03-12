@@ -151,7 +151,7 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		outName = result.Parsed.Name
 	}
 	outPath := filepath.Join(config.SkillsDir(), outName+".md")
-	if err := os.WriteFile(outPath, []byte(result.Content), 0600); err != nil { //nolint:gosec
+	if err := os.WriteFile(outPath, []byte(result.Content), 0o600); err != nil { //nolint:gosec
 		return fmt.Errorf("write output: %w", err)
 	}
 

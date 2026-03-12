@@ -29,7 +29,7 @@ func newSummarizer(store storage.Storage, llmClient llm.Client) *Summarizer {
 	return &Summarizer{store: store, llmClient: llmClient}
 }
 
-//Daily
+// Daily
 
 // SummarizeDay summarises all messages for the given calendar day.
 // Facts extracted by the LLM are upserted into the facts table.

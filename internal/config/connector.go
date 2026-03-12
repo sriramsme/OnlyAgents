@@ -10,7 +10,6 @@ import (
 
 // LoadConnectorConfig loads a single connector config file
 func loadConnectorConfig(configPath string) (*ConnectorConfig, error) {
-
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
 	}

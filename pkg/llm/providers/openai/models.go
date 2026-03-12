@@ -6,12 +6,10 @@ import (
 )
 
 // OpenAIExtensions contains OpenAI-specific capabilities
-type OpenAIExtensions struct {
-}
+type OpenAIExtensions struct{}
 
 // ModelRegistry maps model names to their capabilities
 var ModelRegistry = map[string]llm.ModelCapabilities{
-
 	"gpt-5-nano": {
 		Available:               true,
 		Provider:                llm.ProviderOpenAI,

@@ -19,7 +19,8 @@ import (
 
 // requestDelegation delegates a task to another agent and waits for result
 func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
-	tc tools.ToolCall, channelMetadata *core.ChannelMetadata) tools.ToolExecution {
+	tc tools.ToolCall, channelMetadata *core.ChannelMetadata,
+) tools.ToolExecution {
 	var input tools.DelegateInput
 	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
 		return tools.ExecErr(fmt.Errorf("invalid delegation args: %w", err))

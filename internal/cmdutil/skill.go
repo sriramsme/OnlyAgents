@@ -109,7 +109,7 @@ func SkillSetEnabled(skillsDir, name string, enabled bool) error {
 		return fmt.Errorf("enabled field not found in frontmatter of %s", name)
 	}
 	updated := strings.Replace(content, old, new, 1)
-	return os.WriteFile(path, []byte(updated), 0600) //nolint:gosec
+	return os.WriteFile(path, []byte(updated), 0o600) //nolint:gosec
 }
 
 // ── Validation ────────────────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ func SkillSetAccessLevel(skillsDir, name, level string) error {
 	} else {
 		content = strings.Replace(content, "enabled:", "access_level: "+level+"\nenabled:", 1)
 	}
-	return os.WriteFile(path, []byte(content), 0600) //nolint:gosec
+	return os.WriteFile(path, []byte(content), 0o600) //nolint:gosec
 }
 
 // ── Display ───────────────────────────────────────────────────────────────────

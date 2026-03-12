@@ -77,7 +77,6 @@ func NewRegistry(
 	}
 
 	return r, nil
-
 }
 
 func (r *Registry) Register(a *Agent) {

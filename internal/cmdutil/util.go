@@ -76,7 +76,7 @@ func LoadDir[T any](dir string) ([]T, error) {
 // WriteYAML writes v to path as YAML with 2-space indentation.
 // Creates or truncates the file. Permissions: 0600.
 func WriteYAML(path string, v any) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) //nolint:gosec
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func AppendEnvVar(envPath, vaultPath, value string) error {
 	if strings.Contains(string(data), envKey+"=") {
 		return nil // already set
 	}
-	f, err := os.OpenFile(envPath, os.O_APPEND|os.O_WRONLY, 0600) //nolint:gosec
+	f, err := os.OpenFile(envPath, os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec
 	if err != nil {
 		return err
 	}

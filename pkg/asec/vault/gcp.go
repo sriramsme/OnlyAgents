@@ -107,7 +107,6 @@ func (g *GCPVault) SetSecret(ctx context.Context, key, value string) error {
 	_, err := g.client.GetSecret(ctx, &secretmanagerpb.GetSecretRequest{
 		Name: secretPath,
 	})
-
 	if err != nil {
 		// Secret doesn't exist, create it
 		createReq := &secretmanagerpb.CreateSecretRequest{

@@ -23,6 +23,7 @@ func (k *Kernel) initializeSkills() error {
 	}
 	return nil
 }
+
 func (k *Kernel) prepareSkillDeps(skill skills.Skill) skills.SkillDeps {
 	// Get what the skill needs
 	requiredCaps := skill.RequiredCapabilities()
@@ -222,7 +223,6 @@ func (k *Kernel) findSkillByCapability(ctx context.Context, cap core.Capability)
 			"available_tools": skill.Tools(),
 			"usage_hint":      fmt.Sprintf("Use use_skill_tool with skill_name='%s' and choose from the tools above", skill.Name()),
 		}, nil
-
 	}
 
 	// 2. Not found locally - search marketplaces

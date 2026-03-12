@@ -430,6 +430,7 @@ func (t *TimingTracker) aggregatePhases(phases []PhaseRecord) []PhaseRecord {
 
 	return result
 }
+
 func updateAggregate(existing *PhaseRecord, phase PhaseRecord) {
 	existing.Duration += phase.Duration
 

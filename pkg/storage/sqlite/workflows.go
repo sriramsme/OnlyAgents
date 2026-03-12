@@ -25,7 +25,6 @@ func (d *DB) GetWorkflow(ctx context.Context, id string) (*storage.Workflow, err
 	err := d.db.GetContext(ctx, &w, `
         SELECT * FROM workflows WHERE id = ?
     `, id)
-
 	if err != nil {
 		return nil, wrap(err, "GetWorkflow")
 	}
@@ -63,7 +62,6 @@ func (d *DB) GetWFTask(ctx context.Context, id string) (*storage.WFTask, error) 
 	err := d.db.GetContext(ctx, &t, `
         SELECT * FROM wf_tasks WHERE id = ?
     `, id)
-
 	if err != nil {
 		return nil, wrap(err, "GetWFTask")
 	}
@@ -111,7 +109,6 @@ func (d *DB) GetWFTasks(ctx context.Context, workflowID string) ([]*storage.WFTa
         WHERE workflow_id = ?
         ORDER BY created_at ASC
     `, workflowID)
-
 	if err != nil {
 		return nil, wrap(err, "GetWFTasks")
 	}
@@ -127,7 +124,6 @@ func (d *DB) GetReadyWFTasks(ctx context.Context, limit int) ([]*storage.WFTask,
         ORDER BY created_at ASC
         LIMIT ?
     `, storage.WFTaskStatusQueued, limit)
-
 	if err != nil {
 		return nil, wrap(err, "GetReadyWFTasks")
 	}
@@ -141,7 +137,6 @@ func (d *DB) GetDependentWFTasks(ctx context.Context, taskID string) ([]*storage
         SELECT * FROM wf_tasks
         WHERE depends_on LIKE ?
     `, "%"+taskID+"%")
-
 	if err != nil {
 		return nil, wrap(err, "GetDependentWFTasks")
 	}
@@ -170,7 +165,6 @@ func (d *DB) AllDependenciesSatisfied(ctx context.Context, taskID string) (bool,
 	err := d.db.GetContext(ctx, &dependsOnJSON, `
         SELECT depends_on FROM wf_tasks WHERE id = ?
     `, taskID)
-
 	if err != nil {
 		return false, wrap(err, "AllDependenciesSatisfied")
 	}

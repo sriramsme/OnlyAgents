@@ -61,7 +61,6 @@ func NewChannel(
 	vault vault.Vault,
 	eventBus chan<- core.Event,
 ) (channels.Channel, error) {
-
 	// Decode RawConfig into telegram-specific fields only
 	// Start with base fields already decoded — VaultPaths, Enabled, etc. all present
 	telegramCfg := &Config{

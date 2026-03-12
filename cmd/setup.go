@@ -186,14 +186,14 @@ enable_cache: true
 audit_log: false
 `, ctx.Paths.EnvPath)
 
-	if err := os.WriteFile(ctx.Paths.VaultPath, []byte(vaultCfg), 0600); err != nil {
+	if err := os.WriteFile(ctx.Paths.VaultPath, []byte(vaultCfg), 0o600); err != nil {
 		return fmt.Errorf("write vault.yaml: %w", err)
 	}
 
 	// Create .env if it doesn't exist
 	if _, err := os.Stat(ctx.Paths.EnvPath); os.IsNotExist(err) {
 		header := "# OnlyAgents secrets\n# Add your API keys below\n\n"
-		if err := os.WriteFile(ctx.Paths.EnvPath, []byte(header), 0600); err != nil {
+		if err := os.WriteFile(ctx.Paths.EnvPath, []byte(header), 0o600); err != nil {
 			return fmt.Errorf("create .env: %w", err)
 		}
 	}
@@ -300,7 +300,7 @@ func (s *llmStep) Run(ctx *cmdutil.SetupContext) error {
 			existing += line + "\n"
 		}
 	}
-	if err := os.WriteFile(ctx.Paths.EnvPath, []byte(existing), 0600); err != nil { //nolint:gosec
+	if err := os.WriteFile(ctx.Paths.EnvPath, []byte(existing), 0o600); err != nil { //nolint:gosec
 		return fmt.Errorf("write .env: %w", err)
 	}
 
@@ -476,7 +476,6 @@ func (s *authSetupStep) Run(ctx *cmdutil.SetupContext) error {
 				}),
 		),
 	)
-
 	if err != nil {
 		return err
 	}
@@ -493,7 +492,7 @@ func (s *authSetupStep) Run(ctx *cmdutil.SetupContext) error {
 
 func writeYAML(path string, v any) error {
 	clean := filepath.Clean(path)
-	f, err := os.OpenFile(clean, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) //nolint:gosec
+	f, err := os.OpenFile(clean, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec
 	if err != nil {
 		return err
 	}

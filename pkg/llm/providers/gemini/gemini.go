@@ -103,7 +103,7 @@ func NewGeminiClient(cfg llm.ProviderConfig) (*GeminiClient, error) {
 		capabilities:  caps,
 		maxTokens:     maxTokens,
 		temperature:   temperature,
-		enableCaching: false, //caps.SupportsPromptCaching,
+		enableCaching: false, // caps.SupportsPromptCaching,
 		cacheKey:      fmt.Sprintf("agent-%s-%d", cfg.Model, time.Now().Unix()/3600),
 		cacheTTL:      1 * time.Hour, // Default 1 hour TTL
 	}, nil

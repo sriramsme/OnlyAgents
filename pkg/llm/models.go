@@ -283,6 +283,7 @@ func writeComparisonRow(
 	}
 	sb.WriteString("\n")
 }
+
 func yesNo(b bool) string {
 	if b {
 		return "✓"
@@ -317,7 +318,6 @@ func ValidateModelConfig(
 	enableReasoning,
 	enableFunctionCalling bool,
 ) error {
-
 	caps, err := GetModelCapabilities(model, registry)
 	if err != nil {
 		return err

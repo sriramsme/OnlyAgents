@@ -20,7 +20,6 @@ type KernelConfig struct {
 // LoadKernelConfig reads ~/.onlyagents/config.yaml (or a provided path)
 // and returns a Config with defaults applied.
 func LoadKernelConfig() (*KernelConfig, error) {
-
 	configPath := OnlyAgentsConfigPath()
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")

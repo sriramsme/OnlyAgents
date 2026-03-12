@@ -32,7 +32,7 @@ type Manager struct {
 //   - installDir – where sanitised SKILL.md files are written (loaded by kernel)
 func NewManager(cacheDir, installDir string) *Manager {
 	for _, d := range []string{cacheDir, installDir} {
-		if err := os.MkdirAll(d, 0700); err != nil {
+		if err := os.MkdirAll(d, 0o700); err != nil {
 			logger.Log.Error("failed to create directory", "dir", d, "error", err)
 		}
 	}
@@ -156,7 +156,7 @@ func (m *Manager) DownloadAndInstall(
 
 	// ── 4. Write to install dir ───────────────────────────────────────────────
 	installPath := m.installPath(slug, version)
-	if err := os.WriteFile(installPath, []byte(result.Content), 0600); err != nil { // nolint:gosec
+	if err := os.WriteFile(installPath, []byte(result.Content), 0o600); err != nil { // nolint:gosec
 		return "", fmt.Errorf("write install file: %w", err)
 	}
 
@@ -195,7 +195,7 @@ func (m *Manager) downloadRaw(ctx context.Context, slug, version, marketplace st
 		return "", fmt.Errorf("invalid cache path")
 	}
 
-	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600) //nolint:gosec
+	file, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec
 	if err != nil {
 		return "", fmt.Errorf("create cache file: %w", err)
 	}

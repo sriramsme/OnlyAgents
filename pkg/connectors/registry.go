@@ -52,7 +52,6 @@ func NewRegistry(
 		}
 	}
 	return registry, nil
-
 }
 
 func (r *Registry) Register(c Connector) {

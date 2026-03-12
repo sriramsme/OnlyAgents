@@ -12,8 +12,10 @@ import (
 	"github.com/sriramsme/OnlyAgents/internal/config"
 )
 
-type handlerFunc = func(http.ResponseWriter, *http.Request)
-type middlewareFn func(handlerFunc) handlerFunc
+type (
+	handlerFunc  = func(http.ResponseWriter, *http.Request)
+	middlewareFn func(handlerFunc) handlerFunc
+)
 
 // Middleware holds the server config needed to build middleware chains
 type Middleware struct {

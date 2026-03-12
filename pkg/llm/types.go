@@ -92,7 +92,7 @@ type Usage struct {
 type ProviderConfig struct {
 	Model       string
 	Vault       vault.Vault
-	KeyPath     string //Path to the API key
+	KeyPath     string // Path to the API key
 	BaseURL     string
 	MaxTokens   int
 	Temperature float64

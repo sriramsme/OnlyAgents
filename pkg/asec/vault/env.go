@@ -22,7 +22,6 @@ type EnvVault struct {
 
 // NewEnvVault creates a new environment variable vault
 func NewEnvVault(cfg Config) (*EnvVault, error) {
-
 	// .env loading is optional — only for local dev convenience.
 	// In production, env vars are set by the runtime directly.
 	if cfg.DotEnvPath != "" {

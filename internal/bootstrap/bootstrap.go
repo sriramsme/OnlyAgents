@@ -58,7 +58,7 @@ func Init() (*Paths, error) {
 		SkillCache:  filepath.Join(root, "cache", "skills"),
 	}
 
-	//Create directories
+	// Create directories
 	dirs := []string{
 		paths.Home,
 		paths.Agents,
@@ -71,12 +71,12 @@ func Init() (*Paths, error) {
 	}
 
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0750); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return nil, fmt.Errorf("create dir %s: %w", dir, err)
 		}
 	}
 
-	//Seed defaults if missing
+	// Seed defaults if missing
 	if err := seedDefaults(paths); err != nil {
 		return nil, fmt.Errorf("seed defaults: %w", err)
 	}
@@ -102,7 +102,7 @@ func copyDir(src, dest string) error {
 		destPath := filepath.Join(dest, entry.Name())
 
 		if entry.IsDir() {
-			if err := os.MkdirAll(destPath, 0750); err != nil {
+			if err := os.MkdirAll(destPath, 0o750); err != nil {
 				return err
 			}
 			if err := copyDir(srcPath, destPath); err != nil {

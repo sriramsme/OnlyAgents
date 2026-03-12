@@ -92,13 +92,11 @@ func (g *GmailConnector) Type() string { return "gmail" }
 func (g *GmailConnector) Connect() error {
 	// Get credentials from vault
 	clientID, err := g.vault.GetSecret(g.ctx, g.config.VaultPaths["client_id"].Path)
-
 	if err != nil {
 		return fmt.Errorf("get client_id: %w", err)
 	}
 
 	clientSecret, err := g.vault.GetSecret(g.ctx, g.config.VaultPaths["client_secret"].Path)
-
 	if err != nil {
 		return fmt.Errorf("get client_secret: %w", err)
 	}
@@ -206,8 +204,8 @@ func (g *GmailConnector) SendEmail(ctx context.Context, req *connectors.SendEmai
 	_, err := g.service.Users.Messages.Send("me", gmailMessage).Do()
 	return err
 }
-func (g *GmailConnector) DraftEmail(ctx context.Context, req *connectors.SendEmailRequest) error {
 
+func (g *GmailConnector) DraftEmail(ctx context.Context, req *connectors.SendEmailRequest) error {
 	return nil
 }
 
