@@ -16,6 +16,7 @@ import (
 type CLISkill struct {
 	*skills.BaseSkill
 
+	Enabled      bool
 	capabilities []core.Capability
 	toolDefs     []tools.ToolDef
 	commands     map[string]*Command // toolName → command
@@ -32,6 +33,7 @@ type Command struct {
 	Parameters  []string         // Derived from ParamDefs for backward-compat
 	Validation  *ValidationRules // **Validation:** yaml block (optional)
 	Timeout     int              // **Timeout:** (seconds, default 30)
+	Access      string           // "read" | "write" | "admin" — default "read"
 }
 
 // ParamDef holds the name, explicit type, and description of a single parameter.
@@ -67,6 +69,9 @@ func NewCLISkill(definition *ParsedSkill, executor *CLIExecutor) *CLISkill {
 	commandMap := make(map[string]*Command, len(definition.Commands))
 
 	for _, cmd := range definition.Commands {
+		if !accessPermits(definition.AccessLevel, cmd.Access) {
+			continue // LLM never sees this tool
+		}
 		props := buildParamProps(cmd.ParamDefs)
 		params := tools.BuildParams(props, cmd.Parameters)
 		toolDefs = append(toolDefs, tools.NewToolDef(
@@ -80,6 +85,7 @@ func NewCLISkill(definition *ParsedSkill, executor *CLIExecutor) *CLISkill {
 
 	return &CLISkill{
 		BaseSkill:    base,
+		Enabled:      definition.Enabled,
 		capabilities: definition.Capabilities,
 		toolDefs:     toolDefs,
 		commands:     commandMap,
@@ -136,6 +142,10 @@ func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) (a
 // ──────────────────────────────────────────────────────────────
 // Internal helpers
 // ──────────────────────────────────────────────────────────────
+func accessPermits(granted, required string) bool {
+	levels := map[string]int{"read": 1, "write": 2, "admin": 3}
+	return levels[granted] >= levels[required]
+}
 
 // buildCommand replaces {{param}} placeholders with actual values.
 func (s *CLISkill) buildCommand(template string, params map[string]any) string {

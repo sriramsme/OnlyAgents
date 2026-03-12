@@ -31,7 +31,9 @@ func LoadCLISkillsFromConfig(ctx context.Context, configDir string, executor int
 	// Convert []*CLISkill to []skills.Skill
 	result := make([]skills.Skill, len(cliSkills))
 	for i, s := range cliSkills {
-		result[i] = s
+		if s.Enabled {
+			result[i] = s
+		}
 	}
 
 	logger.Log.Info("CLI loader registered skills",

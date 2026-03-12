@@ -118,14 +118,38 @@ type LLMConfig struct {
 }
 
 type SkillConfig struct {
-	Name         string         `mapstructure:"name"`
-	Description  string         `mapstructure:"description"`
-	Instructions string         `mapstructure:"instructions"`
-	Capabilities []string       `mapstructure:"capabilities"`
-	Enabled      bool           `mapstructure:"enabled"`
-	Config       map[string]any `mapstructure:"config"`
+	Name         string       `yaml:"name"         mapstructure:"name"`
+	Description  string       `yaml:"description"  mapstructure:"description"`
+	AccessLevel  string       `yaml:"access"       mapstructure:"access_level"` // read | write | admin
+	Instructions string       `yaml:"instructions"  mapstructure:"instructions"`
+	Version      string       `yaml:"version"      mapstructure:"version"`
+	Type         string       `yaml:"type"         mapstructure:"type"`
+	Enabled      bool         `yaml:"enabled"      mapstructure:"enabled"`
+	Capabilities []string     `yaml:"capabilities" mapstructure:"capabilities"`
+	Requires     Requirements `yaml:"requires"     mapstructure:"requires"`
+	Security     SecurityInfo `yaml:"security"     mapstructure:"security"`
+	Authors      []Author     `yaml:"authors"      mapstructure:"authors"`
+	Homepage     string       `yaml:"homepage"     mapstructure:"homepage"`
 }
 
+// Author is an optional author entry in the frontmatter.
+type Author struct {
+	Name  string `yaml:"name"`
+	Email string `yaml:"email"`
+}
+
+// Requirements lists external binaries and environment variables the skill needs.
+type Requirements struct {
+	Bins []string `yaml:"bins"`
+	Env  []string `yaml:"env"`
+}
+
+// SecurityInfo tracks sanitisation metadata for a skill.
+type SecurityInfo struct {
+	Sanitized   bool   `yaml:"sanitized"`
+	SanitizedAt string `yaml:"sanitized_at"`
+	SanitizedBy string `yaml:"sanitized_by"`
+}
 type ConnectorConfig struct {
 	Name         string                    `mapstructure:"name"`
 	Platform     string                    `mapstructure:"platform"`

@@ -82,8 +82,9 @@ func LoadAllAgentsConfig(v vault.Vault) ([]*AgentConfig, error) {
 		if err := cfg.Validate(); err != nil {
 			return nil, fmt.Errorf("config validation %s: %w", f.Name(), err)
 		}
-
-		configs = append(configs, cfg)
+		if cfg.Enabled {
+			configs = append(configs, cfg)
+		}
 	}
 
 	if len(configs) == 0 {

@@ -1,7 +1,9 @@
 package cmdutil
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
@@ -111,4 +113,31 @@ func ProviderVaultPath(provider string) string {
 		return v
 	}
 	return ""
+}
+
+func ProviderDefaultModel(provider string) string {
+	m := map[string]string{
+		"anthropic": "claude-sonnet-4-6",
+		"openai":    "gpt-4o",
+		"gemini":    "gemini-1.5-pro",
+	}
+	if v, ok := m[provider]; ok {
+		return v
+	}
+	return ""
+}
+
+// AutoDetectProvider walks known providers and returns the first one with a
+// non-empty vault secret. Returns the provider name, vault key, and ok=true.
+func AutoDetectProvider(ctx context.Context, v interface {
+	GetSecret(context.Context, string) (string, error)
+}) (provider, vaultKey string, ok bool) {
+	for _, p := range KnownProviders() {
+		key := ProviderVaultPath(p)
+		secret, err := v.GetSecret(ctx, key)
+		if err == nil && strings.TrimSpace(secret) != "" {
+			return p, key, true
+		}
+	}
+	return "", "", false
 }

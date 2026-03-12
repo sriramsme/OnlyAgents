@@ -241,12 +241,6 @@ var agentEditCmd = &cobra.Command{
 		name := agent.Name
 		provider := agent.LLM.Provider
 		enabled := agent.Enabled
-
-		// Build model options based on current provider
-		modelOpts, err := cmdutil.ModelOptions(provider)
-		if err != nil {
-			return err
-		}
 		model := agent.LLM.Model
 
 		if err := cmdutil.RunForm(
@@ -256,9 +250,16 @@ var agentEditCmd = &cobra.Command{
 			),
 			huh.NewGroup(
 				cmdutil.SelectField("Provider", cmdutil.ProviderOptions(), &provider),
-			),
-			huh.NewGroup(
-				cmdutil.SelectField("Model", modelOpts, &model),
+				huh.NewSelect[string]().
+					Title("Model").
+					OptionsFunc(func() []huh.Option[string] {
+						opts, err := cmdutil.ModelOptions(provider)
+						if err != nil {
+							return []huh.Option[string]{huh.NewOption("(no models found)", "")}
+						}
+						return opts
+					}, &provider).
+					Value(&model),
 			),
 		); err != nil {
 			return err

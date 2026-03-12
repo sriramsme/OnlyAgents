@@ -10,44 +10,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
-
-// ──────────────────────────────────────────────────────────────
-// Frontmatter types
-// ──────────────────────────────────────────────────────────────
-
-// Frontmatter is the YAML block between the opening and closing --- delimiters.
-type Frontmatter struct {
-	Name         string       `yaml:"name"`
-	Description  string       `yaml:"description"`
-	Version      string       `yaml:"version"`
-	Capabilities []string     `yaml:"capabilities"`
-	Authors      []Author     `yaml:"authors"`
-	Homepage     string       `yaml:"homepage"`
-	Requires     Requirements `yaml:"requires"`
-	Security     SecurityInfo `yaml:"security"`
-}
-
-// Author is an optional author entry in the frontmatter.
-type Author struct {
-	Name  string `yaml:"name"`
-	Email string `yaml:"email"`
-}
-
-// Requirements lists external binaries and environment variables the skill needs.
-type Requirements struct {
-	Bins []string `yaml:"bins"`
-	Env  []string `yaml:"env"`
-}
-
-// SecurityInfo tracks sanitisation metadata for a skill.
-type SecurityInfo struct {
-	Sanitized   bool   `yaml:"sanitized"`
-	SanitizedAt string `yaml:"sanitized_at"`
-	SanitizedBy string `yaml:"sanitized_by"`
-}
 
 // ──────────────────────────────────────────────────────────────
 // ParsedSkill
@@ -57,14 +23,17 @@ type SecurityInfo struct {
 type ParsedSkill struct {
 	Name         string
 	Description  string
+	Enabled      bool
+	AccessLevel  string
+	Instructions string
 	Version      string
 	Capabilities []core.Capability
 	Commands     []*Command
 	// Extra frontmatter fields (informational, not used at runtime)
-	Authors  []Author
+	Authors  []config.Author
 	Homepage string
-	Requires Requirements
-	Security SecurityInfo
+	Requires config.Requirements
+	Security config.SecurityInfo
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -74,6 +43,9 @@ type ParsedSkill struct {
 var (
 	// **Description:** some text
 	reDesc = regexp.MustCompile(`(?m)^\*\*Description:\*\*\s*(.+)`)
+
+	// **Access:** write
+	reAccess = regexp.MustCompile(`(?m)^\*\*Access:\*\*\s*(read|write|admin)`)
 
 	// **Command:** followed by a fenced code block (bash, sh, or no lang tag)
 	reCmd = regexp.MustCompile("(?s)\\*\\*Command:\\*\\*\\s*```(?:bash|sh)?\\n(.+?)```")
@@ -221,6 +193,9 @@ func ParseSKILLMD(content string) (*ParsedSkill, error) {
 	return &ParsedSkill{
 		Name:         fm.Name,
 		Description:  fm.Description,
+		Enabled:      fm.Enabled,
+		AccessLevel:  fm.AccessLevel,
+		Instructions: fm.Instructions,
 		Version:      version,
 		Capabilities: caps,
 		Commands:     commands,
@@ -236,7 +211,7 @@ func ParseSKILLMD(content string) (*ParsedSkill, error) {
 // ──────────────────────────────────────────────────────────────
 
 // extractFrontmatter splits "---\n<yaml>\n---\n<body>" into its two parts.
-func extractFrontmatter(content string) (*Frontmatter, string, error) {
+func extractFrontmatter(content string) (*config.SkillConfig, string, error) {
 	if !strings.HasPrefix(content, "---") {
 		return nil, "", fmt.Errorf("file must begin with YAML frontmatter (---)")
 	}
@@ -258,7 +233,7 @@ func extractFrontmatter(content string) (*Frontmatter, string, error) {
 	yamlContent := rest[:closingIdx]
 	body := rest[closingIdx+4:] // skip \n---
 
-	var fm Frontmatter
+	var fm config.SkillConfig
 	if err := yaml.Unmarshal([]byte(yamlContent), &fm); err != nil {
 		return nil, "", fmt.Errorf("invalid YAML frontmatter: %w", err)
 	}
@@ -337,7 +312,12 @@ func parseToolSection(section string) (*Command, error) {
 	if m := reDesc.FindStringSubmatch(section); m != nil {
 		cmd.Description = strings.TrimSpace(m[1])
 	}
-
+	if m := reAccess.FindStringSubmatch(section); m != nil {
+		cmd.Access = m[1]
+	}
+	if cmd.Access == "" {
+		cmd.Access = "read" // safe default
+	}
 	// Command template (inside fenced code block)
 	if m := reCmd.FindStringSubmatch(section); m != nil {
 		cmd.Template = strings.TrimSpace(m[1])
