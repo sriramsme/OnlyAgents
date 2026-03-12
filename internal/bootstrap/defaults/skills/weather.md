@@ -2,6 +2,7 @@
 name: weather
 description: Get current weather, forecasts, and historical weather data
 version: 1.0.0
+enabled: true
 capabilities:
   - weather
 authors:
@@ -12,6 +13,8 @@ requires:
   bins:
     - curl
   env: []
+instructions: |
+    You don't need to install anything. No API keys, no setup.
 security:
   sanitized: true
   sanitized_at: 2026-02-28T10:00:00Z

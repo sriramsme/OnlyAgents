@@ -2,12 +2,18 @@
 name: github
 description: "Interact with GitHub using the `gh` CLI. Use `gh issue`, `gh pr`, `gh run`, and `gh api` for issues, PRs, CI runs, and advanced queries."
 version: 1.0.0
+enabled: true
 capabilities:
   - github
 requires:
   bins:
     - gh
-  env: []
+  env:
+    - GITHUB_TOKEN
+instructions: |
+  1. Install the GitHub CLI: https://cli.github.com
+  2. Set GITHUB_TOKEN in ~/.onlyagents/.env
+     Get a token at: https://github.com/settings/tokens
 security:
   sanitized: true
   sanitized_at: 2026-02-28T00:00:00Z

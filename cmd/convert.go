@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
-	_ "github.com/sriramsme/OnlyAgents/internal/bootstrap"
+	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
@@ -22,85 +22,118 @@ import (
 
 var convertCmd = &cobra.Command{
 	Use:   "convert <input-file>",
-	Short: "Convert an unformatted SKILL.md to the canonical format",
+	Short: "Convert any skill definition to the canonical SKILL.md format",
 	Long: `Reads any skill definition file and uses an LLM to rewrite it into the
 canonical YAML-frontmatter SKILL.md format, then saves it to the skills
 config directory.
 
 Examples:
+  onlyagents convert raw_weather.md
   onlyagents convert raw_weather.md -n weather
-  onlyagents convert raw_weather.md -n weather -p anthropic -m claude-3-5-sonnet-20241022
-  onlyagents convert raw_weather.md -n weather -p openai
-  onlyagents convert raw_weather.md -n weather --vault-key openai/api_key`,
-
+  onlyagents convert raw_weather.md -n weather -p anthropic
+  onlyagents convert raw_weather.md --dry-run`,
 	Args: cobra.ExactArgs(1),
 	RunE: runConvert,
 }
 
 var (
-	convertName     string // -n / --name
-	convertProvider string // -p / --provider
-	convertModel    string // -m / --model
-	convertVaultKey string // --vault-key
-	convertDryRun   bool   // --dry-run
+	convertName     string
+	convertProvider string
+	convertModel    string
+	convertVaultKey string
+	convertDryRun   bool
 )
-
-// providerDefaults maps provider names to their default model and vault key path.
-// Order matters for auto-detection: first provider with a vault key wins.
-var providerDefaults = []struct {
-	name     string
-	model    string
-	vaultKey string
-}{
-	{"anthropic", "claude-3-5-sonnet-20241022", "anthropic/api_key"},
-	{"openai", "gpt-4o", "openai/api_key"},
-	{"gemini", "gemini-1.5-pro", "gemini/api_key"},
-}
 
 func init() {
 	rootCmd.AddCommand(convertCmd)
-
-	convertCmd.Flags().StringVarP(&convertName, "name", "n", "", "Name to save as in the output directory (defaults to input filename stem)")
-	convertCmd.Flags().StringVarP(&convertProvider, "provider", "p", "", "LLM provider: anthropic, openai, gemini (auto-detected from vault if omitted)")
+	convertCmd.Flags().StringVarP(&convertName, "name", "n", "", "Output skill name (defaults to LLM-inferred name)")
+	convertCmd.Flags().StringVarP(&convertProvider, "provider", "p", "", "LLM provider: anthropic, openai, gemini")
 	convertCmd.Flags().StringVarP(&convertModel, "model", "m", "", "LLM model (uses provider default if omitted)")
-	convertCmd.Flags().StringVar(&convertVaultKey, "vault-key", "", "Vault key path for the API key, e.g. openai/api_key")
-	convertCmd.Flags().BoolVar(&convertDryRun, "dry-run", false, "Print the converted skill to stdout instead of writing it to disk")
+	convertCmd.Flags().StringVar(&convertVaultKey, "vault-key", "", "Vault key path override, e.g. openai/api_key")
+	convertCmd.Flags().BoolVar(&convertDryRun, "dry-run", false, "Print converted skill to stdout instead of saving")
 }
 
+// nolint:gocyclo
 func runConvert(cmd *cobra.Command, args []string) error {
 	logger.Initialize("info", "text")
-
 	ctx := context.Background()
 
-	inputPath := args[0]
-
-	// ── 1. Read the raw input file ────────────────────────────────────────────
-	raw, err := os.ReadFile(inputPath) //nolint:gosec
+	// ── 1. Read input ─────────────────────────────────────────────────────────
+	raw, err := os.ReadFile(args[0]) //nolint:gosec
 	if err != nil {
-		return fmt.Errorf("read input file: %w", err)
+		return fmt.Errorf("read input: %w", err)
 	}
 
-	// ── 3. Load vault ─────────────────────────────────────────────────────────
+	// ── 2. Load vault ─────────────────────────────────────────────────────────
 	v, err := config.LoadVault()
 	if err != nil {
 		return fmt.Errorf("load vault: %w", err)
 	}
 
-	// ── 4. Resolve LLM client ─────────────────────────────────────────────────
-	client, resolvedProvider, err := resolveClient(ctx, v)
+	// ── 3. Resolve provider — interactive if not passed via flags ─────────────
+	provider := convertProvider
+	model := convertModel
+
+	if provider == "" {
+		// Try auto-detect first
+		detected, detectedKey, ok := cmdutil.AutoDetectProvider(ctx, v)
+		if ok && convertVaultKey == "" {
+			convertVaultKey = detectedKey
+			provider = detected
+			cmdutil.Info("auto-detected provider: %s", provider)
+		} else {
+			// Fall back to interactive selection
+			if err := cmdutil.RunForm(
+				huh.NewGroup(
+					cmdutil.SelectField("Provider", cmdutil.ProviderOptions(), &provider),
+				),
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	if model == "" {
+		modelOpts, err := cmdutil.ModelOptions(provider)
+		if err != nil {
+			return err
+		}
+		if err := cmdutil.RunForm(
+			huh.NewGroup(
+				huh.NewSelect[string]().
+					Title("Model").
+					OptionsFunc(func() []huh.Option[string] {
+						opts, err := cmdutil.ModelOptions(provider)
+						if err != nil {
+							return []huh.Option[string]{huh.NewOption("(error loading models)", "")}
+						}
+						return opts
+					}, &provider).
+					Value(&model),
+			),
+		); err != nil {
+			return err
+		}
+		_ = modelOpts
+	}
+
+	vaultKey := convertVaultKey
+	if vaultKey == "" {
+		vaultKey = cmdutil.ProviderVaultPath(provider)
+	}
+
+	// ── 4. Build client ───────────────────────────────────────────────────────
+	client, err := buildConvertClient(v, provider, model, vaultKey)
 	if err != nil {
-		return fmt.Errorf("resolve LLM client: %w", err)
+		return fmt.Errorf("build LLM client: %w", err)
 	}
 
 	// ── 5. Convert ────────────────────────────────────────────────────────────
-	fmt.Printf("Converting %q using %s...\n", inputPath, resolvedProvider)
+	cmdutil.Info("converting using %s / %s...", provider, model)
 
-	result, err := skillcli.ConvertSKILL(
-		context.Background(),
-		client,
-		string(raw),
-		skillcli.ConvertOptions{SkillName: convertName},
-	)
+	result, err := skillcli.ConvertSKILL(ctx, client, string(raw), skillcli.ConvertOptions{
+		SkillName: convertName,
+	})
 	if err != nil {
 		return fmt.Errorf("conversion failed: %w", err)
 	}
@@ -108,7 +141,8 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	// ── 6. Output ─────────────────────────────────────────────────────────────
 	if convertDryRun {
 		fmt.Println(result.Content)
-		fmt.Printf("\n✓ Parsed successfully: %d tool(s) found\n", len(result.Parsed.Commands))
+		fmt.Printf("\n")
+		cmdutil.Success("parsed successfully — %d tool(s) found", len(result.Parsed.Commands))
 		return nil
 	}
 
@@ -117,79 +151,23 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		outName = result.Parsed.Name
 	}
 	outPath := filepath.Join(config.SkillsDir(), outName+".md")
-	if err := os.WriteFile(outPath, []byte(result.Content), 0600); err != nil { // nolint:gosec
-		return fmt.Errorf("write output file: %w", err)
+	if err := os.WriteFile(outPath, []byte(result.Content), 0600); err != nil { //nolint:gosec
+		return fmt.Errorf("write output: %w", err)
 	}
 
-	fmt.Printf("✓ Saved to %s (%d tool(s))\n", outPath, len(result.Parsed.Commands))
+	cmdutil.Success("saved to %s (%d tool(s))", outPath, len(result.Parsed.Commands))
 	return nil
 }
 
-// resolveClient builds an llm.Client from the command flags.
-//
-// If -p is given it uses that provider directly (errors if unknown).
-// If -p is omitted it walks providerDefaults and uses the first one
-// that has a non-empty key in the vault.
-// Returns the client and the resolved provider name (useful for logging).
-func resolveClient(ctx context.Context, v vault.Vault) (llm.Client, string, error) {
-	if convertProvider != "" {
-		client, err := buildClient(v, convertProvider, convertModel, convertVaultKey)
-		return client, convertProvider, err
+func buildConvertClient(v vault.Vault, provider, model, vaultKey string) (llm.Client, error) {
+	if model == "" {
+		model = cmdutil.ProviderDefaultModel(provider)
 	}
-
-	// Auto-detect: walk providers in preference order.
-	for _, pd := range providerDefaults {
-		keyPath := pd.vaultKey
-		if convertVaultKey != "" {
-			keyPath = convertVaultKey // honour explicit --vault-key even without -p
-		}
-
-		key, err := v.GetSecret(ctx, keyPath)
-		if err != nil || strings.TrimSpace(key) == "" {
-			continue
-		}
-
-		model := pd.model
-		if convertModel != "" {
-			model = convertModel // honour -m even during auto-detect
-		}
-
-		client, err := buildClient(v, pd.name, model, keyPath)
-		if err != nil {
-			logger.Log.Warn("auto-detect: failed to build client",
-				"provider", pd.name, "error", err)
-			continue
-		}
-
-		return client, pd.name, nil
-	}
-
-	return nil, "", fmt.Errorf(
-		"no LLM provider available; pass -p or set an API key in the vault for one of: anthropic, openai, gemini",
-	)
-}
-
-// buildClient constructs the concrete llm.Client for a named provider,
-// filling in model and vault key defaults when not explicitly set.
-func buildClient(v vault.Vault, provider, model, vaultKey string) (llm.Client, error) {
-	for _, pd := range providerDefaults {
-		if pd.name == provider {
-			if model == "" {
-				model = pd.model
-			}
-			if vaultKey == "" {
-				vaultKey = pd.vaultKey
-			}
-			break
-		}
-	}
-
 	cfg := llm.ProviderConfig{
 		Model:   model,
 		Vault:   v,
 		KeyPath: vaultKey,
 	}
-
 	switch provider {
 	case "anthropic":
 		return anthropic.NewAnthropicClient(cfg)
@@ -198,6 +176,6 @@ func buildClient(v vault.Vault, provider, model, vaultKey string) (llm.Client, e
 	case "gemini":
 		return gemini.NewGeminiClient(cfg)
 	default:
-		return nil, fmt.Errorf("unsupported provider %q — valid options: anthropic, openai, gemini", provider)
+		return nil, fmt.Errorf("unsupported provider %q", provider)
 	}
 }

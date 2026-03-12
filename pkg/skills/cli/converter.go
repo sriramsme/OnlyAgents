@@ -115,14 +115,21 @@ func stripMarkdownFence(s string) string {
 const canonicalFormat = `---
 name: <short-slug>
 description: <one-line description>
+access_level: <read|write|admin>
 version: 1.0.0
+enabled: true
 capabilities:
   - <capability1>
   - <capability2>
 requires:
   bins:
     - <binary1>
-  env: []
+  env:
+    - ENV_VAR_1_NAME
+instructions: |
+  1. Install <binary>: <install URL or command>
+  2. Set <ENV_VAR_NAME> in ~/.onlyagents/.env
+     Get it at: <where to obtain the value>
 security:
   sanitized: true
   sanitized_at: <RFC3339 timestamp>
@@ -135,6 +142,7 @@ security:
 
 ### <tool_name>
 **Description:** <what the tool does>
+**Access:** <read|write|admin>
 **Command:**
 ` + "```bash" + `
 <the actual shell command with {{param}} placeholders>
@@ -177,6 +185,18 @@ RULES:
 - Tools are separated by a line containing only: ---
 - Include a **Validation:** block only if there are meaningful restrictions.
 - Set security.sanitized_at to the current UTC time in RFC3339 format.
+- The field access_level will be set by user. Default to read.
+- For each tool, set access based on what the command does:
+  - read: only retrieves or lists data, no side effects
+  - write: creates, updates, or sends data
+  - admin: deletes, destroys, or has irreversible system effects
+- When a command can be both read and write depending on flags, mark it write.
+- Always include an instructions field in the frontmatter:
+    - If the source contains setup instructions, preserve and reformat them.
+    - If requires.bins is non-empty, include a step to install each binary with its URL.
+    - If requires.env is non-empty, include a step telling the user to add each
+      variable to ~/.onlyagents/.env with a note on where to obtain the value.
+    - If neither bins nor env are required, omit the instructions field entirely.
 %s
 CANONICAL FORMAT:
 %s`, nameConstraint, canonicalFormat)
