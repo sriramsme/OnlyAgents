@@ -158,13 +158,13 @@ OAChannel is architecturally identical to any other channel — agents have no s
 **Agent mode** — headless. No HTTP server. Smallest footprint.
 
 ```
-onlyagents agent run
+onlyagents start --no-server
 ```
 
 **Server mode** — full stack. REST API, embedded web UI, WebSocket, Telegram.
 
 ```
-onlyagents server start
+onlyagents start
 ```
 
 ## Installation
@@ -240,6 +240,30 @@ This walks through creating your config directory, setting your user profile,
 configuring an LLM provider, choosing a channel, and setting your auth password.
 Safe to re-run — already configured steps can be skipped.
 
+## Councils
+
+Councils are preconfigured agent teams for specific domains. Instead of assembling an agent system manually, activate a council with a single command and get a working, curated setup immediately.
+
+```bash
+onlyagents council enable software_dev
+```
+
+OnlyAgents ships with various built-in councils:
+
+| Council                | Description                                              |
+| ---------------------- | -------------------------------------------------------- |
+| `personal_productivity`| Calendar, tasks, reminders, and notes. No setup needed.  |
+| `research`             | Web search, summarization, and note-taking.              |
+| `software_dev`         | Engineering team — coding, review, testing, GitHub.      |
+| `devops`               | Infrastructure — Docker, Kubernetes, deployments.        |
+| `content_creation`     | Writing, drafting, and research-backed content.          |
+| `home_life`            | Household tasks, weather, travel, and home automation.   |
+
+Councils don't change the runtime architecture — they enable the right agents, skills, and connectors for a domain. The executive agent and kernel work exactly the same way.
+
+```bash
+
+```
 ## Configuration
 
 All config and runtime data lives in `~/.onlyagents/`.
@@ -251,24 +275,29 @@ All config and runtime data lives in `~/.onlyagents/`.
 │   ├── general.yaml
 │   ├── productivity.yaml
 │   └── researcher.yaml
-├── cache
-│   └── skills
 ├── channels
 │   └── telegram.yaml
-├── config.yaml
 ├── connectors           # Custom/downloaded connectors
 │   ├── Brave.yaml
 │   ├── DuckDuckGo.yaml
 │   └── Perplexity.yaml
-├── logs
-├── marketplace
-├── onlyagents.db        # SQLite — all persistent data
-├── server.yaml
+├── councils
+│   ├── personal_productivity.yaml
+│   ├── research.yaml
+│   ├── software_dev.yaml
+│   ├── devops.yaml
 ├── skills               # Custom/downloaded skill files
 │   ├── github.md
 │   └── weather.md
+├── logs
+├── cache
+├── marketplace
+├── onlyagents.db        # SQLite — all persistent data
+├── server.yaml
+├── config.yaml
 ├── user.yaml            # User config
 └── vault.yaml
+
 ```
 
 ### Vault
@@ -306,8 +335,8 @@ Each agent specifies its own provider, model, and vault key independently. Full 
 ```bash
 onlyagents setup                   Interactive setup wizard — run this first
 
-onlyagents server start            Start server (API + web UI + agent kernel)
-onlyagents agent run               Run agent kernel only (headless)
+onlyagents start                   Start server (API + web UI + agent kernel)
+onlyagents start --no-server       Run agent kernel only (headless)
 
 onlyagents agent list              List all configured agents
 onlyagents agent enable <id>       Enable an agent
@@ -333,6 +362,13 @@ onlyagents skill list              List all skills
 onlyagents skill enable <name>     Enable a skill
 onlyagents skill disable <name>    Disable a skill
 onlyagents skill view <name>       View skill config
+onlyagents skill edit <name>       Edit skill config interactively
+onlyagents skill tools <name>      List tools provided by a skill
+
+onlyagents council list            List all councils and their status
+onlyagents council info <name>     Show agents, skills, and connectors in a council
+onlyagents council enable <name>   Activate a council
+onlyagents council disable <name>  Deactivate a council
 
 onlyagents auth reset              Generate new password
 onlyagents auth set-password       Change password interactively

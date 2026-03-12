@@ -1,0 +1,19 @@
+name: content_creation
+description: Writing and content assistant for drafting, editing, and publishing. Handles blog posts, social media, newsletters, and research-backed writing.
+enabled: false
+
+agents:
+  - writer       # TODO: new agent — drafting, editing, tone adjustment
+  - general
+
+skills:
+  - web_search   # research while writing
+  - notes        # drafts and saved content
+  - fetch_url    # TODO: read reference articles
+  - tasks        # track content pipeline
+
+connectors:
+  - notes
+  - tasks
+  - brave        # research
+  - perplexity   # research

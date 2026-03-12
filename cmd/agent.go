@@ -1,11 +1,8 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 	"text/tabwriter"
 
 	"github.com/charmbracelet/huh"
@@ -13,23 +10,13 @@ import (
 	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
 	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
 	_ "github.com/sriramsme/OnlyAgents/pkg/connectors/bootstrap"
-	"github.com/sriramsme/OnlyAgents/pkg/kernel"
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
-	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	_ "github.com/sriramsme/OnlyAgents/pkg/skills/bootstrap"
 )
 
 var agentCmd = &cobra.Command{
 	Use:   "agent",
-	Short: "Manage and run AI agents",
-}
-
-// ── run ───────────────────────────────────────────────────────────────────────
-
-var agentRunCmd = &cobra.Command{
-	Use:   "run",
-	Short: "Run the agent kernel (no API server)",
-	RunE:  runAgent,
+	Short: "Manage agents",
 }
 
 var (
@@ -44,14 +31,12 @@ var (
 func init() {
 	rootCmd.AddCommand(agentCmd)
 
-	// run
-	agentCmd.AddCommand(agentRunCmd)
-	agentRunCmd.Flags().StringVar(&agentLogLevel, "log-level", "debug", "Log level (debug, info, warn, error)")
-	agentRunCmd.Flags().StringVar(&agentLogFormat, "log-format", "json", "Log format (json, text)")
-	agentRunCmd.Flags().BoolVar(&agentLogDetailed, "log-detailed", false, "Detailed logging for both LLM and tools")
-	agentRunCmd.Flags().BoolVar(&agentLogDetailedLLM, "log-detailed-llm", false, "Detailed LLM calls")
-	agentRunCmd.Flags().BoolVar(&agentLogDetailedTools, "log-detailed-tools", false, "Detailed tool calls")
-	agentRunCmd.Flags().IntVar(&agentBusBufferSize, "bus-buffer", 100, "Event bus buffer size")
+	agentCmd.Flags().StringVar(&agentLogLevel, "log-level", "debug", "Log level (debug, info, warn, error)")
+	agentCmd.Flags().StringVar(&agentLogFormat, "log-format", "json", "Log format (json, text)")
+	agentCmd.Flags().BoolVar(&agentLogDetailed, "log-detailed", false, "Detailed logging for both LLM and tools")
+	agentCmd.Flags().BoolVar(&agentLogDetailedLLM, "log-detailed-llm", false, "Detailed LLM calls")
+	agentCmd.Flags().BoolVar(&agentLogDetailedTools, "log-detailed-tools", false, "Detailed tool calls")
+	agentCmd.Flags().IntVar(&agentBusBufferSize, "bus-buffer", 100, "Event bus buffer size")
 
 	// management
 	agentCmd.AddCommand(agentListCmd)
@@ -62,51 +47,6 @@ func init() {
 
 	agentViewCmd.Flags().String("field", "", "Print a specific field value")
 	agentViewCmd.Flags().Bool("raw", false, "Dump raw YAML")
-}
-
-func runAgent(cmd *cobra.Command, args []string) error {
-	logger.Initialize(agentLogLevel, agentLogFormat)
-	if agentLogDetailed {
-		logger.SetTimingDetail(true, true)
-	} else {
-		logger.SetTimingDetail(agentLogDetailedLLM, agentLogDetailedTools)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
-	go func() {
-		sig := <-sigChan
-		logger.Log.Info("received shutdown signal", "signal", sig.String())
-		cancel()
-	}()
-
-	fmt.Println("OnlyAgents Kernel v0.1.0")
-	fmt.Println("========================")
-
-	k, err := kernel.NewKernel(ctx, cancel, nil)
-	if err != nil {
-		logger.Log.Error("failed to initialize kernel", "error", err)
-		return err
-	}
-	if err := k.Start(); err != nil {
-		logger.Log.Error("failed to start kernel", "error", err)
-		return err
-	}
-
-	logger.Log.Info("kernel started — press Ctrl+C to stop")
-	fmt.Println("Press Ctrl+C to stop")
-
-	<-ctx.Done()
-	logger.Log.Info("shutting down kernel")
-	if err := k.Stop(); err != nil {
-		logger.Log.Error("error shutting down kernel", "error", err)
-		return err
-	}
-	logger.Log.Info("shutdown complete")
-	return nil
 }
 
 // ── list ──────────────────────────────────────────────────────────────────────

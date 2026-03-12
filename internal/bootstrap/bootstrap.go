@@ -18,6 +18,7 @@ type Paths struct {
 	Connectors  string
 	Channels    string
 	Skills      string
+	Councils    string
 	Logs        string
 	Cache       string
 	Marketplace string
@@ -45,6 +46,7 @@ func Init() (*Paths, error) {
 		Connectors:  filepath.Join(root, "connectors"),
 		Channels:    filepath.Join(root, "channels"),
 		Skills:      filepath.Join(root, "skills"),
+		Councils:    filepath.Join(root, "councils"),
 		Logs:        filepath.Join(root, "logs"),
 		Cache:       filepath.Join(root, "cache"),
 		Marketplace: filepath.Join(root, "marketplace"),

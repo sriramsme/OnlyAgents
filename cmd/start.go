@@ -13,13 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"github.com/spf13/cobra"
 	"github.com/sriramsme/OnlyAgents/internal/api"
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
 	"github.com/sriramsme/OnlyAgents/internal/auth"
-	_ "github.com/sriramsme/OnlyAgents/internal/bootstrap"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
 	_ "github.com/sriramsme/OnlyAgents/pkg/connectors/bootstrap"
@@ -28,38 +25,50 @@ import (
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	_ "github.com/sriramsme/OnlyAgents/pkg/skills/bootstrap"
+	"golang.org/x/time/rate"
 )
 
-var serverCmd = &cobra.Command{
-	Use:   "server",
-	Short: "Run the OnlyAgents server",
-}
-
-var serverStartCmd = &cobra.Command{
+var startCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start the OnlyAgents server",
-	RunE:  runServer,
+	Short: "Start OnlyAgents (kernel + server)",
+	Long: `Start the OnlyAgents kernel and web server.
+
+Use --no-server to run the kernel only (headless mode, useful when
+using Telegram or another channel without the built-in web UI).`,
+	RunE: runStart,
 }
 
 var (
-	serverHost string
-	serverPort int
-	logLevel   string
-	logFormat  string
+	startHost             string
+	startPort             int
+	startLogLevel         string
+	startLogFormat        string
+	startNoServer         bool
+	startLogDetailed      bool
+	startLogDetailedLLM   bool
+	startLogDetailedTools bool
 )
 
 func init() {
-	rootCmd.AddCommand(serverCmd)
-	serverCmd.AddCommand(serverStartCmd)
+	rootCmd.AddCommand(startCmd)
 
-	serverStartCmd.Flags().StringVar(&serverHost, "host", "0.0.0.0", "Server host")
-	serverStartCmd.Flags().IntVarP(&serverPort, "port", "p", 8080, "Server port")
-	serverStartCmd.Flags().StringVar(&logLevel, "log-level", "debug", "Log level (debug, info, warn, error)")
-	serverStartCmd.Flags().StringVar(&logFormat, "log-format", "json", "Log format (json, text)")
+	startCmd.Flags().StringVar(&startHost, "host", "0.0.0.0", "Server host")
+	startCmd.Flags().IntVarP(&startPort, "port", "p", 8080, "Server port")
+	startCmd.Flags().StringVar(&startLogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
+	startCmd.Flags().StringVar(&startLogFormat, "log-format", "json", "Log format (json, text)")
+	startCmd.Flags().BoolVar(&startNoServer, "no-server", false, "Run kernel only, no web server (headless mode)")
+	startCmd.Flags().BoolVar(&startLogDetailed, "log-detailed", false, "Detailed logging for both LLM and tools")
+	startCmd.Flags().BoolVar(&startLogDetailedLLM, "log-detailed-llm", false, "Detailed LLM calls")
+	startCmd.Flags().BoolVar(&startLogDetailedTools, "log-detailed-tools", false, "Detailed tool calls")
 }
 
-func runServer(cmd *cobra.Command, args []string) error {
-	logger.Initialize(logLevel, logFormat)
+func runStart(cmd *cobra.Command, args []string) error {
+	logger.Initialize(startLogLevel, startLogFormat)
+	if startLogDetailed {
+		logger.SetTimingDetail(true, true)
+	} else {
+		logger.SetTimingDetail(startLogDetailedLLM, startLogDetailedTools)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -72,10 +81,14 @@ func runServer(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	fmt.Println("OnlyAgents Server v0.1.0")
-	fmt.Println("=========================")
+	fmt.Println("OnlyAgents v0.1.0")
+	fmt.Println("=================")
 
-	uiBus := make(core.UIBus, core.UIBusBuffer)
+	// ── Kernel ────────────────────────────────────────────────────────────────
+	var uiBus core.UIBus
+	if !startNoServer {
+		uiBus = make(core.UIBus, core.UIBusBuffer)
+	}
 
 	k, err := kernel.NewKernel(ctx, cancel, uiBus)
 	if err != nil {
@@ -85,30 +98,42 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting kernel: %w", err)
 	}
 
+	// ── Headless mode ─────────────────────────────────────────────────────────
+	if startNoServer {
+		fmt.Println("Running in headless mode — press Ctrl+C to stop")
+		<-ctx.Done()
+		logger.Log.Info("shutting down")
+		if err := k.Stop(); err != nil {
+			logger.Log.Error("kernel stop error", "error", err)
+		}
+		logger.Log.Info("shutdown complete")
+		return nil
+	}
+
+	// ── Server ────────────────────────────────────────────────────────────────
 	serverConfig, err := loadServerConfig()
 	if err != nil {
 		return fmt.Errorf("loading server config: %w", err)
 	}
 	if cmd.Flags().Changed("host") {
-		serverConfig.Host = serverHost
+		serverConfig.Host = startHost
 	}
 	if cmd.Flags().Changed("port") {
-		serverConfig.Port = serverPort
+		serverConfig.Port = startPort
 	}
 
-	// Auth — initAuth lives in shared.go, also used by cmd/auth.go
 	a := initAuth(dataDir())
 	defer a.Stop()
+
 	username, err := auth.GetUsername(dataDir())
 	if err != nil {
 		return fmt.Errorf("loading auth: %w", err)
 	}
-	fmt.Printf("Username : %s\n", username)
+
 	server := api.NewServer(
 		config.ServerConfig{
 			Host:         serverConfig.Host,
 			Port:         serverConfig.Port,
-			APIKeyVault:  "",
 			Version:      "0.1.0",
 			ReadTimeout:  serverConfig.ReadTimeout,
 			WriteTimeout: serverConfig.WriteTimeout,
@@ -127,7 +152,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 		Scheme: "http",
 		Host:   net.JoinHostPort(serverConfig.Host, strconv.Itoa(serverConfig.Port)),
 	}
-	fmt.Printf("Server started at %s\n", u.String())
+	fmt.Printf("Username : %s\n", username)
+	fmt.Printf("Web UI   : %s\n", u.String())
 	fmt.Println("Press Ctrl+C to stop")
 
 	serverErr := make(chan error, 1)
@@ -145,12 +171,10 @@ func runServer(cmd *cobra.Command, args []string) error {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
-	// Stop kernel FIRST — this closes WS connections via OAChannel.Stop()
+	// Kernel first — closes WS connections before HTTP server stops
 	if err := k.Stop(); err != nil {
 		logger.Log.Error("kernel stop error", "error", err)
 	}
-
-	// THEN stop HTTP server — no active WS connections left, exits cleanly
 	if err := server.Stop(shutdownCtx); err != nil {
 		logger.Log.Error("server stop error", "error", err)
 	}
@@ -159,12 +183,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// ── Shared helpers (used by start.go and auth.go) ─────────────────────────────
+
 func loadServerConfig() (*config.ServerConfig, error) {
 	return config.LoadServerConfig()
 }
 
-// dataDir returns ~/.onlyagents, the canonical data directory.
-// All persistent state (auth.yaml, future db, etc.) lives here.
 func dataDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -174,17 +198,13 @@ func dataDir() string {
 	return filepath.Join(home, ".onlyagents")
 }
 
-// initAuth initializes the Auth subsystem.
 func initAuth(dir string) *auth.Auth {
 	if _, err := os.Stat(filepath.Join(dir, "auth.yaml")); err != nil {
 		slog.Error("auth not configured — run `onlyagents setup` first")
 		os.Exit(1)
 	}
-
 	limiter := auth.NewIPRateLimiter(rate.Every(60*time.Second), 5)
-
 	a := auth.New(dir, limiter)
 	a.Start()
-
 	return a
 }

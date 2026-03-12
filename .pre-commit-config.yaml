@@ -41,3 +41,11 @@ repos:
     hooks:
       - id: yamllint
         args: [-c, .yamllint.yml]
+
+  - repo: local
+    hooks:
+      - id: gofumpt
+        name: gofumpt
+        entry: gofumpt -w
+        language: system
+        types: [go]

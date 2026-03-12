@@ -52,6 +52,7 @@ func resolvePaths() (*cmdutil.Paths, error) {
 		Channels:   p.Channels,
 		Connectors: p.Connectors,
 		Skills:     p.Skills,
+		Councils:   p.Councils,
 		DBPath:     p.DBPath,
 		UserPath:   p.UserPath,
 		VaultPath:  p.VaultPath,

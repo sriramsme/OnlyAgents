@@ -73,6 +73,7 @@ type Paths struct {
 	Channels   string
 	Connectors string
 	Skills     string
+	Councils   string
 	DBPath     string
 	UserPath   string
 	VaultPath  string

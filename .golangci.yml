@@ -1,11 +1,14 @@
 version: '2'
 
+formatters:
+  enable:
+    - gofumpt
+
 linters:
   enable:
     - govet
     - errcheck
     - staticcheck
-    - unused
     - ineffassign
     - gosec
     - gocyclo

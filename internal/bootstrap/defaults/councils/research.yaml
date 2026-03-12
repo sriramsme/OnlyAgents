@@ -1,0 +1,19 @@
+name: research
+description: Deep research assistant for gathering, synthesizing, and organizing information. Searches the web, reads pages, and saves findings to notes.
+enabled: false
+
+agents:
+  - researcher   # ships — web_search, citations (needs fetch_url + summarize skills)
+  - general
+
+skills:
+  - web_search
+  - notes
+  - fetch_url    # TODO: fetch and extract text from a URL
+  - summarize    # TODO: summarize long content
+
+connectors:
+  - notes
+  - brave        # preferred for research — cleaner results
+  - perplexity   # fallback for complex queries
+  - duckduckgo
