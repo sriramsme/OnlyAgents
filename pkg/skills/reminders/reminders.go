@@ -5,15 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
-
-const version = "1.0.0"
 
 func init() {
 	skills.Register("reminders", NewRemindersSkill)
@@ -26,40 +23,28 @@ type RemindersSkill struct {
 	conn connectors.RemindersConnector
 }
 
-func NewRemindersSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skill, error) {
-	base := skills.NewBaseSkill(
-		tools.SkillReminders,
-		"Create and manage time-based reminders delivered via the active channel",
-		version,
-		skills.SkillTypeNative,
-	)
+func NewRemindersSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+	remindersConn, ok := conn.(connectors.RemindersConnector)
+	if !ok {
+		return nil, fmt.Errorf("reminders skill: connector is not a RemindersConnector")
+	}
+	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
 	skillCtx, cancel := context.WithCancel(ctx)
 	return &RemindersSkill{
 		BaseSkill: base,
+		conn:      remindersConn,
 		ctx:       skillCtx,
 		cancel:    cancel,
 	}, nil
 }
 
-func (s *RemindersSkill) Initialize(deps skills.SkillDeps) error {
-	s.SetOutbox(deps.Outbox)
-	for _, c := range deps.Connectors {
-		if rc, ok := c.(connectors.RemindersConnector); ok {
-			s.conn = rc
-			return nil
-		}
-	}
-	logger.Log.Error("reminders skill: no RemindersConnector found in deps")
+func (s *RemindersSkill) Initialize() error {
 	return nil
 }
 
 func (s *RemindersSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *RemindersSkill) RequiredCapabilities() []core.Capability {
-	return []core.Capability{core.CapabilityReminders}
 }
 
 func (s *RemindersSkill) Tools() []tools.ToolDef {

@@ -1,30 +1,15 @@
 package tools
 
-import (
-	"context"
-
-	"github.com/sriramsme/OnlyAgents/pkg/core"
-)
-
-type AgentInfo struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	Capabilities []core.Capability `json:"capabilities"`
-}
-
-type FindBestAgentFunc func(ctx context.Context, task string, capabilities []core.Capability) (AgentInfo, error)
-
 // ====================
 // Input Types
 // ====================
 
 // DelegateInput is the input schema for the delegate_to_agent tool.
 type DelegateInput struct {
-	AgentID      string            `json:"agent_id" desc:"ID of the agent to delegate to — use the 'id' field from the Available Capabilities & Agents section"`
-	AgentName    string            `json:"agent_name" desc:"Name of the agent to delegate to - use the 'name' field from the Available Capabilities & Agents section"`
-	Task         string            `json:"task" desc:"Clear description of the task to delegate"`
-	Capabilities []core.Capability `json:"capabilities,omitempty" desc:"Required capabilities for this task (for validation)"`
-	Context      map[string]any    `json:"context,omitempty" desc:"Additional context for the delegated task (optional)"`
+	AgentID   string         `json:"agent_id" desc:"ID of the agent to delegate to — use the 'id' field from the Available Capabilities & Agents section"`
+	AgentName string         `json:"agent_name" desc:"Name of the agent to delegate to - use the 'name' field from the Available Capabilities & Agents section"`
+	Task      string         `json:"task" desc:"Clear description of the task to delegate"`
+	Context   map[string]any `json:"context,omitempty" desc:"Additional context for the delegated task (optional)"`
 
 	// SendDirectlyToUser controls response routing:
 	// - true: Sub-agent sends response directly to user (faster, for simple requests)
@@ -49,17 +34,11 @@ type CreateWorkflowInput struct {
 
 // WorkflowTask defines a single task within a workflow.
 type WorkflowStep struct {
-	ID                   string   `json:"id" desc:"Unique step identifier (e.g. step_1, step_2)"`
-	Name                 string   `json:"name" desc:"Short name for this step"`
-	Description          string   `json:"description" desc:"Clear description of what this step should do"`
-	RequiredCapabilities []string `json:"required_capabilities" desc:"Capabilities required to execute this step"`
-	DependsOn            []string `json:"depends_on,omitempty" desc:"IDs of steps that must complete before this one"`
-}
-
-// FindBestAgentInput is the input schema for the find_best_agent tool.
-type FindBestAgentInput struct {
-	Task         string            `json:"task" desc:"Clear description of the task to route"`
-	Capabilities []core.Capability `json:"capabilities,omitempty" desc:"Required capabilities for this task"`
+	ID          string   `json:"id" desc:"Unique step identifier (e.g. step_1, step_2)"`
+	Name        string   `json:"name" desc:"Short name for this step"`
+	Description string   `json:"description" desc:"Clear description of what this step should do"`
+	AgentID     string   `json:"agent_id" desc:"ID of the agent capable to execute this step  — use the 'id' field from the AVAILABLE SUB-AGENTS & THEIR CAPABILITIES section"`
+	DependsOn   []string `json:"depends_on,omitempty" desc:"IDs of steps that must complete before this one"`
 }
 
 // ====================
@@ -72,25 +51,20 @@ func GetExecutiveTools() []ToolDef {
 	// Build capability-aware schemas by injecting enum values at construction time.
 	// SchemaFromStruct handles structure; we patch in the capability enum after.
 	delegateSchema := SchemaFromStruct(DelegateInput{})
-	InjectEnumOnArrayField(delegateSchema, "capabilities", core.AllCapabilityStrings())
 
 	workflowSchema := SchemaFromStruct(CreateWorkflowInput{})
-	InjectEnumOnNestedArrayField(workflowSchema, "tasks", "required_capabilities", core.AllCapabilityStrings())
-
-	findAgentSchema := SchemaFromStruct(FindBestAgentInput{})
-	InjectEnumOnArrayField(findAgentSchema, "capabilities", core.AllCapabilityStrings())
 
 	return []ToolDef{
 		NewToolDef(
 			SkillMetaTools,
 			"delegate_to_agent",
-			"Delegate a task to a specialized agent. Use when a request requires specific capabilities "+
+			"Delegate a task to a specialized agent. Use when a request requires specific skills and capabilities "+
 				"(calendar, email, web_search, etc.) that you don't handle directly. "+
 				"Pass a clear, self-contained description of what the agent should do — "+
 				"rewrite the user's request in your own words with full context if needed. "+
 				"For multiple operations targeting the same agent, pass them all in one delegation — "+
 				"sub-agents handle multi-step execution internally.\n"+
-				"Pick the agent_id from the Available Capabilities & Agents section in your context.\n\n"+
+				"Pick the agent_id from the 'Available Sub-Agents & Their Capabilities' section in your context.\n\n"+
 				"RESPONSE ROUTING:\n"+
 				"- Set send_directly_to_user=true for simple, single-task requests where the sub-agent's response can go directly to the user\n"+
 				"- Set send_directly_to_user=false (or omit) when you need the response for further processing or synthesis\n\n"+
@@ -105,20 +79,12 @@ func GetExecutiveTools() []ToolDef {
 			SkillMetaTools,
 			"create_workflow",
 			"Create a multi-step workflow when a request requires coordination across DIFFERENT agents or capabilities. "+
-				"Each step is delegated to an agent matching its required capabilities. "+
+				"Each step is delegated to an agent matching its capabilities. "+
 				"Results from all steps return to you for final synthesis — you cannot send step results directly to user. "+
 				"ONLY use this when operations span multiple agents. "+
 				"Do NOT use for multiple operations on the same agent (e.g. creating 3 tasks = one delegation to Friday, not a workflow). "+
 				"Do NOT use for sequential operations a single agent can handle internally.",
 			workflowSchema,
-		),
-		NewToolDef(
-			SkillMetaTools,
-			"find_best_agent",
-			"Find the most suitable agent for a task based on required capabilities. "+
-				"Use ONLY when no agent can be confidently selected from the Available Capabilities & Agents list. "+
-				"If capabilities clearly match an agent, use delegate_to_agent directly instead.",
-			findAgentSchema,
 		),
 	}
 }

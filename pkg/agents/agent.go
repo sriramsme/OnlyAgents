@@ -26,6 +26,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
+	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
@@ -55,7 +56,7 @@ func NewAgent(
 		isExecutive:      cfg.IsExecutive,
 		isGeneral:        cfg.IsGeneral,
 		maxConcurrency:   cfg.MaxConcurrency,
-		skills:           cfg.Skills,
+		skillsBindings:   cfg.Skills,
 		streamingEnabled: cfg.StreamingEnabled,
 		llmClient:        llmClient,
 		soul:             agentSoul,
@@ -76,6 +77,11 @@ func NewAgent(
 // --- Lifecycle ---
 
 func (a *Agent) Start() error {
+	for _, s := range a.skills {
+		if err := s.Initialize(); err != nil {
+			return fmt.Errorf("skill %s: failed to initialize: %w", s.Name(), err)
+		}
+	}
 	a.logger.Info("starting agent", "model", a.llmClient.Model())
 	a.wg.Add(2)
 	go a.processEvents()
@@ -86,6 +92,11 @@ func (a *Agent) Start() error {
 func (a *Agent) Stop() error {
 	a.logger.Info("stopping agent")
 
+	for _, s := range a.skills {
+		if err := s.Shutdown(); err != nil {
+			return fmt.Errorf("skill %s: failed to shutdown: %w", s.Name(), err)
+		}
+	}
 	// Cancel context to signal shutdown
 	a.cancel()
 
@@ -107,6 +118,10 @@ func (a *Agent) Stop() error {
 			"warning", "goroutines may still be running - check for blocked LLM calls or stuck tool executions")
 		return fmt.Errorf("agent %s shutdown timeout after %v", a.id, timeout)
 	}
+}
+
+func (a *Agent) GetSkillBindings() []config.SkillBinding {
+	return a.skillsBindings
 }
 
 func (a *Agent) Status() core.AgentStatus {
@@ -186,7 +201,18 @@ func (a *Agent) IsExecutive() bool { return a.isExecutive }
 
 func (a *Agent) IsGeneral() bool { return a.isGeneral }
 
-func (a *Agent) GetSkillNames() []tools.SkillName { return a.skills }
+func (a *Agent) GetSkillNames() []tools.SkillName {
+	names := make([]tools.SkillName, 0, len(a.skills))
+	for _, s := range a.skills {
+		names = append(names, s.Name())
+	}
+	return names
+}
+
+func (a *Agent) AddSkill(s skills.Skill) {
+	a.skills[s.Name()] = s
+	a.AddTools(s.Tools())
+}
 
 func (a *Agent) SetTools(tools []tools.ToolDef) {
 	a.tools = tools
@@ -195,16 +221,15 @@ func (a *Agent) SetTools(tools []tools.ToolDef) {
 	}
 }
 
-func (a *Agent) SetFindBestAgent(fn tools.FindBestAgentFunc) {
-	a.findBestAgent = fn
+func (a *Agent) AddTools(tools []tools.ToolDef) {
+	for _, tool := range tools {
+		a.toolSkillMap[tool.Name] = tool.Skill
+	}
+	a.tools = append(a.tools, tools...)
 }
 
-func (a *Agent) SetFindSkill(fn findSkillFunc) {
-	a.findSkill = fn
-}
-
-func (a *Agent) SetUseSkillTool(fn useSkillToolFunc) {
-	a.useSkillTool = fn
+func (a *Agent) SetHandleFindSkill(fn handleFindSkillFunc) {
+	a.handleFindSkill = fn
 }
 
 func (a *Agent) SetSystemPrompt(userSection string, availableAgents string) {
@@ -698,8 +723,11 @@ func (a *Agent) processToolCalls(
 		})
 
 		var exec tools.ToolExecution
-		if a.isExecutive && isMetaTool(tc.Function.Name) {
-			exec = a.handleMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel)
+
+		if a.isExecutive && isExecutiveMetaTool(tc.Function.Name) {
+			exec = a.handleExecutiveMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel)
+		} else if a.isGeneral && a.isGeneralMetaTool(tc.Function.Name) {
+			exec = a.handleGeneralMetaTool(ctx, correlationID, tc)
 		} else {
 			exec = a.requestToolCall(ctx, correlationID, tc)
 		}
@@ -780,74 +808,39 @@ func (a *Agent) finaliseTurn(
 	}
 }
 
-// requestToolCall fires a ToolCallRequest to kernel and blocks until result arrives.
-// Uses a per-call reply channel so concurrent tool calls don't mix up results.
 func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc tools.ToolCall) tools.ToolExecution {
-	skillName, ok := a.toolSkillMap[tc.Function.Name]
+	skill, ok := a.skills[a.toolSkillMap[tc.Function.Name]]
 	if !ok {
-		return tools.ExecErr(fmt.Errorf("agent: no skill registered for tool %q", tc.Function.Name))
-	}
-	// Kernel will send the result back on this channel
-	// Buffer of 1 ensures non-blocking send from kernel
-	replyCh := make(chan core.Event, 1)
-
-	event := core.Event{
-		Type:          core.ToolCallRequest,
-		CorrelationID: correlationID,
-		AgentID:       a.id,
-		ReplyTo:       replyCh,
-		Payload: tools.ToolCallRequestPayload{
-			ToolCallID: tc.ID,
-			SkillName:  skillName,
-			ToolName:   tc.Function.Name,
-			Arguments:  []byte(tc.Function.Arguments), // direct cast, no parsing
-		},
+		return tools.ExecErr(fmt.Errorf("no skill registered for tool %q", tc.Function.Name))
 	}
 
-	a.logger.Debug("requesting tool call",
-		"tool", tc.Function.Name,
-		"args", tc.Function.Arguments,
-		"correlation_id", correlationID)
+	toolPhase := fmt.Sprintf("%s_tool_%s", a.id, tc.Function.Name)
+	logger.Timing.StartPhase(correlationID, toolPhase)
 
-	// Safe send with timeout and context checks
-	select {
-	case a.outbox <- event:
-		// Successfully sent request
-	case <-ctx.Done():
-		return tools.ExecErr(fmt.Errorf("request cancelled: %w", ctx.Err()))
-	case <-a.ctx.Done():
-		return tools.ExecErr(fmt.Errorf("agent shutting down"))
-	case <-time.After(5 * time.Second):
-		return tools.ExecErr(fmt.Errorf("failed to send tool call request (timeout): %s", tc.Function.Name))
-	}
+	execCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 
-	// Wait for result with timeout
-	select {
-	case resultEvt := <-replyCh:
-		result, ok := resultEvt.Payload.(tools.ToolCallResultPayload)
-		if !ok {
-			return tools.ExecErr(fmt.Errorf("invalid tool result payload type: %T", resultEvt.Payload))
-		}
+	result, err := skill.Execute(execCtx, tc.Function.Name, []byte(tc.Function.Arguments))
 
-		if result.Error != "" {
-			return tools.ExecErr(fmt.Errorf("tool call error: %s", result.Error))
-		}
+	logger.Timing.EndPhaseWithMetadata(correlationID, toolPhase, map[string]any{
+		"tool":  tc.Function.Name,
+		"skill": skill.Name(),
+		"error": err != nil,
+	})
 
-		a.logger.Debug("tool call succeeded",
+	if err != nil {
+		a.logger.Error("tool execution failed",
 			"tool", tc.Function.Name,
+			"skill", skill.Name(),
+			"error", err,
 			"correlation_id", correlationID)
-
-		return tools.ExecOK(result.Result)
-
-	case <-ctx.Done():
-		return tools.ExecErr(fmt.Errorf("request cancelled: %w", ctx.Err()))
-
-	case <-a.ctx.Done():
-		return tools.ExecErr(fmt.Errorf("agent shutting down"))
-
-	case <-time.After(30 * time.Second):
-		return tools.ExecErr(fmt.Errorf("tool call timeout: %s", tc.Function.Name))
+		return tools.ExecErr(err)
 	}
+
+	a.logger.Debug("tool execution succeeded",
+		"tool", tc.Function.Name,
+		"correlation_id", correlationID)
+	return tools.ExecOK(result)
 }
 
 // Add new method to fire task completion

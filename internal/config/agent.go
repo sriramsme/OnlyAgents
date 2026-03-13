@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
+	"reflect"
 	"time"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
+
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // load reads an agent config file into a Config struct.
@@ -18,16 +21,13 @@ func load(configPath string) (*AgentConfig, error) {
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
 	}
-
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("agent config not found: %s", configPath)
 	}
 
 	v := viper.New()
 	v.SetConfigFile(configPath)
-
 	setAgentDefaults(v)
-
 	v.SetEnvPrefix("ONLYAGENTS")
 	v.AutomaticEnv()
 
@@ -36,17 +36,35 @@ func load(configPath string) (*AgentConfig, error) {
 	}
 
 	var cfg AgentConfig
-	if err := v.Unmarshal(&cfg); err != nil {
+	if err := v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
+		dc.TagName = "mapstructure"
+		dc.WeaklyTypedInput = true
+		dc.DecodeHook = mapstructure.ComposeDecodeHookFunc(
+			skillBindingDecodeHook(),
+			mapstructure.StringToTimeDurationHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		)
+	}); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	// Validate skills (skill names should exist in skill registry)
-	// Note: This validation happens in kernel after skill registry is created
-	// Here we just check format
-	if slices.Contains(cfg.Skills, "") {
-		return nil, fmt.Errorf("empty skill is not allowed")
-	}
 	return &cfg, nil
+}
+
+func skillBindingDecodeHook() mapstructure.DecodeHookFunc {
+	skillBindingType := reflect.TypeOf(SkillBinding{})
+
+	return func(from, to reflect.Type, data any) (any, error) {
+		if to != skillBindingType && to != reflect.PointerTo(skillBindingType) {
+			return data, nil
+		}
+
+		if s, ok := data.(string); ok {
+			return SkillBinding{Name: tools.SkillName(s)}, nil
+		}
+
+		return data, nil
+	}
 }
 
 // LoadAllAgentsConfig loads every *.yaml under dir, sharing a single vault

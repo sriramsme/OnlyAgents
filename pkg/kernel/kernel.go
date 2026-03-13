@@ -52,7 +52,6 @@ type Kernel struct {
 
 	skillMarketplaceManager *marketplace.Manager
 	cliExecutor             *cli.CLIExecutor
-	capabilities            *core.CapabilityRegistry
 	cm                      *memory.ConversationManager
 	mm                      *memory.MemoryManager
 	store                   storage.Storage
@@ -95,12 +94,11 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus)
 		return nil, err
 	}
 
-	buildSystemPrompts(components.user, components.agents, components.capabilityMap)
+	buildSystemPrompts(components.user, components.agents, components.skills)
 
 	fmt.Println("kernel created")
 	fmt.Println("skills: ", components.skills.ListAll())
 	fmt.Println("agents: ", components.agents.ListAll())
-	fmt.Println("capabilities: ", components.capabilities.ListAll())
 
 	return &Kernel{
 		bus:                     kernelBus,
@@ -110,7 +108,6 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus)
 		channels:                components.channels,
 		user:                    components.user,
 		workflow:                components.workflow,
-		capabilities:            components.capabilities,
 		skillMarketplaceManager: components.skillMarketplaceManager,
 		cliExecutor:             components.cliExecutor,
 		cm:                      components.cm,
@@ -133,8 +130,8 @@ func (k *Kernel) RegisterAgent(a *agents.Agent) {
 	k.agents.Register(a)
 }
 
-func (k *Kernel) RegisterSkill(s skills.Skill) error {
-	return k.skills.Register(s)
+func (k *Kernel) RegisterSkill(s config.SkillConfig) {
+	k.skills.Register(s)
 }
 
 func (k *Kernel) RegisterConnector(c connectors.Connector) {
@@ -182,11 +179,6 @@ func (k *Kernel) Start() error {
 	k.logger.Info("initializing native connectors")
 	k.initNativeConnectors()
 
-	k.logger.Info("initializing skills")
-	if err := k.initializeSkills(); err != nil {
-		return fmt.Errorf("failed to initialize skills: %w", err)
-	}
-
 	// Start all channels — they'll write MessageReceived events to the bus
 	k.logger.Info("starting channels")
 	for _, ch := range k.channels.All() {
@@ -219,7 +211,6 @@ func (k *Kernel) Start() error {
 	if err := k.workflow.Start(); err != nil {
 		return fmt.Errorf("failed to start workflow engine: %w", err)
 	}
-	k.workflow.SetAgentFinder(k.findBestAgentToolDep)
 
 	// assign agent tools
 	k.logger.Info("assigning agent tools")
@@ -383,16 +374,6 @@ func (k *Kernel) route(evt core.Event) {
 		// This is typically handled directly by agents' inboxes
 		// If it arrives here, route it
 		k.handleAgentExecute(evt)
-
-	// Tool execution
-	case core.ToolCallRequest:
-		k.handleToolCallRequest(evt)
-
-	case core.ToolCallResult:
-		// Results typically go directly via ReplyTo channel
-		// If it arrives here, it's an error
-		k.logger.Warn("ToolCallResult should not arrive at bus",
-			"correlation_id", evt.CorrelationID)
 
 	// Delegation
 	case core.AgentDelegate:

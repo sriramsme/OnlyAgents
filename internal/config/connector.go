@@ -33,10 +33,6 @@ func loadConnectorConfig(configPath string) (*ConnectorConfig, error) {
 	// Store raw config for platform-specific unmarshaling
 	cfg.RawConfig = v.AllSettings()
 
-	// Extract name from filename (without extension)
-	cfg.Name = filepath.Base(configPath)
-	cfg.Name = cfg.Name[:len(cfg.Name)-len(filepath.Ext(cfg.Name))]
-
 	if cfg.Platform == "" {
 		return nil, fmt.Errorf("platform field is required")
 	}

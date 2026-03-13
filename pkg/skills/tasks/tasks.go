@@ -5,15 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
-
-const version = "1.0.0"
 
 func init() {
 	skills.Register("tasks", NewTasksSkill)
@@ -26,40 +23,28 @@ type TasksSkill struct {
 	conn connectors.TasksConnector
 }
 
-func NewTasksSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skill, error) {
-	base := skills.NewBaseSkill(
-		tools.SkillTasks,
-		"Create and manage tasks and projects — todo lists, priorities, due dates, and project grouping",
-		version,
-		skills.SkillTypeNative,
-	)
+func NewTasksSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+	tasksConn, ok := conn.(connectors.TasksConnector)
+	if !ok {
+		return nil, fmt.Errorf("tasks skill: connector is not a TasksConnector")
+	}
+	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
 	skillCtx, cancel := context.WithCancel(ctx)
 	return &TasksSkill{
 		BaseSkill: base,
+		conn:      tasksConn,
 		ctx:       skillCtx,
 		cancel:    cancel,
 	}, nil
 }
 
-func (s *TasksSkill) Initialize(deps skills.SkillDeps) error {
-	s.SetOutbox(deps.Outbox)
-	for _, c := range deps.Connectors {
-		if tc, ok := c.(connectors.TasksConnector); ok {
-			s.conn = tc
-			return nil
-		}
-	}
-	logger.Log.Error("tasks skill: no TasksConnector found in deps")
+func (s *TasksSkill) Initialize() error {
 	return nil
 }
 
 func (s *TasksSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *TasksSkill) RequiredCapabilities() []core.Capability {
-	return []core.Capability{core.CapabilityTasks}
 }
 
 func (s *TasksSkill) Tools() []tools.ToolDef {

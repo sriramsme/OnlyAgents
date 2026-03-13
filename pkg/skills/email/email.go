@@ -5,15 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
-)
-
-const (
-	version = "1.0.0"
 )
 
 func init() {
@@ -22,53 +17,35 @@ func init() {
 
 // EmailSkill provides email management capabilities
 type EmailSkill struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	eventBus chan<- core.Event
-
+	ctx    context.Context
+	cancel context.CancelFunc
 	*skills.BaseSkill
 
 	// Connectors injected by kernel
 	// Cast to connectors.EmailConnector when using
-	emailConns map[string]connectors.EmailConnector
+	conn connectors.EmailConnector
 }
 
 // NewEmailSkill creates a new email skill
-func NewEmailSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skill, error) {
-	base := skills.NewBaseSkill(
-		tools.SkillEmail,
-		"Manage emails - send, search, read, and draft emails using AI",
-		version,
-		skills.SkillTypeNative,
-	)
+func NewEmailSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+	emailConn, ok := conn.(connectors.EmailConnector)
+	if !ok {
+		return nil, fmt.Errorf("email skill: connector is not a EmailConnector")
+	}
+	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
 
 	skillCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is called in Stop()
 
 	return &EmailSkill{
-		BaseSkill:  base,
-		emailConns: make(map[string]connectors.EmailConnector),
-		ctx:        skillCtx,
-		cancel:     cancel,
-		eventBus:   eventBus,
+		BaseSkill: base,
+		conn:      emailConn,
+		ctx:       skillCtx,
+		cancel:    cancel,
 	}, nil
 }
 
 // Initialize sets up the email skill with injected connectors
-func (s *EmailSkill) Initialize(deps skills.SkillDeps) error {
-	s.SetOutbox(deps.Outbox)
-
-	// Extract email connectors from deps.Connectors
-	// Kernel has already filtered and injected the right ones
-	for name, conn := range deps.Connectors {
-		if emailConn, ok := conn.(connectors.EmailConnector); ok {
-			s.emailConns[name] = emailConn
-		}
-	}
-
-	if len(s.emailConns) == 0 {
-		logger.Log.Error("email skill requires at least one email connector")
-	}
-
+func (s *EmailSkill) Initialize() error {
 	return nil
 }
 
@@ -76,11 +53,6 @@ func (s *EmailSkill) Initialize(deps skills.SkillDeps) error {
 func (s *EmailSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-// RequiredCapabilities declares that this skill needs email connectors
-func (s *EmailSkill) RequiredCapabilities() []core.Capability {
-	return []core.Capability{core.CapabilityEmail}
 }
 
 // Tools returns the LLM function calling tools for email
@@ -117,10 +89,6 @@ func (s *EmailSkill) sendEmail(ctx context.Context, args []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	emailConn, err := s.getConnector()
-	if err != nil {
-		return nil, err
-	}
 
 	req := &connectors.SendEmailRequest{
 		To:      input.To,
@@ -129,7 +97,7 @@ func (s *EmailSkill) sendEmail(ctx context.Context, args []byte) (any, error) {
 		Cc:      input.CC,
 	}
 
-	err = emailConn.SendEmail(ctx, req)
+	err = s.conn.SendEmail(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("send email: %w", err)
 	}
@@ -146,10 +114,7 @@ func (s *EmailSkill) searchEmails(ctx context.Context, args []byte) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	emailConn, err := s.getConnector()
-	if err != nil {
-		return nil, err
-	}
+
 	req := &connectors.SearchEmailsRequest{
 		Query:      input.Query,
 		From:       input.From,
@@ -159,7 +124,7 @@ func (s *EmailSkill) searchEmails(ctx context.Context, args []byte) (any, error)
 	if req.MaxResults == 0 {
 		req.MaxResults = 10
 	}
-	emails, err := emailConn.SearchEmails(ctx, req)
+	emails, err := s.conn.SearchEmails(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("search emails: %w", err)
 	}
@@ -185,11 +150,7 @@ func (s *EmailSkill) getEmail(ctx context.Context, args []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	emailConn, err := s.getConnector()
-	if err != nil {
-		return nil, err
-	}
-	email, err := emailConn.GetEmail(ctx, input.EmailID)
+	email, err := s.conn.GetEmail(ctx, input.EmailID)
 	if err != nil {
 		return nil, fmt.Errorf("get email: %w", err)
 	}
@@ -209,12 +170,7 @@ func (s *EmailSkill) draftEmail(ctx context.Context, args []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	emailConn, err := s.getConnector()
-	if err != nil {
-		return nil, err
-	}
-	// draftEmail doesn't actually send — it returns a draft for the LLM to confirm
-	_ = emailConn
+
 	return map[string]any{
 		"status":  "drafted",
 		"context": input.Context,
@@ -227,11 +183,8 @@ func (s *EmailSkill) markAsRead(ctx context.Context, args []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	emailConn, err := s.getConnector()
-	if err != nil {
-		return nil, err
-	}
-	if err := emailConn.MarkAsRead(ctx, input.EmailID); err != nil {
+
+	if err := s.conn.MarkAsRead(ctx, input.EmailID); err != nil {
 		return nil, fmt.Errorf("mark as read: %w", err)
 	}
 	return map[string]any{
@@ -245,11 +198,8 @@ func (s *EmailSkill) deleteEmail(ctx context.Context, args []byte) (any, error) 
 	if err != nil {
 		return nil, err
 	}
-	emailConn, err := s.getConnector()
-	if err != nil {
-		return nil, err
-	}
-	if err := emailConn.DeleteEmail(ctx, input.EmailID); err != nil {
+
+	if err := s.conn.DeleteEmail(ctx, input.EmailID); err != nil {
 		return nil, fmt.Errorf("delete email: %w", err)
 	}
 	return map[string]any{
@@ -261,14 +211,6 @@ func (s *EmailSkill) deleteEmail(ctx context.Context, args []byte) (any, error) 
 // ====================
 // Helper Methods
 // ====================
-
-func (s *EmailSkill) getConnector() (connectors.EmailConnector, error) {
-	for _, conn := range s.emailConns {
-		return conn, nil
-	}
-	return nil, fmt.Errorf("no email connector available")
-}
-
 func truncate(s string, maxLen int) string {
 	if len(s) <= maxLen {
 		return s

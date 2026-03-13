@@ -10,25 +10,24 @@ import (
 
 // Config represents the complete agent configuration.
 type AgentConfig struct {
-	ID               string            `mapstructure:"id"`
-	Name             string            `mapstructure:"name"`
-	Description      string            `mapstructure:"description"`
-	IsExecutive      bool              `mapstructure:"is_executive"`
-	IsGeneral        bool              `mapstructure:"is_general"`
-	Enabled          bool              `mapstructure:"enabled"`
-	Role             string            `mapstructure:"role"`
-	StreamingEnabled bool              `mapstructure:"streaming_enabled"`
-	MaxConcurrency   int               `mapstructure:"max_concurrency"`
-	BufferSize       int               `mapstructure:"buffer_size"`
-	Logging          LoggingConfig     `mapstructure:"logging"`
-	Security         SecurityConfig    `mapstructure:"security"`
-	LLM              LLMConfig         `mapstructure:"llm"`
-	Vault            vault.Config      `mapstructure:"vault"`
-	Skills           []tools.SkillName `mapstructure:"skills"`
-	Connectors       []string          `mapstructure:"connectors"`
-	Channels         []string          `mapstructure:"channels"`
-	Soul             SoulConfig        `mapstructure:"soul"`
-	User             UserConfig        `mapstructure:"user"`
+	ID               string         `mapstructure:"id"`
+	Name             string         `mapstructure:"name"`
+	Description      string         `mapstructure:"description"`
+	IsExecutive      bool           `mapstructure:"is_executive"`
+	IsGeneral        bool           `mapstructure:"is_general"`
+	Enabled          bool           `mapstructure:"enabled"`
+	Role             string         `mapstructure:"role"`
+	StreamingEnabled bool           `mapstructure:"streaming_enabled"`
+	MaxConcurrency   int            `mapstructure:"max_concurrency"`
+	BufferSize       int            `mapstructure:"buffer_size"`
+	Logging          LoggingConfig  `mapstructure:"logging"`
+	Security         SecurityConfig `mapstructure:"security"`
+	LLM              LLMConfig      `mapstructure:"llm"`
+	Vault            vault.Config   `mapstructure:"vault"`
+	Skills           []SkillBinding `mapstructure:"skills"`
+	Channels         []string       `mapstructure:"channels"`
+	Soul             SoulConfig     `mapstructure:"soul"`
+	User             UserConfig     `mapstructure:"user"`
 
 	// ============================================
 	// EXECUTION LIMITS (Guard Rails)
@@ -98,6 +97,11 @@ type AgentConfig struct {
 	v vault.Vault
 }
 
+type SkillBinding struct {
+	Name      tools.SkillName `yaml:"name"`
+	Connector string          `yaml:"connector,omitempty"` // empty = use skill default
+}
+
 type LoggingConfig struct {
 	Level  string `mapstructure:"level"`
 	Format string `mapstructure:"format"`
@@ -118,37 +122,86 @@ type LLMConfig struct {
 }
 
 type SkillConfig struct {
-	Name         string       `yaml:"name"         mapstructure:"name"`
-	Description  string       `yaml:"description"  mapstructure:"description"`
-	AccessLevel  string       `yaml:"access"       mapstructure:"access_level"` // read | write | admin
-	Instructions string       `yaml:"instructions"  mapstructure:"instructions"`
-	Version      string       `yaml:"version"      mapstructure:"version"`
-	Type         string       `yaml:"type"         mapstructure:"type"`
-	Enabled      bool         `yaml:"enabled"      mapstructure:"enabled"`
-	Capabilities []string     `yaml:"capabilities" mapstructure:"capabilities"`
-	Requires     Requirements `yaml:"requires"     mapstructure:"requires"`
-	Security     SecurityInfo `yaml:"security"     mapstructure:"security"`
-	Authors      []Author     `yaml:"authors"      mapstructure:"authors"`
-	Homepage     string       `yaml:"homepage"     mapstructure:"homepage"`
+	// Common fields — all skill types
+	Name        tools.SkillName `yaml:"name"`
+	Type        string          `yaml:"type"` // "cli" | "native"
+	Enabled     bool            `yaml:"enabled"`
+	AccessLevel string          `yaml:"access_level"`
+	Description string          `yaml:"description"`
+	Version     string          `yaml:"version"`
+
+	Capabilities []string          `yaml:"capabilities"`
+	Instructions string            `yaml:"instructions"`
+	Authors      []SkillAuthor     `yaml:"authors,omitempty"`
+	Homepage     string            `yaml:"homepage,omitempty"`
+	Requires     SkillRequirements `yaml:"requires,omitempty"`
+	Security     SkillSecurity     `yaml:"security,omitempty"`
+
+	Connector *SkillConnectorSpec `yaml:"connector,omitempty"`
+	// CLI skill — tools block
+	Tools []SkillToolEntry `yaml:"tools,omitempty"`
+
+	// Executor config
+	Executor ExecutorConfig `yaml:"executor,omitempty"`
+
+	// Native skill — arbitrary per-skill config
+	RawConfig map[string]any `yaml:"config,omitempty"`
+}
+type SkillConnectorSpec struct {
+	Required  bool     `yaml:"required"`
+	Default   string   `yaml:"default"`
+	Supported []string `yaml:"supported"`
+}
+type SkillToolEntry struct {
+	Name        string           `yaml:"name"`
+	Description string           `yaml:"description"`
+	Access      string           `yaml:"access"`
+	Command     string           `yaml:"command"`
+	Timeout     int              `yaml:"timeout"`
+	Parameters  []SkillParamDef  `yaml:"parameters"`
+	Validation  *SkillValidation `yaml:"validation,omitempty"`
 }
 
-// Author is an optional author entry in the frontmatter.
-type Author struct {
-	Name  string `yaml:"name"`
-	Email string `yaml:"email"`
+type SkillParamDef struct {
+	Name        string `yaml:"name"`
+	Type        string `yaml:"type"`
+	Description string `yaml:"description"`
 }
 
-// Requirements lists external binaries and environment variables the skill needs.
-type Requirements struct {
-	Bins []string `yaml:"bins"`
-	Env  []string `yaml:"env"`
+type SkillValidation struct {
+	AllowedCommands []string `yaml:"allowed_commands"`
+	DeniedPatterns  []string `yaml:"denied_patterns"`
+	MaxOutputSize   int      `yaml:"max_output_size"`
+	RequireConfirm  bool     `yaml:"require_confirm"`
 }
 
-// SecurityInfo tracks sanitisation metadata for a skill.
-type SecurityInfo struct {
+type SkillRequirements struct {
+	Bins []string `yaml:"bins,omitempty"`
+	Env  []string `yaml:"env,omitempty"`
+}
+
+type SkillSecurity struct {
 	Sanitized   bool   `yaml:"sanitized"`
 	SanitizedAt string `yaml:"sanitized_at"`
 	SanitizedBy string `yaml:"sanitized_by"`
+}
+
+type SkillAuthor struct {
+	Name  string `yaml:"name"`
+	Email string `yaml:"email,omitempty"`
+}
+
+// ExecutorConfig holds CLI executor configuration
+type ExecutorConfig struct {
+	// Security settings
+	AllowedShells    []string `yaml:"allowed_shells"`     // Default: ["bash", "sh"]
+	MaxOutputSize    int      `yaml:"max_output_size"`    // Bytes, default: 1MB
+	MaxExecutionTime int      `yaml:"max_execution_time"` // Seconds, default: 60
+	WorkingDir       string   `yaml:"working_dir"`        // Default: /tmp
+
+	// Sandboxing (future)
+	UseSandbox  bool   `yaml:"use_sandbox"`
+	SandboxType string `yaml:"sandbox_type"` // docker, firejail, etc.
 }
 type ConnectorConfig struct {
 	Name         string                    `mapstructure:"name"`

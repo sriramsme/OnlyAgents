@@ -22,8 +22,8 @@ import (
 )
 
 type AgentInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	Name         string   `json:"name"`
+	Capabilities []string `json:"capabilities"`
 }
 
 type kernelComponents struct {
@@ -32,10 +32,8 @@ type kernelComponents struct {
 	channels                *channels.Registry
 	skills                  *skills.Registry
 	user                    *config.UserConfig
-	capabilityMap           map[core.Capability][]AgentInfo
 	skillMarketplaceManager *marketplace.Manager
 	cliExecutor             *cli.CLIExecutor
-	capabilities            *core.CapabilityRegistry
 	cm                      *memory.ConversationManager
 	mm                      *memory.MemoryManager
 	workflow                *workflow.Engine
@@ -72,16 +70,6 @@ func loadComponents(
 		return c, fmt.Errorf("load vault: %w", err)
 	}
 
-	c.capabilities = core.NewCapabilityRegistry()
-
-	cliConfig := &cli.ExecutorConfig{
-		AllowedShells:    []string{"bash", "sh"},
-		MaxOutputSize:    1024 * 1024,
-		MaxExecutionTime: 60,
-		WorkingDir:       "/tmp",
-	}
-	c.cliExecutor = cli.NewCLIExecutor(ctx, cliConfig)
-
 	// 3. Setup marketplace manager
 	c.skillMarketplaceManager = marketplace.NewManager(paths.SkillCache, paths.Skills)
 
@@ -112,17 +100,13 @@ func loadComponents(
 	if err != nil {
 		return c, fmt.Errorf("load channels: %w", err)
 	}
-	c.skills, err = loadSkills(ctx, paths.Skills, kernelBus, c.capabilities, c.cliExecutor)
+	c.skills, err = loadSkills()
 	if err != nil {
 		return c, fmt.Errorf("load skills: %w", err)
 	}
 	c.user, err = config.LoadUserConfig()
 	if err != nil {
 		return c, fmt.Errorf("load user config: %w", err)
-	}
-	c.capabilityMap, err = validateAndBuildCapabilityMap(c.agents, c.skills)
-	if err != nil {
-		return c, fmt.Errorf("validate agent skills: %w", err)
 	}
 
 	c.workflow = workflow.NewEngine(c.store, kernelBus)
@@ -211,12 +195,9 @@ func loadChannels(
 	return registry, nil
 }
 
-func loadSkills(ctx context.Context, configDir string, kernelBus chan<- core.Event,
-	capabilityRegistry *core.CapabilityRegistry,
-	cliExecutor *cli.CLIExecutor,
-) (*skills.Registry, error) {
+func loadSkills() (*skills.Registry, error) {
 	// Create connector registr
-	registry, err := skills.NewRegistry(ctx, configDir, kernelBus, capabilityRegistry, cliExecutor)
+	registry, err := skills.NewRegistry()
 	if err != nil {
 		return nil, fmt.Errorf("create skills registry: %w", err)
 	}

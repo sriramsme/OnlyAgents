@@ -24,19 +24,18 @@ type WorkflowDefinition struct {
 
 // WFTaskDefinition represents a task at submission time
 type WFTaskDefinition struct {
-	ID                   string                `json:"id"`
-	Name                 string                `json:"name"`
-	Description          string                `json:"description"`
-	Type                 string                `json:"type"`
-	DependsOn            []string              `json:"depends_on"`
-	RequiredCapabilities []core.Capability     `json:"required_capabilities"`
-	Payload              interface{}           `json:"payload"`
-	AssignedAgentID      string                `json:"assigned_agent_id,omitempty"`
-	MaxRetries           int                   `json:"max_retries"`
-	Timeout              time.Duration         `json:"timeout,omitempty"`
-	Channel              *core.ChannelMetadata `json:"channel,omitempty"`
-	OriginalMessage      string                `json:"original_message,omitempty"`
-	Metadata             map[string]string     `json:"metadata,omitempty"`
+	ID              string                `json:"id"`
+	Name            string                `json:"name"`
+	Description     string                `json:"description"`
+	Type            string                `json:"type"`
+	DependsOn       []string              `json:"depends_on"`
+	Payload         interface{}           `json:"payload"`
+	AssignedAgentID string                `json:"assigned_agent_id,omitempty"`
+	MaxRetries      int                   `json:"max_retries"`
+	Timeout         time.Duration         `json:"timeout,omitempty"`
+	Channel         *core.ChannelMetadata `json:"channel,omitempty"`
+	OriginalMessage string                `json:"original_message,omitempty"`
+	Metadata        map[string]string     `json:"metadata,omitempty"`
 }
 
 // WorkflowPayload: Submit workflow for execution

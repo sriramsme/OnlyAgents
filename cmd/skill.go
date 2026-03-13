@@ -226,12 +226,16 @@ var skillToolsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		skill, err := cmdutil.LoadSkillWithTools(paths.Skills, args[0])
+		skills, err := cmdutil.SkillRegistry(paths.Skills)
+		if err != nil {
+			return err
+		}
+		s, err := cmdutil.FindSkill(skills, args[0])
 		if err != nil {
 			return err
 		}
 
-		if len(skill.Commands) == 0 {
+		if len(s.Tools) == 0 {
 			fmt.Println(cmdutil.StyleDim.Render("No tools found in this skill."))
 			return nil
 		}
@@ -246,12 +250,12 @@ var skillToolsCmd = &cobra.Command{
 			fmt.Fprintln(w, "────\t──────\t───────────")
 		}
 
-		for _, c := range skill.Commands {
+		for _, c := range s.Tools {
 			if accessFilter != "" && c.Access != accessFilter {
 				continue
 			}
 			if verbose {
-				params := fmt.Sprintf("%d", len(c.ParamDefs))
+				params := fmt.Sprintf("%d", len(c.Parameters))
 				timeout := fmt.Sprintf("%ds", c.Timeout)
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 					cmdutil.StyleBold.Render(c.Name),
@@ -270,12 +274,12 @@ var skillToolsCmd = &cobra.Command{
 
 			// inside the loop, after printing the tool row:
 			if commands {
-				fmt.Fprintf(w, "  %s\n", cmdutil.StyleDim.Render("$ "+c.Template))
+				fmt.Fprintf(w, "  %s\n", cmdutil.StyleDim.Render("$ "+c.Command))
 			}
 
 			// Under verbose, also print each param on its own line
 			if verbose {
-				for _, p := range c.ParamDefs {
+				for _, p := range c.Parameters {
 					fmt.Fprintf(w, "  ↳ %s\t%s\t\t\t(%s)\n",
 						p.Name, p.Type, cmdutil.Truncate(p.Description, 40))
 				}
@@ -287,7 +291,7 @@ var skillToolsCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\n%s\n", cmdutil.StyleDim.Render(
-			fmt.Sprintf("%d tool(s) in %s skill", len(skill.Commands), args[0]),
+			fmt.Sprintf("%d tool(s) in %s skill", len(s.Tools), args[0]),
 		))
 		return nil
 	},

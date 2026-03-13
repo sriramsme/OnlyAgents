@@ -11,7 +11,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
-	"github.com/sriramsme/OnlyAgents/pkg/tools"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
@@ -102,51 +101,19 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 	logger.Timing.StartPhase(evt.CorrelationID, delegationPhase)
 
 	var targetAgent *agents.Agent
-	var err error
 
 	// Executive specifies agent_id directly (preferred)
 	if payload.AgentID != "" {
-		targetAgent, err = k.agents.Get(payload.AgentID)
-		if err != nil {
-			k.logger.Error("specified agent not found",
-				"agent_id", payload.AgentID,
-				"capabilities", payload.Capabilities)
-
-			// Fallback: try to find agent by capabilities
-			k.logger.Info("falling back to capability-based agent search")
-			targetAgent = k.findBestAgent(payload.Capabilities, payload.Task)
-		} else {
-			// Validate agent has required capabilities (optional check)
-			if len(payload.Capabilities) > 0 {
-				agentCaps := k.getAgentCapabilities(targetAgent.GetSkillNames())
-				if !hasAllCapabilities(agentCaps, payload.Capabilities) {
-					k.logger.Warn("agent missing some capabilities",
-						"agent_id", payload.AgentID,
-						"has", agentCaps,
-						"needs", payload.Capabilities)
-					// Continue anyway - executive knows best
-				}
-			}
-		}
-	} else {
-		// No agent_id specified - search by capabilities (fallback for non-executive callers)
-		k.logger.Debug("no agent_id specified, searching by capabilities")
-		targetAgent = k.findBestAgent(payload.Capabilities, payload.Task)
-	}
-
-	if targetAgent == nil {
 		logger.Timing.EndPhase(evt.CorrelationID, delegationPhase)
 		k.logger.Error("no agent found for delegation",
-			"agent_id", payload.AgentID,
-			"capabilities", payload.Capabilities)
-		k.sendDelegationError(evt, fmt.Sprintf("No agent available for capabilities: %v", payload.Capabilities))
+			"agent_id", payload.AgentID)
+		k.sendDelegationError(evt, fmt.Sprintf("No agent found for ID: %s", payload.AgentID))
 		return
 	}
 
 	k.logger.Info("delegating task",
 		"from_agent", evt.AgentID,
 		"to_agent", targetAgent.ID(),
-		"capabilities", payload.Capabilities,
 		"correlation_id", evt.CorrelationID)
 
 	// Create execution event for target agent
@@ -454,102 +421,6 @@ func (k *Kernel) handleAgentMessage(evt core.Event) {
 	}
 }
 
-// handleToolCallRequest: agent wants to execute a tool, kernel dispatches to the right skill
-func (k *Kernel) handleToolCallRequest(evt core.Event) {
-	payload, ok := evt.Payload.(tools.ToolCallRequestPayload)
-	if !ok {
-		k.logger.Error("invalid ToolCallRequest payload",
-			"actual_type", fmt.Sprintf("%T", evt.Payload))
-		return
-	}
-
-	skill, ok := k.skills.Get(payload.SkillName)
-	if !ok {
-		k.sendToolError(evt, fmt.Sprintf("skill not found: %s", payload.SkillName))
-		return
-	}
-
-	// TRACKED GOROUTINE: Ensures graceful shutdown waits for tool calls
-	k.wg.Add(1)
-	go func() {
-		defer k.wg.Done()
-
-		toolPhase := fmt.Sprintf("%s_tool_%s", evt.AgentID, payload.ToolName)
-		logger.Timing.StartPhase(evt.CorrelationID, toolPhase)
-
-		// Create timeout context for skill execution
-		ctx, cancel := context.WithTimeout(k.ctx, 30*time.Second)
-		defer cancel()
-
-		k.logger.Debug("executing skill",
-			"skill", payload.SkillName,
-			"tool", payload.ToolName,
-			"correlation_id", evt.CorrelationID)
-
-		result, err := skill.Execute(ctx, payload.ToolName, payload.Arguments)
-
-		metadata := map[string]any{
-			"tool":  payload.ToolName,
-			"skill": payload.SkillName,
-		}
-		if err != nil {
-			metadata["error"] = "failed"
-		}
-		logger.Timing.EndPhaseWithMetadata(evt.CorrelationID, toolPhase, metadata)
-
-		resultEvt := core.Event{
-			Type:          core.ToolCallResult,
-			CorrelationID: evt.CorrelationID,
-			AgentID:       evt.AgentID,
-		}
-
-		if err != nil {
-			k.logger.Error("skill execution failed",
-				"skill", payload.SkillName,
-				"tool", payload.ToolName,
-				"error", err,
-				"correlation_id", evt.CorrelationID)
-
-			resultEvt.Payload = tools.ToolCallResultPayload{
-				ToolCallID: payload.ToolCallID,
-				ToolName:   payload.ToolName,
-				Error:      err.Error(),
-			}
-		} else {
-			k.logger.Debug("skill execution succeeded",
-				"skill", payload.SkillName,
-				"tool", payload.ToolName,
-				"correlation_id", evt.CorrelationID)
-
-			resultEvt.Payload = tools.ToolCallResultPayload{
-				ToolCallID: payload.ToolCallID,
-				ToolName:   payload.ToolName,
-				Result:     result,
-			}
-		}
-
-		// SAFE SEND: Reply directly to the agent's waiting goroutine
-		if evt.ReplyTo != nil {
-			select {
-			case evt.ReplyTo <- resultEvt:
-				// Success
-			case <-time.After(5 * time.Second):
-				k.logger.Error("failed to send tool result - reply channel blocked",
-					"tool", payload.ToolName,
-					"correlation_id", evt.CorrelationID,
-					"warning", "agent may have timed out or shut down")
-			case <-k.ctx.Done():
-				k.logger.Info("shutdown in progress - tool result not delivered",
-					"correlation_id", evt.CorrelationID)
-			}
-		} else {
-			k.logger.Warn("tool call request missing ReplyTo channel",
-				"tool", payload.ToolName,
-				"correlation_id", evt.CorrelationID)
-		}
-	}()
-}
-
 // handleOutboundMessage: agent has a response, send it via the appropriate channel
 func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	payload, ok := evt.Payload.(core.OutboundMessagePayload)
@@ -702,68 +573,6 @@ func (k *Kernel) handleSessionEnd(evt core.Event) {
 	// No ReplyTo needed — fire and forget
 }
 
-// sendToolError: Helper to send tool error back to agent
-func (k *Kernel) sendToolError(evt core.Event, errorMsg string) {
-	if evt.ReplyTo == nil {
-		k.logger.Warn("cannot send tool error - no reply channel",
-			"error", errorMsg)
-		return
-	}
-
-	resultEvt := core.Event{
-		Type:          core.ToolCallResult,
-		CorrelationID: evt.CorrelationID,
-		AgentID:       evt.AgentID,
-		Payload: tools.ToolCallResultPayload{
-			ToolCallID: "", // Extract from payload if available
-			Error:      errorMsg,
-		},
-	}
-
-	select {
-	case evt.ReplyTo <- resultEvt:
-		// Success
-	case <-time.After(2 * time.Second):
-		k.logger.Error("failed to send tool error")
-	case <-k.ctx.Done():
-		return
-	}
-}
-
-// ====================
-// Agent Finding Logic
-// ====================
-
-// findBestAgent finds the best agent for a task based on capabilities
-func (k *Kernel) findBestAgent(capabilities []core.Capability, task string) *agents.Agent {
-	// 1. Try to find specialized agent
-	agent, _, found := k.findSpecializedAgent(capabilities)
-	if found {
-		return agent
-	}
-
-	// 2. Fall back to general agent
-	generalAgent := k.agents.GetGeneral()
-
-	return generalAgent
-}
-
-// findSpecializedAgent finds an agent that has skills for all required capabilities
-func (k *Kernel) findSpecializedAgent(capabilities []core.Capability) (*agents.Agent, []core.Capability, bool) {
-	for _, agent := range k.agents.All() {
-		if agent.IsExecutive() {
-			continue
-		}
-
-		// Check if agent has skills covering all capabilities
-		agentCapabilities := k.getAgentCapabilities(agent.GetSkillNames())
-		if hasAllCapabilities(agentCapabilities, capabilities) {
-			return agent, capabilities, true
-		}
-	}
-	return nil, nil, false
-}
-
 // ====================
 // Error Handlers
 // ====================
@@ -795,42 +604,4 @@ func (k *Kernel) sendDelegationError(evt core.Event, errorMsg string) {
 func (k *Kernel) sendWorkflowError(evt core.Event, errorMsg string) {
 	// TODO: Send error back to executive
 	k.logger.Error("workflow error", "error", errorMsg)
-}
-
-// ====================
-// Capability Helpers
-// ====================
-
-func (k *Kernel) getAgentCapabilities(skillNames []tools.SkillName) []core.Capability {
-	capSet := make(map[core.Capability]bool)
-
-	for _, skillName := range skillNames {
-		skill, ok := k.skills.Get(skillName)
-		if !ok {
-			continue
-		}
-		for _, cap := range skill.RequiredCapabilities() {
-			capSet[cap] = true
-		}
-	}
-
-	caps := make([]core.Capability, 0, len(capSet))
-	for cap := range capSet {
-		caps = append(caps, cap)
-	}
-	return caps
-}
-
-func hasAllCapabilities(agentCaps, required []core.Capability) bool {
-	capMap := make(map[core.Capability]bool)
-	for _, cap := range agentCaps {
-		capMap[cap] = true
-	}
-
-	for _, req := range required {
-		if !capMap[req] {
-			return false
-		}
-	}
-	return true
 }

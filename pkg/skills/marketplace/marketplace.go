@@ -24,10 +24,10 @@ type Marketplace interface {
 
 // SearchOptions for filtering search results
 type SearchOptions struct {
-	Limit        int
-	Capabilities []string
-	Verified     bool
-	MinRating    float64
+	Limit     int
+	SkillName string
+	Verified  bool
+	MinRating float64
 }
 
 // SearchResult represents a search hit

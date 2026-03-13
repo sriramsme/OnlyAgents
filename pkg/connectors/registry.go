@@ -77,21 +77,6 @@ func (r *Registry) All() []Connector {
 	return out
 }
 
-// GetByCapability returns all connectors that support a capability
-// Example: GetByCapability(core.CapabilityEmail) returns all EmailConnector implementations
-func (r *Registry) GetByCapability(capability core.Capability) []Connector {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	var result []Connector
-	for _, conn := range r.connectors {
-		if SupportsCapability(conn, capability) {
-			result = append(result, conn)
-		}
-	}
-	return result
-}
-
 // Lifecycle Management
 
 // ConnectAll connects all connectors

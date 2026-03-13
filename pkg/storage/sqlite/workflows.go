@@ -44,12 +44,12 @@ func (d *DB) UpdateWorkflowStatus(ctx context.Context, id string, status storage
 func (d *DB) CreateWFTask(ctx context.Context, task *storage.WFTask) error {
 	_, err := d.db.ExecContext(ctx, `
         INSERT INTO wf_tasks (
-            id, workflow_id, name, description, type, depends_on, channel_json, required_capabilities,
+            id, workflow_id, name, description, type, depends_on, channel_json,
             payload, status, assigned_agent_id, created_at, retry_count, max_retries,
             timeout_seconds, metadata, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, task.ID, task.WorkflowID, task.Name, task.Description, task.Type,
-		task.DependsOn, task.ChannelJSON, task.RequiredCapabilities, task.Payload, task.Status,
+		task.DependsOn, task.ChannelJSON, task.Payload, task.Status,
 		task.AssignedAgentID, task.CreatedAt, task.RetryCount, task.MaxRetries,
 		task.TimeoutSeconds, task.Metadata, task.UpdatedAt)
 

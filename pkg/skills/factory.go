@@ -5,81 +5,55 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-// Factory creates a connector from raw config
+// Factory creates a skill from a config.
 type Factory func(
 	ctx context.Context,
-	eventBus chan<- core.Event,
+	cfg config.SkillConfig,
+	conn connectors.Connector,
 ) (Skill, error)
-
-// SkillLoader loads multiple skills from external sources (files, directories, etc.)
-type SkillLoader func(ctx context.Context, configDir string, executor interface{}) ([]Skill, error)
 
 var (
 	factoryMu sync.RWMutex
-	factories = make(map[string]Factory)
-	loaders   = make(map[string]SkillLoader) // ex: SKILL.md files
+	factories = make(map[tools.SkillName]Factory)
 )
 
-// Register registers a connector factory for a platform
-func Register(platform string, factory Factory) {
+// Register registers a factory.
+// Native skills register by name (e.g. "summarize").
+// The CLI loader registers as "cli".
+func Register(key tools.SkillName, factory Factory) {
 	factoryMu.Lock()
 	defer factoryMu.Unlock()
-
 	if factory == nil {
-		panic("skills: Register factory is nil for platform " + platform)
+		panic("skills: Register factory is nil for " + key)
 	}
-	if _, exists := factories[platform]; exists {
-		panic("skillss: Register called twice for platform " + platform)
+	if _, exists := factories[key]; exists {
+		panic("skills: Register called twice for " + key)
 	}
-
-	factories[platform] = factory
+	factories[key] = factory
 }
 
-// GetFactory returns the factory for a platform
-func GetFactory(platform string) (Factory, error) {
+func getFactory(cfg config.SkillConfig) (Factory, error) {
 	factoryMu.RLock()
 	defer factoryMu.RUnlock()
-
-	factory, ok := factories[platform]
-	if !ok {
-		return nil, fmt.Errorf("no factory registered for platform: %s", platform)
+	switch cfg.Type {
+	case "cli":
+		f, ok := factories["cli"]
+		if !ok {
+			return nil, fmt.Errorf("cli skill factory not registered")
+		}
+		return f, nil
+	case "native":
+		f, ok := factories[cfg.Name]
+		if !ok {
+			return nil, fmt.Errorf("no native factory registered for skill %q", cfg.Name)
+		}
+		return f, nil
+	default:
+		return nil, fmt.Errorf("unknown skill type %q in skill %q", cfg.Type, cfg.Name)
 	}
-
-	return factory, nil
-}
-
-// ListRegistered returns all registered platform names
-func ListRegistered() []string {
-	factoryMu.RLock()
-	defer factoryMu.RUnlock()
-
-	platforms := make([]string, 0, len(factories))
-	for platform := range factories {
-		platforms = append(platforms, platform)
-	}
-	return platforms
-}
-
-// RegisterLoader registers a skill loader (for file-based skills)
-func RegisterLoader(name string, loader SkillLoader) {
-	factoryMu.Lock()
-	defer factoryMu.Unlock()
-	if loader == nil {
-		panic("skills: RegisterLoader loader is nil for " + name)
-	}
-	loaders[name] = loader
-}
-
-// GetLoaders returns all registered loaders
-func GetLoaders() map[string]SkillLoader {
-	factoryMu.RLock()
-	defer factoryMu.RUnlock()
-	result := make(map[string]SkillLoader, len(loaders))
-	for k, v := range loaders {
-		result[k] = v
-	}
-	return result
 }

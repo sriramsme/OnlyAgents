@@ -6,9 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
+	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -25,10 +27,10 @@ type Agent struct {
 	streamingEnabled bool
 
 	// Core capabilities
-	llmClient llm.Client
-	soul      *Soul
-	skills    []tools.SkillName
-
+	llmClient      llm.Client
+	soul           *Soul
+	skillsBindings []config.SkillBinding
+	skills         map[tools.SkillName]skills.Skill // owns lifecycle
 	// Tool definitions given to LLM (schema only, no implementation)
 	// Kernel populates this based on which skills are assigned to this agent.
 	tools        []tools.ToolDef
@@ -43,10 +45,8 @@ type Agent struct {
 	cm *memory.ConversationManager // shared across all agents, injected by kernel
 	mm *memory.MemoryManager       // shared across all agents, injected by kernel
 
-	systemPrompt  string
-	findBestAgent tools.FindBestAgentFunc // injected by kernel only for executive agents
-	findSkill     findSkillFunc           // injected by kernel only for general agents
-	useSkillTool  useSkillToolFunc        // injected by kernel only for general agents
+	systemPrompt    string
+	handleFindSkill handleFindSkillFunc // injected by kernel only for general agents
 
 	// Lifecycle
 	ctx    context.Context
@@ -117,6 +117,5 @@ type Purpose struct {
 }
 
 type (
-	findSkillFunc    func(ctx context.Context, capability core.Capability) (interface{}, error)
-	useSkillToolFunc func(ctx context.Context, skillName tools.SkillName, toolName string, params map[string]interface{}) (interface{}, error)
+	handleFindSkillFunc func(ctx context.Context, a *Agent, skillName string) (any, error)
 )

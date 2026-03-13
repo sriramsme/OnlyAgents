@@ -1,17 +1,20 @@
 package skills
 
 import (
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // NewBaseSkill creates a new base skill
-func NewBaseSkill(name tools.SkillName, description, version string, skillType SkillType) *BaseSkill {
+func NewBaseSkill(cfg config.SkillConfig, t SkillType) *BaseSkill {
 	return &BaseSkill{
-		name:        name,
-		description: description,
-		version:     version,
-		skillType:   skillType,
+		name:        tools.SkillName(cfg.Name),
+		description: cfg.Description,
+		enabled:     cfg.Enabled,
+		accessLevel: cfg.AccessLevel,
+		version:     cfg.Version,
+		skillType:   t,
 	}
 }
 

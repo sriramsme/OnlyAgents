@@ -7,10 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/sriramsme/OnlyAgents/internal/config"
-	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -23,51 +21,17 @@ func SkillRegistry(skillsDir string) ([]config.SkillConfig, error) {
 	}
 	var skills []config.SkillConfig
 	for _, path := range entries {
-		data, err := os.ReadFile(path) //nolint:gosec
-		if err != nil {
-			fmt.Fprintf(os.Stderr, StyleYellow.Render("  ! could not read %s: %v\n"), path, err)
-			continue
-		}
-		s, err := parseSkillFile(path, data)
+		s, err := config.LoadSkillConfig(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, StyleYellow.Render("  ! could not parse %s: %v\n"), path, err)
 			continue
 		}
-		skills = append(skills, s)
+		skills = append(skills, *s)
 	}
 	return skills, nil
 }
 
-func parseSkillFile(path string, data []byte) (config.SkillConfig, error) {
-	content := string(data)
-
-	// No frontmatter — treat whole file as content, derive name from filename
-	if !strings.HasPrefix(content, "---\n") {
-		return config.SkillConfig{
-			Name:    strings.TrimSuffix(filepath.Base(path), ".md"),
-			Enabled: true,
-			Type:    "cli",
-		}, nil
-	}
-
-	// Extract frontmatter block
-	end := strings.Index(content[4:], "\n---")
-	if end == -1 {
-		return config.SkillConfig{}, fmt.Errorf("unclosed frontmatter")
-	}
-	frontmatter := content[4 : end+4]
-
-	var s config.SkillConfig
-	if err := yaml.Unmarshal([]byte(frontmatter), &s); err != nil {
-		return config.SkillConfig{}, fmt.Errorf("parse frontmatter: %w", err)
-	}
-
-	// Fallback name to filename if not set in frontmatter
-	if s.Name == "" {
-		s.Name = strings.TrimSuffix(filepath.Base(path), ".md")
-	}
-	return s, nil
-} // ── Queries ───────────────────────────────────────────────────────────────────
+// ── Queries ───────────────────────────────────────────────────────────────────
 
 // EnabledSkills returns only skills with Enabled = true.
 func EnabledSkills(skills []config.SkillConfig) []config.SkillConfig {
@@ -83,7 +47,7 @@ func EnabledSkills(skills []config.SkillConfig) []config.SkillConfig {
 // FindSkill returns the first skill matching name.
 func FindSkill(skills []config.SkillConfig, name string) (config.SkillConfig, error) {
 	for _, s := range skills {
-		if s.Name == name {
+		if s.Name == tools.SkillName(name) {
 			return s, nil
 		}
 	}
@@ -117,7 +81,7 @@ func SkillSetEnabled(skillsDir, name string, enabled bool) error {
 // ValidateSkills checks for common skill config problems.
 func ValidateSkills(skills []config.SkillConfig) []string {
 	var issues []string
-	seenNames := map[string]int{}
+	seenNames := map[tools.SkillName]int{}
 
 	for i, s := range skills {
 		prefix := fmt.Sprintf("skill[%d] %q", i, s.Name)
@@ -165,30 +129,5 @@ func SkillConfigPath(skillsDir, name string) string {
 // SkillWithTools holds frontmatter metadata plus parsed commands.
 type SkillWithTools struct {
 	config.SkillConfig
-	Commands []*cli.Command
-}
-
-// LoadSkillWithTools parses a skill's full .md file including tool sections.
-func LoadSkillWithTools(skillsDir, name string) (*SkillWithTools, error) {
-	path := SkillConfigPath(skillsDir, name)
-	data, err := os.ReadFile(path) //nolint:gosec
-	if err != nil {
-		return nil, fmt.Errorf("read skill %s: %w", name, err)
-	}
-	parsed, err := cli.ParseSKILLMD(string(data))
-	if err != nil {
-		return nil, fmt.Errorf("parse skill %s: %w", name, err)
-	}
-	skills, err := SkillRegistry(skillsDir)
-	if err != nil {
-		return nil, err
-	}
-	s, err := FindSkill(skills, name)
-	if err != nil {
-		return nil, err
-	}
-	return &SkillWithTools{
-		SkillConfig: s,
-		Commands:    parsed.Commands,
-	}, nil
+	Commands []*config.SkillToolEntry
 }

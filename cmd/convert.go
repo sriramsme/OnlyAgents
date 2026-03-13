@@ -142,20 +142,20 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	if convertDryRun {
 		fmt.Println(result.Content)
 		fmt.Printf("\n")
-		cmdutil.Success("parsed successfully — %d tool(s) found", len(result.Parsed.Commands))
+		cmdutil.Success("parsed successfully — %d tool(s) found", len(result.Parsed.Tools))
 		return nil
 	}
 
 	outName := convertName
 	if outName == "" {
-		outName = result.Parsed.Name
+		outName = string(result.Parsed.Name)
 	}
-	outPath := filepath.Join(config.SkillsDir(), outName+".md")
+	outPath := filepath.Join(config.SkillsDir(), outName+".yaml")
 	if err := os.WriteFile(outPath, []byte(result.Content), 0o600); err != nil { //nolint:gosec
 		return fmt.Errorf("write output: %w", err)
 	}
 
-	cmdutil.Success("saved to %s (%d tool(s))", outPath, len(result.Parsed.Commands))
+	cmdutil.Success("saved to %s (%d tool(s))", outPath, len(result.Parsed.Tools))
 	return nil
 }
 

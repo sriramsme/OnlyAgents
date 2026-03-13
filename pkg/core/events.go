@@ -30,18 +30,6 @@ const (
 	AgentExecute EventType = "agent_execute"
 
 	// =====================================
-	// Tool Execution Events
-	// =====================================
-
-	// ToolCallRequest: Agent wants to execute a tool
-	// Flow: Agent → Kernel → Skill
-	ToolCallRequest EventType = "tool_call_request"
-
-	// ToolCallResult: Tool execution result
-	// Flow: Skill → Kernel → Agent
-	ToolCallResult EventType = "tool_call_result"
-
-	// =====================================
 	// Agent-to-Agent Delegation Events
 	// =====================================
 
@@ -178,7 +166,6 @@ type AgentDelegatePayload struct {
 	DelegationID       string         `json:"delegation_id"` // Unique delegation ID
 	AgentID            string         `json:"agent_id"`      // Target agent ID (specified by executive)
 	Task               string         `json:"task"`          // Task description
-	Capabilities       []Capability   `json:"capabilities"`  // Required capabilities (for validation)
 	Context            map[string]any `json:"context,omitempty"`
 	SendDirectlyToUser bool           `json:"send_directly_to_user"`
 	Timeout            int            `json:"timeout,omitempty"` // Seconds

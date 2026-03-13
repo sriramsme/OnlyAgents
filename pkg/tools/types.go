@@ -83,19 +83,3 @@ type Property struct {
 	Required    []string            `json:"required,omitempty"`
 	Default     any                 `json:"default,omitempty"`
 }
-
-// ToolCallRequestPayload: Tool execution request
-type ToolCallRequestPayload struct {
-	ToolCallID string    `json:"tool_call_id"`
-	SkillName  SkillName `json:"skill_name"`
-	ToolName   string    `json:"tool_name"`
-	Arguments  []byte    `json:"arguments"`
-}
-
-// ToolCallResultPayload: Tool execution result
-type ToolCallResultPayload struct {
-	ToolCallID string `json:"tool_call_id"`
-	ToolName   string `json:"tool_name"`
-	Result     any    `json:"result,omitempty"`
-	Error      string `json:"error,omitempty"`
-}

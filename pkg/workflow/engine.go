@@ -9,17 +9,15 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
-	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // Engine manages workflow orchestration
 type Engine struct {
-	store       storage.Storage
-	bus         chan<- core.Event
-	agentFinder tools.FindBestAgentFunc
-	logger      *slog.Logger
-	ctx         context.Context
-	cancel      context.CancelFunc
+	store  storage.Storage
+	bus    chan<- core.Event
+	logger *slog.Logger
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // NewEngine creates a workflow engine
@@ -32,10 +30,6 @@ func NewEngine(store storage.Storage, bus chan<- core.Event) *Engine {
 		ctx:    ctx,
 		cancel: cancel,
 	}
-}
-
-func (e *Engine) SetAgentFinder(agentFinder tools.FindBestAgentFunc) {
-	e.agentFinder = agentFinder
 }
 
 // Start starts the workflow engine
@@ -95,17 +89,7 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 
 	// Create tasks and assign agents
 	for _, taskDef := range workflow.Tasks {
-		// Find agent for this task
-		agentInfo, err := e.agentFinder(ctx, taskDef.Description, taskDef.RequiredCapabilities)
-		if err != nil {
-			e.logger.Error("no agent found for task",
-				"task_id", taskDef.ID,
-				"capabilities", taskDef.RequiredCapabilities,
-				"error", err)
-			return fmt.Errorf("no agent found for task %s: %w", taskDef.ID, err)
-		}
 
-		taskDef.AssignedAgentID = agentInfo.ID
 		taskDef.Channel = workflow.Channel
 		task := e.taskDefToStorage(taskDef, workflow.ID)
 
@@ -115,8 +99,7 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 
 		e.logger.Debug("task created and assigned",
 			"task_id", task.ID,
-			"agent_id", agentInfo.ID,
-			"agent_name", agentInfo.Name,
+			"agent_id", taskDef.AssignedAgentID,
 			"channel", taskDef.Channel)
 	}
 
@@ -358,16 +341,6 @@ func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *sto
 		depsJSON = []byte("[]")
 	}
 
-	capsStrs := make([]string, len(def.RequiredCapabilities))
-	for i, cap := range def.RequiredCapabilities {
-		capsStrs[i] = string(cap)
-	}
-	capsJSON, err := json.Marshal(capsStrs)
-	if err != nil {
-		e.logger.Warn("failed to marshal capabilities", "error", err)
-		capsJSON = []byte("[]")
-	}
-
 	payloadJSON, err := json.Marshal(def.Payload)
 	if err != nil {
 		e.logger.Warn("failed to marshal payload", "error", err)
@@ -392,22 +365,21 @@ func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *sto
 	}
 
 	return &storage.WFTask{
-		ID:                   def.ID,
-		WorkflowID:           workflowID,
-		Name:                 def.Name,
-		Description:          def.Description,
-		Type:                 storage.WFTaskType(def.Type),
-		DependsOn:            string(depsJSON),
-		ChannelJSON:          string(channelJSON),
-		RequiredCapabilities: string(capsJSON),
-		Payload:              string(payloadJSON),
-		Status:               storage.WFTaskStatusPending,
-		AssignedAgentID:      def.AssignedAgentID,
-		CreatedAt:            storage.DBTime{Time: time.Now()},
-		RetryCount:           0,
-		MaxRetries:           maxRetries,
-		TimeoutSeconds:       int(def.Timeout.Seconds()),
-		Metadata:             string(metadataJSON),
-		UpdatedAt:            storage.DBTime{Time: time.Now()},
+		ID:              def.ID,
+		WorkflowID:      workflowID,
+		Name:            def.Name,
+		Description:     def.Description,
+		Type:            storage.WFTaskType(def.Type),
+		DependsOn:       string(depsJSON),
+		ChannelJSON:     string(channelJSON),
+		Payload:         string(payloadJSON),
+		Status:          storage.WFTaskStatusPending,
+		AssignedAgentID: def.AssignedAgentID,
+		CreatedAt:       storage.DBTime{Time: time.Now()},
+		RetryCount:      0,
+		MaxRetries:      maxRetries,
+		TimeoutSeconds:  int(def.Timeout.Seconds()),
+		Metadata:        string(metadataJSON),
+		UpdatedAt:       storage.DBTime{Time: time.Now()},
 	}
 }

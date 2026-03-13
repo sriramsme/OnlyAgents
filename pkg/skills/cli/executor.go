@@ -9,28 +9,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
 // CLIExecutor executes shell commands securely
 // This is NOT a connector - it's a command execution engine
 type CLIExecutor struct {
-	config *ExecutorConfig
+	config *config.ExecutorConfig
 	ctx    context.Context
 	cancel context.CancelFunc
-}
-
-// ExecutorConfig holds CLI executor configuration
-type ExecutorConfig struct {
-	// Security settings
-	AllowedShells    []string `yaml:"allowed_shells"`     // Default: ["bash", "sh"]
-	MaxOutputSize    int      `yaml:"max_output_size"`    // Bytes, default: 1MB
-	MaxExecutionTime int      `yaml:"max_execution_time"` // Seconds, default: 60
-	WorkingDir       string   `yaml:"working_dir"`        // Default: /tmp
-
-	// Sandboxing (future)
-	UseSandbox  bool   `yaml:"use_sandbox"`
-	SandboxType string `yaml:"sandbox_type"` // docker, firejail, etc.
 }
 
 // ExecutionResult holds command execution result
@@ -42,9 +30,9 @@ type ExecutionResult struct {
 }
 
 // NewCLIExecutor creates a CLI executor
-func NewCLIExecutor(ctx context.Context, config *ExecutorConfig) *CLIExecutor {
-	if config == nil {
-		config = &ExecutorConfig{
+func NewCLIExecutor(ctx context.Context, cfg *config.ExecutorConfig) *CLIExecutor {
+	if cfg == nil {
+		cfg = &config.ExecutorConfig{
 			AllowedShells:    []string{"bash", "sh"},
 			MaxOutputSize:    1024 * 1024, // 1MB
 			MaxExecutionTime: 60,          // 60 seconds
@@ -55,7 +43,7 @@ func NewCLIExecutor(ctx context.Context, config *ExecutorConfig) *CLIExecutor {
 	execCtx, cancel := context.WithCancel(ctx)
 
 	return &CLIExecutor{
-		config: config,
+		config: cfg,
 		ctx:    execCtx,
 		cancel: cancel,
 	}

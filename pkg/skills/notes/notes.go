@@ -4,61 +4,47 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
-
-const version = "1.0.0"
 
 func init() {
 	skills.Register("notes", NewNotesSkill)
 }
 
 type NotesSkill struct {
-	ctx    context.Context
-	cancel context.CancelFunc
 	*skills.BaseSkill
 	conn connectors.NotesConnector
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-func NewNotesSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skill, error) {
-	base := skills.NewBaseSkill(
-		tools.SkillNotes,
-		"Create, update, search, and manage Markdown notes",
-		version,
-		skills.SkillTypeNative,
-	)
-	skillCtx, cancel := context.WithCancel(ctx)
+func NewNotesSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+	notesConn, ok := conn.(connectors.NotesConnector)
+	if !ok {
+		return nil, fmt.Errorf("notes skill: connector is not a NotesConnector")
+	}
+	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
+	notesCtx, cancel := context.WithCancel(ctx)
 	return &NotesSkill{
 		BaseSkill: base,
-		ctx:       skillCtx,
+		conn:      notesConn,
+		ctx:       notesCtx,
 		cancel:    cancel,
 	}, nil
 }
 
-func (s *NotesSkill) Initialize(deps skills.SkillDeps) error {
-	s.SetOutbox(deps.Outbox)
-	for _, c := range deps.Connectors {
-		if nc, ok := c.(connectors.NotesConnector); ok {
-			s.conn = nc
-			return nil
-		}
-	}
-	logger.Log.Error("notes skill: no NotesConnector found in deps")
+func (s *NotesSkill) Initialize() error {
 	return nil
 }
 
 func (s *NotesSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *NotesSkill) RequiredCapabilities() []core.Capability {
-	return []core.Capability{core.CapabilityNotes}
 }
 
 func (s *NotesSkill) Tools() []tools.ToolDef {

@@ -5,7 +5,6 @@ import (
 	"io"
 	"time"
 
-	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
@@ -25,11 +24,7 @@ type Connector interface {
 	HealthCheck() error
 }
 
-// ====================
-// Capability Interfaces
-// ====================
-
-// EmailConnector provides email capabilities
+// EmailConnector
 type EmailConnector interface {
 	Connector
 	SendEmail(ctx context.Context, req *SendEmailRequest) error
@@ -41,19 +36,19 @@ type EmailConnector interface {
 	MarkAsUnread(ctx context.Context, id string) error
 }
 
-// WebSearchConnector provides web search capabilities
+// WebSearchConnector
 type WebSearchConnector interface {
 	Connector
 	Search(ctx context.Context, req *SearchRequest) (*SearchResponse, error)
 }
 
-// WebFetchConnector provides web fetching capabilities
+// WebFetchConnector
 type WebFetchConnector interface {
 	Connector
 	Fetch(ctx context.Context, req *FetchRequest) (*FetchResponse, error)
 }
 
-// StorageConnector provides file storage capabilities
+// StorageConnector
 type StorageConnector interface {
 	Connector
 	Upload(ctx context.Context, req *UploadRequest) (*FileInfo, error)
@@ -67,6 +62,7 @@ type StorageConnector interface {
 // CalendarConnector is implemented by native.CalendarConnector and any future
 // external calendar connectors (Google Calendar, etc.).
 type CalendarConnector interface {
+	Connector
 	CreateEvents(ctx context.Context, events []*storage.CalendarEvent) ([]*storage.CalendarEvent, []error)
 	GetEvent(ctx context.Context, id string) (*storage.CalendarEvent, error)
 	UpdateEvent(ctx context.Context, event *storage.CalendarEvent) (*storage.CalendarEvent, error)
@@ -78,6 +74,7 @@ type CalendarConnector interface {
 
 // NotesConnector is implemented by native.NotesConnector.
 type NotesConnector interface {
+	Connector
 	CreateNotes(ctx context.Context, notes []*storage.Note) ([]*storage.Note, []error)
 	GetNote(ctx context.Context, id string) (*storage.Note, error)
 	UpdateNote(ctx context.Context, note *storage.Note) (*storage.Note, error)
@@ -89,6 +86,7 @@ type NotesConnector interface {
 
 // RemindersConnector is implemented by native.RemindersConnector.
 type RemindersConnector interface {
+	Connector
 	CreateReminders(ctx context.Context, rems []*storage.Reminder) ([]*storage.Reminder, []error)
 	GetReminder(ctx context.Context, id string) (*storage.Reminder, error)
 	UpdateReminder(ctx context.Context, rem *storage.Reminder) (*storage.Reminder, error)
@@ -98,6 +96,7 @@ type RemindersConnector interface {
 
 // TasksConnector is implemented by native.TasksConnector.
 type TasksConnector interface {
+	Connector
 	CreateProject(ctx context.Context, project *storage.Project) (*storage.Project, error)
 	GetProject(ctx context.Context, id string) (*storage.Project, error)
 	UpdateProject(ctx context.Context, project *storage.Project) (*storage.Project, error)
@@ -115,69 +114,4 @@ type TasksConnector interface {
 	GetTasksByProject(ctx context.Context, projectID string, filter storage.TaskFilter) ([]*storage.Task, error)
 	MoveToProject(ctx context.Context, taskID, projectID string) error
 	SetPriority(ctx context.Context, id, priority string) error
-}
-
-// ====================
-// Helper Functions
-// ====================
-
-// SupportsCapability checks if a connector implements a specific capability
-func SupportsCapability(conn Connector, capability core.Capability) bool {
-	switch capability {
-	case core.CapabilityEmail:
-		_, ok := conn.(EmailConnector)
-		return ok
-
-	case core.CapabilityWebSearch:
-		_, ok := conn.(WebSearchConnector)
-		return ok
-	case core.CapabilityWebFetch:
-		_, ok := conn.(WebFetchConnector)
-		return ok
-	case core.CapabilityTasks:
-		_, ok := conn.(TasksConnector)
-		return ok
-
-		// Productivity
-	case core.CapabilityCalendar:
-		_, ok := conn.(CalendarConnector)
-		return ok
-	case core.CapabilityReminders:
-		_, ok := conn.(RemindersConnector)
-		return ok
-	case core.CapabilityNotes:
-		_, ok := conn.(NotesConnector)
-		return ok
-	default:
-		return false
-	}
-}
-
-// GetCapabilities returns all capabilities a connector supports
-func GetCapabilities(conn Connector) []core.Capability {
-	var caps []core.Capability
-
-	if _, ok := conn.(EmailConnector); ok {
-		caps = append(caps, core.CapabilityEmail)
-	}
-	if _, ok := conn.(CalendarConnector); ok {
-		caps = append(caps, core.CapabilityCalendar)
-	}
-	if _, ok := conn.(WebSearchConnector); ok {
-		caps = append(caps, core.CapabilityWebSearch)
-	}
-	if _, ok := conn.(WebFetchConnector); ok {
-		caps = append(caps, core.CapabilityWebFetch)
-	}
-	if _, ok := conn.(TasksConnector); ok {
-		caps = append(caps, core.CapabilityTasks)
-	}
-	if _, ok := conn.(RemindersConnector); ok {
-		caps = append(caps, core.CapabilityReminders)
-	}
-	if _, ok := conn.(NotesConnector); ok {
-		caps = append(caps, core.CapabilityNotes)
-	}
-
-	return caps
 }

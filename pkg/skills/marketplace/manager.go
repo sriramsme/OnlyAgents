@@ -101,10 +101,10 @@ func (m *Manager) Search(ctx context.Context, query string, opts SearchOptions) 
 }
 
 // FindByCapability searches for skills providing a specific capability.
-func (m *Manager) FindByCapability(ctx context.Context, capability string) ([]SearchResult, error) {
-	return m.Search(ctx, capability, SearchOptions{
-		Limit:        10,
-		Capabilities: []string{capability},
+func (m *Manager) FindSkill(ctx context.Context, skill string) ([]SearchResult, error) {
+	return m.Search(ctx, skill, SearchOptions{
+		Limit:     10,
+		SkillName: skill,
 	})
 }
 
@@ -162,7 +162,7 @@ func (m *Manager) DownloadAndInstall(
 
 	logger.Log.Info("skill installed",
 		"slug", slug,
-		"tools", len(result.Parsed.Commands),
+		"tools", len(result.Parsed.Tools),
 		"path", installPath)
 
 	return installPath, nil

@@ -30,7 +30,6 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		"agent_id", input.AgentID,
 		"task", input.Task,
 		"send_directly_to_user", input.SendDirectlyToUser,
-		"capabilities", input.Capabilities,
 		"correlation_id", correlationID)
 
 	// Create reply channel for result
@@ -50,7 +49,6 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 			DelegationID:       delegationID,
 			AgentID:            input.AgentID, // ← Executive specifies target agent
 			Task:               input.Task,
-			Capabilities:       input.Capabilities,
 			Context:            input.Context,
 			SendDirectlyToUser: input.SendDirectlyToUser,
 			Timeout:            300,             // 5 minutes default
@@ -168,11 +166,6 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 	// Create tasks in a single pass with remapped dependencies
 	tasks := make([]*workflow.WFTaskDefinition, 0, len(input.Steps))
 	for _, t := range input.Steps {
-		caps := make([]core.Capability, len(t.RequiredCapabilities))
-		for i, capStr := range t.RequiredCapabilities {
-			caps[i] = core.Capability(capStr)
-		}
-
 		// Remap dependencies using the idMap
 		newDeps := make([]string, len(t.DependsOn))
 		for i, dep := range t.DependsOn {
@@ -184,13 +177,13 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 		}
 
 		tasks = append(tasks, &workflow.WFTaskDefinition{
-			ID:                   idMap[t.ID],
-			Name:                 t.Name,
-			Description:          t.Description,
-			Type:                 "agent_execution",
-			DependsOn:            newDeps,
-			RequiredCapabilities: caps,
-			MaxRetries:           3,
+			ID:              idMap[t.ID],
+			Name:            t.Name,
+			Description:     t.Description,
+			Type:            "agent_execution",
+			DependsOn:       newDeps,
+			AssignedAgentID: t.AgentID,
+			MaxRetries:      3,
 		})
 	}
 
@@ -238,24 +231,8 @@ func (a *Agent) workflowAck(wf *workflow.WorkflowDefinition) string {
 	return b.String()
 }
 
-// requestCapabilityQuery queries available capabilities from kernel
-func (a *Agent) requestAgentSelection(ctx context.Context, correlationID string, tc tools.ToolCall) tools.ToolExecution {
-	var input tools.FindBestAgentInput
-	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
-		return tools.ExecErr(fmt.Errorf("invalid find_best_agent args: %w", err))
-	}
-	if a.findBestAgent == nil {
-		return tools.ExecErr(fmt.Errorf("findBestAgent not configured"))
-	}
-	result, err := a.findBestAgent(ctx, input.Task, input.Capabilities)
-	if err != nil {
-		return tools.ExecErr(err)
-	}
-	return tools.ExecOK(result)
-}
-
 // handleMetaTool routes meta-tool calls to appropriate handlers
-func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channelMetadata *core.ChannelMetadata) tools.ToolExecution {
+func (a *Agent) handleExecutiveMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channelMetadata *core.ChannelMetadata) tools.ToolExecution {
 	a.logger.Debug("handling meta-tool",
 		"tool", tc.Function.Name,
 		"correlation_id", correlationID)
@@ -267,16 +244,13 @@ func (a *Agent) handleMetaTool(ctx context.Context, correlationID string, tc too
 	case "create_workflow":
 		return a.requestWorkflow(ctx, correlationID, tc, originalMessage, channelMetadata)
 
-	case "find_best_agent":
-		return a.requestAgentSelection(ctx, correlationID, tc)
-
 	default:
 		return tools.ExecErr(fmt.Errorf("unknown meta-tool: %s", tc.Function.Name))
 	}
 }
 
 // isMetaTool checks if a tool name is a meta-tool
-func isMetaTool(toolName string) bool {
+func isExecutiveMetaTool(toolName string) bool {
 	metaTools := map[string]bool{
 		"delegate_to_agent": true,
 		"create_workflow":   true,

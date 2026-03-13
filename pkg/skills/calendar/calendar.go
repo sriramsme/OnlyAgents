@@ -5,15 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
-
-const version = "1.0.0"
 
 func init() {
 	skills.Register("calendar", NewCalendarSkill)
@@ -26,40 +23,28 @@ type CalendarSkill struct {
 	conn connectors.CalendarConnector
 }
 
-func NewCalendarSkill(ctx context.Context, eventBus chan<- core.Event) (skills.Skill, error) {
-	base := skills.NewBaseSkill(
-		tools.SkillCalendar,
-		"Manage calendar events — create, update, list, and find free time slots",
-		version,
-		skills.SkillTypeNative,
-	)
+func NewCalendarSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+	calendarConn, ok := conn.(connectors.CalendarConnector)
+	if !ok {
+		return nil, fmt.Errorf("calendar skill: connector is not a CalendarConnector")
+	}
+	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
 	skillCtx, cancel := context.WithCancel(ctx)
 	return &CalendarSkill{
 		BaseSkill: base,
+		conn:      calendarConn,
 		ctx:       skillCtx,
 		cancel:    cancel,
 	}, nil
 }
 
-func (s *CalendarSkill) Initialize(deps skills.SkillDeps) error {
-	s.SetOutbox(deps.Outbox)
-	for _, c := range deps.Connectors {
-		if cal, ok := c.(connectors.CalendarConnector); ok {
-			s.conn = cal
-			return nil
-		}
-	}
-	logger.Log.Error("calendar skill: no CalendarConnector found in deps")
+func (s *CalendarSkill) Initialize() error {
 	return nil
 }
 
 func (s *CalendarSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *CalendarSkill) RequiredCapabilities() []core.Capability {
-	return []core.Capability{core.CapabilityCalendar}
 }
 
 func (s *CalendarSkill) Tools() []tools.ToolDef {
