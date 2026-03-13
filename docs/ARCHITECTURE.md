@@ -68,27 +68,27 @@ OnlyAgents is a multi-agent runtime written in Go. A single binary starts the en
 ┌───────────────────────────────────▼──────────────────────────────────────────┐
 │                                    SKILLS                                    │
 │                                                                              │
-│  Native (Go)            System / Built-in        CLI-driven          Sandbox │
-│  ───────────            ─────────────────        ──────────          ─────── │
-│  calendar               meta tools               gh                  code    │
-│  notes                  task_complete            ffmpeg              exec    │
-│  reminders              workflows                kubectl             runtime │
-│  tasks                                          restic             (isolated)│
-│  web_search                                     ...                          │
+│  Native (Go)               System / Internal            CLI                  │
+│  ───────────               ─────────────────            ───                  │
+│  calendar                  meta tools                   gh                   │
+│  notes                     task_complete                kubectl              │
+│  reminders                 workflows                    ffmpeg               │
+│  tasks                                                   restic              │
+│  web_search                                             ...                  │
 │  email                                                                       │
 │                                                                              │
-│                    SKILL.md specifications drive CLI tools                   │
+│                 SKILL.md specifications drive CLI-based skills               │
 └───────────────────────────────────┬──────────────────────────────────────────┘
                                     │
 ┌───────────────────────────────────▼──────────────────────────────────────────┐
 │                                 CONNECTORS                                   │
 │                                                                              │
-│  Native (no 3rd party)             External                                  │
-│  ─────────────────────             ─────────                                 │
-│  CalendarConnector                 DuckDuckGo / Brave                        │
-│  NotesConnector                    Gmail                                     │
-│  RemindersConnector                [more planned]                            │
-│  TasksConnector                                                              │
+│  Local (no external service)        Service (external APIs)                  │
+│  ───────────────────────────        ───────────────────────                  │
+│  CalendarConnector                  GmailConnector                           │
+│  NotesConnector                     NotionConnector                          │
+│  RemindersConnector                 DuckDuckGo / Brave                       │
+│  TasksConnector                     [more planned]                           │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -158,23 +158,58 @@ Each agent runs a tool call loop:
 
 **History windowing** — `GetHistory` uses turn-based windowing (`DefaultHistoryTurns = 10`). A turn is one user message plus all subsequent assistant/tool messages until the next user message. An agent making five tool calls in one turn still counts as one turn. Tool results are truncated to 500 chars on retrieval; full content is preserved in the database for the memory summarizer.
 
----
-
 ## Skills
 
 `pkg/skills/`
 
-Skills own business logic. They expose tool definitions to the LLM and execute tool calls through connectors.
+Skills implement the business logic exposed to the LLM. They define tools, handle tool execution, and interact with connectors for data access or external services.
 
 ### Types
 
-**Native** — implemented in Go, paired with a formal connector interface. Works without any external service if a native connector exists. Examples: calendar, notes, reminders, tasks, web_search, email.
+**Native**
 
-**System** — built-in, no external dependencies. Examples: `task_complete`, `delegate_to_agent`, `create_workflow`, `find_best_agent`. These are the executive's meta-tools.
+Implemented in Go and integrated through connector interfaces. Native skills provide stable integrations with core capabilities and can operate with either local or service connectors.
 
-**CLI** — defined in a SKILL.md file, executed via bash. The installed CLI tool is the connector. If `gh` is installed, a GitHub skill works. If `kubectl` is installed, a Kubernetes skill works. No Go code required. This is how the skill ecosystem scales beyond what the project ships natively.
+Examples:
 
-**Execution** — runs code in a sandboxed environment.
+* `calendar`
+* `notes`
+* `reminders`
+* `tasks`
+* `web_search`
+* `email`
+
+---
+
+**System**
+
+Internal framework skills used for orchestration and agent coordination. These are not external integrations but core capabilities of the runtime.
+
+Examples:
+
+* `task_complete`
+* `delegate_to_agent`
+* `create_workflow`
+* `find_best_agent`
+
+These are primarily used by the executive agent as meta-tools.
+
+---
+
+**CLI**
+
+Defined by a `SKILL.md` specification and executed through installed command-line tools.
+
+If the CLI tool exists on the system, the skill works automatically. The CLI executable effectively acts as the connector.
+
+Examples:
+
+* `gh` → GitHub automation
+* `kubectl` → Kubernetes operations
+* `ffmpeg` → media processing
+* `restic` → backups
+
+This design allows the skill ecosystem to grow far beyond what ships with OnlyAgents. Over time, widely used CLI skills may be promoted to native implementations.
 
 ### SkillName
 
@@ -182,45 +217,72 @@ Skills own business logic. They expose tool definitions to the LLM and execute t
 type SkillName string
 ```
 
-Typed constant, not a string. `ToolDef.Skill` carries `json:"-"` — it is internal routing metadata, never sent to the LLM. The agent's `toolSkillMap` is built at initialization from tool definitions, replacing the old string-splitting approach.
+A typed constant used for internal routing.
+
+`ToolDef.Skill` carries `json:"-"` so the skill identifier is never exposed to the LLM. The agent's `toolSkillMap` is constructed at initialization from tool definitions, replacing the previous string-splitting approach.
 
 ### Custom Skills
 
-Drop a SKILL.md file into `~/.onlyagents/skills/`. The kernel picks it up on next start. The `onlyagents convert` command converts raw skill definitions to canonical format using whichever LLM provider is configured.
+Users can extend the system by adding new CLI-based skills.
 
----
+Place a `SKILL.md` file in:
+
+```
+~/.onlyagents/skills/
+```
+
+The kernel loads these definitions on startup.
+
+The `onlyagents convert` command can convert raw skill descriptions into canonical `SKILL.md` format using the configured LLM provider.
 
 ## Connectors
 
 `pkg/connectors/`
 
-Connectors own API integration: authentication, rate limiting, retries, error handling.
+Connectors handle integrations with data sources and services. They are responsible for authentication, rate limiting, retries, and error handling.
 
-### Native Connectors
+### Local Connectors
 
-`pkg/connectors/native/`
+Local connectors operate entirely on the local machine and do not depend on external services.
 
-Instantiated directly by the kernel. No factory, no vault lookup, no config parsing — they receive the storage layer and nothing else.
+They are instantiated directly by the kernel and receive the storage layer as a dependency.
+
+Example initialization:
 
 ```
-kernel.initNativeConnectors(store) →
-    native.CalendarConnector(store)
-    native.NotesConnector(store)
-    native.RemindersConnector(store)
-    native.TasksConnector(store)
+kernel.initLocalConnectors(store) →
+    local.CalendarConnector(store)
+    local.NotesConnector(store)
+    local.RemindersConnector(store)
+    local.TasksConnector(store)
 ```
 
-Native connectors don't call external APIs. They read and write directly to SQLite. Business logic that belongs in the connector (e.g., `FindAvailableSlots`) stays there — storage stays dumb.
+These connectors interact directly with SQLite-backed storage. Business logic specific to the connector (for example `FindAvailableSlots`) lives inside the connector, while the storage layer remains simple.
 
-### External Connectors
+### Service Connectors
 
-Go through the factory pattern. The factory receives raw config and vault, performs key lookup, constructs the connector. Examples: DuckDuckGo, Brave Search, Gmail.
+Service connectors integrate with external APIs such as search providers or email services.
+
+These connectors are constructed through the factory pattern. The factory receives configuration and vault access, resolves credentials, and initializes the connector.
+
+Examples:
+
+* DuckDuckGo
+* Brave Search
+* Gmail
 
 ### Connector Interfaces
 
-Four productivity interfaces defined in `pkg/connectors/`: `CalendarConnector`, `NotesConnector`, `RemindersConnector`, `TasksConnector`. Skills cast `deps.Connectors` to the appropriate interface in `Initialize()`. Compile-time interface checks in each native implementation file.
+Four productivity interfaces are defined in `pkg/connectors/`:
 
----
+* `CalendarConnector`
+* `NotesConnector`
+* `RemindersConnector`
+* `TasksConnector`
+
+Skills cast `deps.Connectors` to the appropriate interface during `Initialize()`.
+
+Each connector implementation includes compile-time interface checks to ensure compatibility.
 
 ## Memory
 

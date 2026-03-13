@@ -57,38 +57,30 @@ Same binary on a $5/mo VPS, a spare Mac Mini, a Raspberry Pi, or a rack server. 
 ┌───────────────────────────────────▼──────────────────────────────────────────┐
 │                                    SKILLS                                    │
 │                                                                              │
-│  Native (Go)            System / Built-in        CLI-driven          Sandbox │
-│  ───────────            ─────────────────        ──────────          ─────── │
-│  calendar               meta tools               gh                  code    │
-│  notes                  task_complete            ffmpeg              exec    │
-│  reminders              workflows                kubectl             runtime │
-│  tasks                                          restic             (isolated)│
-│  web_search                                     ...                          │
+│  Native (Go)               System / Internal            CLI                  │
+│  ───────────               ─────────────────            ───                  │
+│  calendar                  meta tools                   gh                   │
+│  notes                     task_complete                kubectl              │
+│  reminders                 workflows                    ffmpeg               │
+│  tasks                                                   restic              │
+│  web_search                                             ...                  │
 │  email                                                                       │
 │                                                                              │
-│                    SKILL.md specifications drive CLI tools                   │
+│                 SKILL.md specifications drive CLI-based skills               │
 └───────────────────────────────────┬──────────────────────────────────────────┘
                                     │
 ┌───────────────────────────────────▼──────────────────────────────────────────┐
 │                                 CONNECTORS                                   │
 │                                                                              │
-│  Native (no 3rd party)             External                                  │
-│  ─────────────────────             ─────────                                 │
-│  CalendarConnector                 DuckDuckGo / Brave                        │
-│  NotesConnector                    Gmail                                     │
-│  RemindersConnector                [more planned]                            │
-│  TasksConnector                                                              │
+│  Local (no external service)        Service (external APIs)                  │
+│  ───────────────────────────        ───────────────────────                  │
+│  CalendarConnector                  GmailConnector                           │
+│  NotesConnector                     NotionConnector                          │
+│  RemindersConnector                 DuckDuckGo / Brave                       │
+│  TasksConnector                     [more planned]                           │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 Read more [here](docs/architecture.md)
-
-**Skills come in four types:**
-- Native skills: implemented in Go with formal connector interfaces - calendar, notes, tasks, web search, email.
-- System skills are built-in with no external dependencies.
-- CLI skills are SKILL.md definitions that drive installed command-line tools via bash — if `gh` is installed, a GitHub skill just works; if `kubectl` is installed, so does a Kubernetes skill. The installed CLI tool *is* the connector — no Go code required.
-- Execution skills run code in sandboxes.
-
-Popular CLI skills get promoted to native over time as the project grows. But the practical implication today is that the skill ecosystem is much larger than what OnlyAgents ships with — anyone with `restic`, `docker`, `ffmpeg`, or any other CLI tool already has the connector; they just need the SKILL.md.
 
 **Executive agent** — top of the hierarchy. Receives all user messages, decides whether to answer directly, delegate to a sub-agent, or decompose into a multi-step workflow. Rewrites requests with full context before delegating.
 
@@ -99,6 +91,22 @@ Popular CLI skills get promoted to native over time as the project grows. But th
 **Soul** — agent personality and behavioral config in YAML. Communication style, delegation acknowledgments, routing logic, refusal rules. Shapes LLM behavior without prompt engineering in code.
 
 **Workflow engine** — cross-agent coordination. When a task spans multiple agents, the executive creates a workflow with ordered steps and tracked dependencies. Individual agents handle multi-step operations internally.
+
+
+**Skills** — defines agent capabilities.
+
+* **Native** — implemented in Go and integrated through connector interfaces. Examples: `calendar`, `notes`, `reminders`, `tasks`, `web_search`, `email`.
+* **CLI** — defined by `SKILL.md` files and executed through installed command-line tools. If `gh`, `kubectl`, or `ffmpeg` are installed, the corresponding skill works automatically.
+* **System** — internal framework skills used for orchestration (e.g., `task_complete`, `delegate_to_agent`, `find_best_agent`).
+
+Popular CLI skills may later be promoted to native skills as the project evolves.
+
+**Connectors** - handle integrations with data sources and services.
+
+* **Local connectors** operate entirely on the local system (e.g., SQLite-backed calendar, notes, tasks).
+* **Service connectors** integrate with external APIs such as Gmail, Notion, or web search providers.
+
+A **skill defines the capability**, while a **connector defines where the data or service comes from**.
 
 ## Memory
 
