@@ -2,10 +2,8 @@ package kernel
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
@@ -18,7 +16,7 @@ import (
 
 // assignAgentTools assigns tools to agents based on their configured skills
 // Called after both agent and skill registries are created
-func (k *Kernel) assignAgentTools() error {
+func (k *Kernel) assignAgentSkills() error {
 	// Track which skills are claimed by specialized agents
 	claimedSkills := make(map[tools.SkillName]bool)
 
@@ -46,17 +44,18 @@ func (k *Kernel) assignAgentTools() error {
 		}
 
 		for _, binding := range agent.GetSkillBindings() {
-			connector, ok := k.resolveConnector(binding.Connector)
+			connector, ok := k.resolveConnector(binding.Name, binding.ConnectorID)
 			if !ok {
 				k.logger.Warn("connector not found",
 					"agent", agent.ID(),
 					"skill", binding.Name,
-					"connector", binding.Connector)
+					"connector", binding.ConnectorID)
 				continue
 			}
 
 			skill := k.instantiateSkill(agent.ID(), binding.Name, connector)
 			agent.AddSkill(skill)
+			claimedSkills[binding.Name] = true
 		}
 
 		k.logger.Info("specialized agent configured",
@@ -66,33 +65,28 @@ func (k *Kernel) assignAgentTools() error {
 
 	// --- Configure the single general agent ---
 	if generalAgent != nil {
-		var agentTools []tools.ToolDef
 		for _, tmpl := range k.skills.GetAll() {
 			if claimedSkills[tmpl.Name] {
 				continue
 			}
-
-			connector := connectors.Connector(nil)
-			if tmpl.Connector != nil && tmpl.Connector.Default != "" {
-				c, ok := k.connectors.Get(tmpl.Connector.Default)
-				if !ok {
-					k.logger.Warn("default connector not found for general agent skill",
-						"skill", tmpl.Name,
-						"connector", tmpl.Connector.Default)
-					continue
-				}
-				connector = c
+			connector, ok := k.resolveConnector(tmpl.Name, "") // empty = use default
+			if !ok {
+				k.logger.Warn("default connector not found for general agent skill",
+					"skill", tmpl.Name,
+					"connector", tmpl.Connector.Default)
+				continue
 			}
-
 			skill := k.instantiateSkill(generalAgent.ID(), tmpl.Name, connector)
+			if skill == nil {
+				continue
+			}
 			generalAgent.AddSkill(skill)
 		}
-		generalAgent.SetHandleFindSkill(k.handleFindSkill) // marketplace fallback
+		generalAgent.SetHandleFindSkill(k.handleFindSkill)
 		k.logger.Info("general agent configured",
 			"agent_id", generalAgent.ID(),
-			"tools", len(agentTools))
+			"skills", generalAgent.GetSkillNames())
 	}
-
 	return nil
 }
 
@@ -104,7 +98,7 @@ func (k *Kernel) validateSkillBindings(agent *agents.Agent) error {
 		}
 
 		// CLI skills never take connectors
-		if tmpl.Type == "cli" && binding.Connector != "" {
+		if tmpl.Type == "cli" && binding.ConnectorID != "" {
 			return fmt.Errorf("agent %s: skill %q is a CLI skill and does not use connectors",
 				agent.ID(), binding.Name)
 		}
@@ -114,7 +108,7 @@ func (k *Kernel) validateSkillBindings(agent *agents.Agent) error {
 		}
 
 		// Resolve which connector will be used
-		connectorName := binding.Connector
+		connectorName := binding.ConnectorID
 		if connectorName == "" {
 			connectorName = tmpl.Connector.Default
 		}
@@ -135,82 +129,7 @@ func (k *Kernel) validateSkillBindings(agent *agents.Agent) error {
 	return nil
 }
 
-func buildAvailableAgentsSection(agentsReg *agents.Registry, skillsReg *skills.Registry) string {
-	out := make(map[string]AgentInfo)
-	for _, agent := range agentsReg.All() {
-		if agent.IsExecutive() || agent.IsGeneral() {
-			continue
-		}
-		// Union of all skill capabilities
-		capSet := make(map[string]bool)
-		for _, skillName := range agent.GetSkillNames() {
-			tmpl, ok := skillsReg.Get(skillName)
-			if !ok {
-				continue
-			}
-			for _, c := range tmpl.Capabilities {
-				capSet[c] = true
-			}
-		}
-		caps := make([]string, 0, len(capSet))
-		for c := range capSet {
-			caps = append(caps, c)
-		}
-		sort.Strings(caps)
-
-		out[agent.ID()] = AgentInfo{
-			Name:         agent.Name(),
-			Capabilities: caps,
-		}
-	}
-	b, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		logger.Log.Error("failed to marshal agent info", "error", err)
-		return ""
-	}
-	return "=== AVAILABLE SUB-AGENTS ===\n" + string(b)
-}
-
-func buildSystemPrompts(user *config.UserConfig, agentsReg *agents.Registry, skillsReg *skills.Registry) {
-	userSection := formatUserProfile(user)
-	for _, agent := range agentsReg.All() {
-		extra := ""
-		if agent.IsExecutive() {
-			extra = buildAvailableAgentsSection(agentsReg, skillsReg)
-
-			generalAgentInfo := AgentInfo{
-				Name: agentsReg.GetGeneral().Name(),
-			}
-			generalJSON, err := json.MarshalIndent(generalAgentInfo, "", "  ")
-			if err != nil {
-				return
-			}
-			extra += "\n\n=== GENERAL AGENT ===\n" + string(generalJSON)
-		}
-		agent.SetSystemPrompt(userSection, extra)
-	}
-}
-
-func formatUserProfile(user *config.UserConfig) string {
-	return fmt.Sprintf(`
-=== Who the user is ===
-Name: %s (preferred: "%s")
-Job: %s
-Background: %s
-Timezone: %s
-Daily Routine: %s
-Values: %s`,
-		user.Identity.Name,
-		user.Identity.PreferredName,
-		user.Identity.Role,
-		user.Background.Professional,
-		user.Identity.Timezone,
-		user.DailyRoutine,
-		strings.Join(user.Preferences.WhatIValue, ", "),
-	)
-}
-
-// Dependencies
+// Agent Dependencies
 
 // FindByCapability searches for skills
 // Tries local first, then searches marketplaces and auto-installs
@@ -254,6 +173,7 @@ func (k *Kernel) findSkill(ctx context.Context, skillName string) (skills.Skill,
 }
 
 // find_skill execution in kernel
+// plugged into general Agent as a meta-tool
 func (k *Kernel) handleFindSkill(ctx context.Context, agent *agents.Agent, skillName string) (any, error) {
 	skill, err := k.findSkill(ctx, skillName)
 	if err != nil {
@@ -275,12 +195,20 @@ func (k *Kernel) handleFindSkill(ctx context.Context, agent *agents.Agent, skill
 	}, nil
 }
 
+// Helpers
+
 // resolveConnector returns the Connector by name or nil, with ok=false if not found
-func (k *Kernel) resolveConnector(name string) (connectors.Connector, bool) {
-	if name == "" {
-		return nil, true
+func (k *Kernel) resolveConnector(skillName tools.SkillName, connectorName string) (connectors.Connector, bool) {
+	// If explicit connector specified, use it
+	if connectorName != "" {
+		return k.connectors.Get(connectorName)
 	}
-	return k.connectors.Get(name)
+	// Fall back to skill's default connector
+	tmpl, ok := k.skills.Get(skillName)
+	if !ok || tmpl.Connector == nil || tmpl.Connector.Default == "" {
+		return nil, true // skill doesn't need a connector
+	}
+	return k.connectors.Get(tmpl.Connector.Default)
 }
 
 // instantiateSkill instantiates a skill and returns its tools; logs warnings on failure

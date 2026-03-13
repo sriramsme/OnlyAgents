@@ -1,4 +1,4 @@
-package native
+package local
 
 import (
 	"context"
@@ -13,12 +13,14 @@ import (
 type NotesConnector struct {
 	store storage.NoteStore
 	name  string
+	id    string
 }
 
-func NewNotesConnector(store storage.NoteStore) connectors.Connector {
+func NewNotesConnector(store storage.NoteStore) connectors.NotesConnector {
 	return &NotesConnector{
 		store: store,
-		name:  "native_notes",
+		name:  "Local Notes",
+		id:    "local_notes",
 	}
 }
 
@@ -26,8 +28,10 @@ func NewNotesConnector(store storage.NoteStore) connectors.Connector {
 // Connector Interface
 // ====================
 
-func (g *NotesConnector) Name() string { return g.name }
-func (g *NotesConnector) Type() string { return "notes" }
+func (g *NotesConnector) Name() string                   { return g.name }
+func (g *NotesConnector) ID() string                     { return g.id }
+func (g *NotesConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeLocal }
+func (g *NotesConnector) Kind() string                   { return "notes" }
 
 func (g *NotesConnector) Connect() error {
 	return nil

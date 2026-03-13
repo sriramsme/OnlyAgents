@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
@@ -100,17 +99,22 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 	delegationPhase := fmt.Sprintf("delegation_%s", payload.AgentID)
 	logger.Timing.StartPhase(evt.CorrelationID, delegationPhase)
 
-	var targetAgent *agents.Agent
-
 	// Executive specifies agent_id directly (preferred)
-	if payload.AgentID != "" {
+	if payload.AgentID == "" {
 		logger.Timing.EndPhase(evt.CorrelationID, delegationPhase)
 		k.logger.Error("no agent found for delegation",
 			"agent_id", payload.AgentID)
 		k.sendDelegationError(evt, fmt.Sprintf("No agent found for ID: %s", payload.AgentID))
 		return
 	}
-
+	targetAgent, err := k.agents.Get(payload.AgentID)
+	if err != nil {
+		logger.Timing.EndPhase(evt.CorrelationID, delegationPhase)
+		k.logger.Error("agent not found for delegation",
+			"agent_id", payload.AgentID)
+		k.sendDelegationError(evt, fmt.Sprintf("Agent not found: %s", payload.AgentID))
+		return
+	}
 	k.logger.Info("delegating task",
 		"from_agent", evt.AgentID,
 		"to_agent", targetAgent.ID(),

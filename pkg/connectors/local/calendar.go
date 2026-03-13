@@ -1,4 +1,4 @@
-package native
+package local
 
 import (
 	"context"
@@ -13,12 +13,14 @@ import (
 type CalendarConnector struct {
 	store storage.CalendarStore
 	name  string
+	id    string
 }
 
-func NewCalendarConnector(store storage.CalendarStore) connectors.Connector {
+func NewCalendarConnector(store storage.CalendarStore) connectors.CalendarConnector {
 	return &CalendarConnector{
 		store: store,
-		name:  "native_calendar",
+		name:  "Local Calendar",
+		id:    "local_calendar",
 	}
 }
 
@@ -26,8 +28,10 @@ func NewCalendarConnector(store storage.CalendarStore) connectors.Connector {
 // Connector Interface
 // ====================
 
-func (g *CalendarConnector) Name() string { return g.name }
-func (g *CalendarConnector) Type() string { return "calendar" }
+func (g *CalendarConnector) Name() string                   { return g.name }
+func (g *CalendarConnector) ID() string                     { return g.id }
+func (g *CalendarConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeLocal }
+func (g *CalendarConnector) Kind() string                   { return "calendar" }
 
 func (g *CalendarConnector) Connect() error {
 	return nil
@@ -114,18 +118,18 @@ func (c *CalendarConnector) FindAvailableSlots(
 	ctx context.Context,
 	from, to time.Time,
 	minDuration time.Duration,
-) ([]TimeSlot, error) {
+) ([]connectors.TimeSlot, error) {
 	events, err := c.store.ListEvents(ctx, from, to)
 	if err != nil {
 		return nil, err
 	}
-	var slots []TimeSlot
+	var slots []connectors.TimeSlot
 	cursor := from
 	for _, e := range events {
 		if e.StartTime.After(cursor) {
 			gap := e.StartTime.Sub(cursor)
 			if gap >= minDuration {
-				slots = append(slots, TimeSlot{Start: cursor, End: e.StartTime.Time, Duration: gap})
+				slots = append(slots, connectors.TimeSlot{Start: cursor, End: e.StartTime.Time, Duration: gap})
 			}
 		}
 		if e.EndTime.After(cursor) {
@@ -133,13 +137,7 @@ func (c *CalendarConnector) FindAvailableSlots(
 		}
 	}
 	if to.After(cursor) && to.Sub(cursor) >= minDuration {
-		slots = append(slots, TimeSlot{Start: cursor, End: to, Duration: to.Sub(cursor)})
+		slots = append(slots, connectors.TimeSlot{Start: cursor, End: to, Duration: to.Sub(cursor)})
 	}
 	return slots, nil
-}
-
-type TimeSlot struct {
-	Start    time.Time
-	End      time.Time
-	Duration time.Duration
 }

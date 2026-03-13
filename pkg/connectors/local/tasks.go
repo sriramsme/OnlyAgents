@@ -1,4 +1,4 @@
-package native
+package local
 
 import (
 	"context"
@@ -13,12 +13,14 @@ import (
 type TasksConnector struct {
 	store storage.Storage
 	name  string
+	id    string
 }
 
-func NewTasksConnector(store storage.Storage) connectors.Connector {
+func NewTasksConnector(store storage.Storage) connectors.TasksConnector {
 	return &TasksConnector{
 		store: store,
-		name:  "native_tasks",
+		name:  "Local Tasks",
+		id:    "local_tasks",
 	}
 }
 
@@ -26,8 +28,10 @@ func NewTasksConnector(store storage.Storage) connectors.Connector {
 // Connector Interface
 // ====================
 
-func (g *TasksConnector) Name() string { return g.name }
-func (g *TasksConnector) Type() string { return "tasks" }
+func (g *TasksConnector) Name() string                   { return g.name }
+func (g *TasksConnector) ID() string                     { return g.id }
+func (g *TasksConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeLocal }
+func (g *TasksConnector) Kind() string                   { return "tasks" }
 
 func (g *TasksConnector) Connect() error {
 	return nil

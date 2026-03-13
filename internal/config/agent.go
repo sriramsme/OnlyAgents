@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
-	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // load reads an agent config file into a Config struct.
@@ -40,31 +38,13 @@ func load(configPath string) (*AgentConfig, error) {
 		dc.TagName = "mapstructure"
 		dc.WeaklyTypedInput = true
 		dc.DecodeHook = mapstructure.ComposeDecodeHookFunc(
-			skillBindingDecodeHook(),
 			mapstructure.StringToTimeDurationHookFunc(),
 			mapstructure.StringToSliceHookFunc(","),
 		)
 	}); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
-
 	return &cfg, nil
-}
-
-func skillBindingDecodeHook() mapstructure.DecodeHookFunc {
-	skillBindingType := reflect.TypeOf(SkillBinding{})
-
-	return func(from, to reflect.Type, data any) (any, error) {
-		if to != skillBindingType && to != reflect.PointerTo(skillBindingType) {
-			return data, nil
-		}
-
-		if s, ok := data.(string); ok {
-			return SkillBinding{Name: tools.SkillName(s)}, nil
-		}
-
-		return data, nil
-	}
 }
 
 // LoadAllAgentsConfig loads every *.yaml under dir, sharing a single vault
@@ -76,7 +56,9 @@ func LoadAllAgentsConfig(v vault.Vault) ([]*AgentConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read agents dir: %w", err)
 	}
-
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no agents found in %s", dir)
+	}
 	var configs []*AgentConfig
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
@@ -104,9 +86,8 @@ func LoadAllAgentsConfig(v vault.Vault) ([]*AgentConfig, error) {
 			configs = append(configs, cfg)
 		}
 	}
-
 	if len(configs) == 0 {
-		return nil, fmt.Errorf("no agent configs found in %s", dir)
+		return nil, fmt.Errorf("no agents loaded. Make sure at least the executive and general  agents are enabled")
 	}
 	return configs, nil
 }

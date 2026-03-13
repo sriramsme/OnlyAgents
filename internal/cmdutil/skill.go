@@ -15,7 +15,7 @@ import (
 
 // SkillRegistry loads all skill configs from the skills dir.
 func SkillRegistry(skillsDir string) ([]config.SkillConfig, error) {
-	entries, err := filepath.Glob(filepath.Join(skillsDir, "*.md"))
+	entries, err := filepath.Glob(filepath.Join(skillsDir, "*.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("glob %s: %w", skillsDir, err)
 	}

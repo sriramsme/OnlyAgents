@@ -45,12 +45,12 @@ var connectorListCmd = &cobra.Command{
 			return nil
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, cmdutil.StyleHeader.Render("NAME\tTYPE\tSTATUS\tDESCRIPTION"))
+		fmt.Fprintln(w, cmdutil.StyleHeader.Render("NAME\tID\tSTATUS\tDESCRIPTION"))
 		fmt.Fprintln(w, "────\t────\t──────\t───────────")
 		for _, c := range connectors {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 				c.Name,
-				c.Type,
+				c.ID,
 				cmdutil.EnabledLabel(c.Enabled),
 				cmdutil.Truncate(c.Description, 50),
 			)

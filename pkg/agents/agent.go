@@ -63,6 +63,7 @@ func NewAgent(
 		outbox:           outbox,
 		uiBus:            uiBus,
 		tools:            []tools.ToolDef{},
+		skills:           make(map[tools.SkillName]skills.Skill),
 		toolSkillMap:     make(map[string]tools.SkillName),
 		cm:               cm,
 		mm:               mm,

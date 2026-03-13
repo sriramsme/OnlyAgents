@@ -37,7 +37,6 @@ type Config struct {
 type PerplexityConnector struct {
 	config *Config
 	vault  vault.Vault
-	name   string
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -91,8 +90,10 @@ func NewConnector(
 // Connector Interface
 // ====================
 
-func (p *PerplexityConnector) Name() string { return p.name }
-func (p *PerplexityConnector) Type() string { return "perplexity" }
+func (p *PerplexityConnector) Name() string                   { return p.config.Name }
+func (p *PerplexityConnector) ID() string                     { return p.config.ID }
+func (p *PerplexityConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeService }
+func (p *PerplexityConnector) Kind() string                   { return "websearch" }
 
 func (p *PerplexityConnector) Connect() error {
 	// Validate API key exists in vault

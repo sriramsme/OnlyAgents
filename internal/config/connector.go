@@ -33,8 +33,8 @@ func loadConnectorConfig(configPath string) (*ConnectorConfig, error) {
 	// Store raw config for platform-specific unmarshaling
 	cfg.RawConfig = v.AllSettings()
 
-	if cfg.Platform == "" {
-		return nil, fmt.Errorf("platform field is required")
+	if cfg.ID == "" {
+		return nil, fmt.Errorf("id field is required")
 	}
 
 	return &cfg, nil
@@ -60,7 +60,7 @@ func LoadAllConnectorConfigs() (map[string]*ConnectorConfig, error) {
 			return nil, fmt.Errorf("load %s: %w", f.Name(), err)
 		}
 
-		configs[cfg.Name] = cfg
+		configs[cfg.ID] = cfg
 	}
 
 	return configs, nil

@@ -16,54 +16,48 @@ type Registry struct {
 	mu         sync.RWMutex
 }
 
-func NewRegistry(
-	ctx context.Context,
-	vault vault.Vault,
-	bus chan<- core.Event,
-) (*Registry, error) {
-	// Load all connector configs
+func NewRegistry(ctx context.Context, vault vault.Vault, bus chan<- core.Event) (*Registry, error) {
 	configs, err := config.LoadAllConnectorConfigs()
 	if err != nil {
 		return nil, fmt.Errorf("load connector configs: %w", err)
 	}
 
-	registry := &Registry{
+	reg := &Registry{
 		connectors: make(map[string]Connector),
 	}
 
-	// Create each connector
 	for name, cfg := range configs {
 		if !cfg.Enabled {
 			continue
 		}
 
-		factory, err := GetFactory(cfg.Platform)
+		// Retrieve typed factory for this connector type
+		factory, err := GetFactory(cfg.ID) // store as Connector generically
 		if err != nil {
 			return nil, fmt.Errorf("connector %s: %w", name, err)
 		}
 
-		if cfg.Enabled {
-			connector, err := factory(ctx, *cfg, vault, bus)
-			if err != nil {
-				return nil, fmt.Errorf("connector %s: create: %w", name, err)
-			}
-
-			registry.connectors[name] = connector
+		conn, err := factory(ctx, *cfg, vault, bus)
+		if err != nil {
+			return nil, fmt.Errorf("connector %s: create: %w", name, err)
 		}
+
+		reg.connectors[name] = conn
 	}
-	return registry, nil
+
+	return reg, nil
 }
 
 func (r *Registry) Register(c Connector) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.connectors[c.Name()] = c
+	r.connectors[c.ID()] = c
 }
 
-func (r *Registry) Get(name string) (Connector, bool) {
+func (r *Registry) Get(id string) (Connector, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	c, ok := r.connectors[name]
+	c, ok := r.connectors[id]
 	return c, ok
 }
 
@@ -73,6 +67,16 @@ func (r *Registry) All() []Connector {
 	out := make([]Connector, 0, len(r.connectors))
 	for _, c := range r.connectors {
 		out = append(out, c)
+	}
+	return out
+}
+
+func (r *Registry) GetAll() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]string, 0, len(r.connectors))
+	for _, c := range r.connectors {
+		out = append(out, c.ID())
 	}
 	return out
 }

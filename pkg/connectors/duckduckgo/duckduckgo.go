@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	version   = "1.0.0"
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
@@ -35,7 +34,6 @@ type Config struct {
 // DuckDuckGoConnector implements WebSearchConnector interface
 type DuckDuckGoConnector struct {
 	config *Config
-	name   string
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -84,8 +82,10 @@ func NewConnector(
 // Connector Interface
 // ====================
 
-func (d *DuckDuckGoConnector) Name() string { return d.name }
-func (d *DuckDuckGoConnector) Type() string { return "duckduckgo" }
+func (d *DuckDuckGoConnector) Name() string                   { return d.config.Name }
+func (d *DuckDuckGoConnector) ID() string                     { return d.config.ID }
+func (d *DuckDuckGoConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeService }
+func (d *DuckDuckGoConnector) Kind() string                   { return "websearch" }
 
 func (d *DuckDuckGoConnector) Connect() error {
 	return nil // No authentication needed

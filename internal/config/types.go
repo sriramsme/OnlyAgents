@@ -98,8 +98,8 @@ type AgentConfig struct {
 }
 
 type SkillBinding struct {
-	Name      tools.SkillName `yaml:"name"`
-	Connector string          `yaml:"connector,omitempty"` // empty = use skill default
+	Name        tools.SkillName `mapstructure:"name"`
+	ConnectorID string          `mapstructure:"connector,omitempty"` // empty = use skill default
 }
 
 type LoggingConfig struct {
@@ -204,8 +204,8 @@ type ExecutorConfig struct {
 	SandboxType string `yaml:"sandbox_type"` // docker, firejail, etc.
 }
 type ConnectorConfig struct {
+	ID           string                    `mapstructure:"id"`
 	Name         string                    `mapstructure:"name"`
-	Platform     string                    `mapstructure:"platform"`
 	Description  string                    `mapstructure:"description"`
 	Instructions string                    `mapstructure:"instructions"`
 	Type         string                    `mapstructure:"type"`

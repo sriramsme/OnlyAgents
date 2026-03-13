@@ -26,6 +26,7 @@ type CalendarSkill struct {
 func NewCalendarSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
 	calendarConn, ok := conn.(connectors.CalendarConnector)
 	if !ok {
+		fmt.Printf("calendar skill: connector is not a CalendarConnector %T\n", conn)
 		return nil, fmt.Errorf("calendar skill: connector is not a CalendarConnector")
 	}
 	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)

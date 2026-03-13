@@ -42,7 +42,6 @@ type GmailConnector struct {
 	vault    vault.Vault
 	eventBus chan<- core.Event
 	service  *gmail.Service
-	name     string
 }
 
 // NewConnector creates a new Gmail connector
@@ -86,8 +85,10 @@ func NewConnector(
 // Connector Interface
 // ====================
 
-func (g *GmailConnector) Name() string { return g.name }
-func (g *GmailConnector) Type() string { return "gmail" }
+func (g *GmailConnector) Name() string                   { return g.config.Name }
+func (g *GmailConnector) ID() string                     { return g.config.ID }
+func (g *GmailConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeService }
+func (g *GmailConnector) Kind() string                   { return "email" }
 
 func (g *GmailConnector) Connect() error {
 	// Get credentials from vault

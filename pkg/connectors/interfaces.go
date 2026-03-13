@@ -8,11 +8,20 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
+type ConnectorType string
+
+const (
+	ConnectorTypeLocal   ConnectorType = "local"   // uses local db
+	ConnectorTypeService ConnectorType = "service" // uses external service
+)
+
 // Connector is the base interface all connectors must implement
 type Connector interface {
 	// Metadata
 	Name() string
-	Type() string
+	ID() string
+	Type() ConnectorType
+	Kind() string
 
 	// Lifecycle
 	Connect() error

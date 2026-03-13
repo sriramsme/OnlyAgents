@@ -1,4 +1,4 @@
-package native
+package local
 
 import (
 	"context"
@@ -13,12 +13,14 @@ import (
 type RemindersConnector struct {
 	store storage.ReminderStore
 	name  string
+	id    string
 }
 
-func NewRemindersConnector(store storage.ReminderStore) connectors.Connector {
+func NewRemindersConnector(store storage.ReminderStore) connectors.RemindersConnector {
 	return &RemindersConnector{
 		store: store,
-		name:  "native_reminders",
+		name:  "Local Reminders",
+		id:    "local_reminders",
 	}
 }
 
@@ -26,8 +28,10 @@ func NewRemindersConnector(store storage.ReminderStore) connectors.Connector {
 // Connector Interface
 // ====================
 
-func (g *RemindersConnector) Name() string { return g.name }
-func (g *RemindersConnector) Type() string { return "reminders" }
+func (g *RemindersConnector) Name() string                   { return g.name }
+func (g *RemindersConnector) ID() string                     { return g.id }
+func (g *RemindersConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeLocal }
+func (g *RemindersConnector) Kind() string                   { return "reminders" }
 
 func (g *RemindersConnector) Connect() error {
 	return nil

@@ -35,7 +35,6 @@ type Credentials struct {
 type BraveConnector struct {
 	config *Config
 	vault  vault.Vault
-	name   string
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -46,7 +45,7 @@ func NewConnector(
 	cfg config.ConnectorConfig,
 	v vault.Vault,
 	bus chan<- core.Event,
-) (connectors.Connector, error) {
+) (connectors.WebSearchConnector, error) {
 	braveCfg := &Config{
 		ConnectorConfig: cfg,
 	}
@@ -85,8 +84,10 @@ func NewConnector(
 // Connector Interface
 // ====================
 
-func (b *BraveConnector) Name() string { return b.name }
-func (b *BraveConnector) Type() string { return "brave" }
+func (b *BraveConnector) Name() string                   { return b.config.Name }
+func (b *BraveConnector) ID() string                     { return b.config.ID }
+func (b *BraveConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeService }
+func (b *BraveConnector) Kind() string                   { return "websearch" }
 
 func (b *BraveConnector) Connect() error {
 	// Validate API key exists in vault

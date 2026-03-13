@@ -55,7 +55,7 @@ func init() {
 	startCmd.Flags().StringVar(&startHost, "host", "0.0.0.0", "Server host")
 	startCmd.Flags().IntVarP(&startPort, "port", "p", 8080, "Server port")
 	startCmd.Flags().StringVar(&startLogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
-	startCmd.Flags().StringVar(&startLogFormat, "log-format", "json", "Log format (json, text)")
+	startCmd.Flags().StringVar(&startLogFormat, "log-format", "text", "Log format (json, text)")
 	startCmd.Flags().BoolVar(&startNoServer, "no-server", false, "Run kernel only, no web server (headless mode)")
 	startCmd.Flags().BoolVar(&startLogDetailed, "log-detailed", false, "Detailed logging for both LLM and tools")
 	startCmd.Flags().BoolVar(&startLogDetailedLLM, "log-detailed-llm", false, "Detailed LLM calls")
@@ -94,7 +94,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("initialising kernel: %w", err)
 	}
-	if err := k.Start(); err != nil {
+	if err := k.Run(); err != nil {
 		return fmt.Errorf("starting kernel: %w", err)
 	}
 
@@ -103,7 +103,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		fmt.Println("Running in headless mode — press Ctrl+C to stop")
 		<-ctx.Done()
 		logger.Log.Info("shutting down")
-		if err := k.Stop(); err != nil {
+		if err := k.Shutdown(); err != nil {
 			logger.Log.Error("kernel stop error", "error", err)
 		}
 		logger.Log.Info("shutdown complete")
@@ -172,7 +172,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	defer shutdownCancel()
 
 	// Kernel first — closes WS connections before HTTP server stops
-	if err := k.Stop(); err != nil {
+	if err := k.Shutdown(); err != nil {
 		logger.Log.Error("kernel stop error", "error", err)
 	}
 	if err := server.Stop(shutdownCtx); err != nil {
