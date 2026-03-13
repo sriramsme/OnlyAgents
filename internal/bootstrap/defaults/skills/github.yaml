@@ -1,0 +1,133 @@
+name: github
+type: cli
+enabled: true
+access_level: read
+description: Interact with GitHub using the gh CLI for issues, PRs, CI runs, and advanced queries.
+version: 1.0.0
+instructions: |
+  1. Install the GitHub CLI: https://cli.github.com
+  2. Set GITHUB_TOKEN in ~/.onlyagents/.env
+     Get a token at: https://github.com/settings/tokens
+capabilities:
+  - github
+  - repository_management
+  - ci_cd
+  - issue_tracking
+requires:
+  bins:
+    - gh
+  env:
+    - GITHUB_TOKEN
+security:
+  sanitized: true
+  sanitized_at: 2026-03-13T00:00:00Z
+  sanitized_by: converter
+tools:
+  - name: gh_pr_checks
+    description: Check CI status on a PR
+    access: read
+    timeout: 10
+    command: "gh pr checks {{pr_id}} --repo {{repo}}"
+    parameters:
+      - name: pr_id
+        type: integer
+        description: PR number
+      - name: repo
+        type: string
+        description: repository in owner/repo format
+    validation:
+      allowed_commands:
+        - gh
+      denied_patterns:
+        - "rm -rf"
+      max_output_size: 102400
+  - name: gh_run_list
+    description: List recent workflow runs
+    access: read
+    timeout: 10
+    command: "gh run list --repo {{repo}} --limit {{limit}}"
+    parameters:
+      - name: repo
+        type: string
+        description: repository in owner/repo format
+      - name: limit
+        type: integer
+        description: number of runs to list
+    validation:
+      allowed_commands:
+        - gh
+      denied_patterns:
+        - "rm -rf"
+      max_output_size: 102400
+  - name: gh_run_view
+    description: View a run and see which steps failed
+    access: read
+    timeout: 10
+    command: "gh run view {{run_id}} --repo {{repo}}"
+    parameters:
+      - name: run_id
+        type: string
+        description: run identifier
+      - name: repo
+        type: string
+        description: repository in owner/repo format
+    validation:
+      allowed_commands:
+        - gh
+      denied_patterns:
+        - "rm -rf"
+      max_output_size: 102400
+  - name: gh_run_view_log
+    description: View logs for failed steps only
+    access: read
+    timeout: 10
+    command: "gh run view {{run_id}} --repo {{repo}} --log-failed"
+    parameters:
+      - name: run_id
+        type: string
+        description: run identifier
+      - name: repo
+        type: string
+        description: repository in owner/repo format
+    validation:
+      allowed_commands:
+        - gh
+      denied_patterns:
+        - "rm -rf"
+      max_output_size: 102400
+  - name: gh_api_pull_fields
+    description: Get PR with specific fields via the GitHub API
+    access: read
+    timeout: 10
+    command: "gh api repos/{{owner}}/{{repo}}/pulls/{{pull_id}} --jq '.title, .state, .user.login'"
+    parameters:
+      - name: owner
+        type: string
+        description: repository owner
+      - name: repo
+        type: string
+        description: repository name
+      - name: pull_id
+        type: integer
+        description: pull request number
+    validation:
+      allowed_commands:
+        - gh
+      denied_patterns:
+        - "rm -rf"
+      max_output_size: 102400
+  - name: gh_issue_list_json
+    description: List issues with JSON and optional jq filtering
+    access: read
+    timeout: 10
+    command: "gh issue list --repo {{repo}} --json number,title --jq '.[] | \"\\(.number): \\(.title)\"'"
+    parameters:
+      - name: repo
+        type: string
+        description: repository in owner/repo format
+    validation:
+      allowed_commands:
+        - gh
+      denied_patterns:
+        - "rm -rf"
+      max_output_size: 102400

@@ -19,11 +19,9 @@ llm:
   # Vault key path - will lookup from vault
   api_key_vault: "openai/api_key"  # or "${vault:openai/api_key}"
 
-connectors:
-  - "duckduckgo"
-
 skills:
-  - "websearch"
+  - name: websearch
+    connector: duckduckgo
 
 # ============================================
 # EXECUTION LIMITS (Guard Rails)

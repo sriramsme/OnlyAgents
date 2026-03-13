@@ -25,10 +25,6 @@ llm:
   model: "gpt-5-nano"
   api_key_vault: "openai/api_key"
 
-connectors:
-
-channels:
-
 soul:
   identity:
     role: |

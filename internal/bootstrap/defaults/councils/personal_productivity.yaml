@@ -15,8 +15,6 @@ skills:
   - weather
 
 connectors:
-  - calendar
-  - reminders
-  - notes
-  - tasks
   - duckduckgo
+  - brave
+  - perplexity

@@ -18,17 +18,21 @@ llm:
   model: "gpt-5-nano"
   api_key_vault: "openai/api_key"
 
-connectors:
-  - "native_calendar"
-  - "native_notes"
-  - "native_reminders"
-  - "native_tasks"
-
 skills:
-  - "calendar"
-  - "notes"
-  - "reminders"
-  - "tasks"
+  - calendar
+  - notes
+  - reminders
+  - tasks
+
+# Alternatively, you can specify skills by name and connector:
+# some skills may have native connectors enabled by default. check skill's config.
+# skills:
+#   - name: calendar
+#     connector: google_calendar
+#   - name: notes
+#     connector: native
+#   - reminders
+#   - tasks
 
 # ============================================
 # EXECUTION LIMITS

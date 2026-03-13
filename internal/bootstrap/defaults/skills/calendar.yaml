@@ -1,0 +1,18 @@
+# skills/calendar.yaml
+name: calendar
+type: native
+enabled: true
+access_level: write
+description: Create, view, and manage calendar events
+version: 1.0.0
+capabilities:
+  - scheduling
+  - calendar_management
+  - time_management
+connector:
+  required: false  # has a native connector enabled by default. uses local db.
+  default: native
+  supported:
+    - native
+    # - google_calendar  (future)
+    # - outlook          (future)

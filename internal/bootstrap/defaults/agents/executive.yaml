@@ -27,8 +27,6 @@ llm:
 # Vault key path - will lookup from vault
   api_key_vault: "openai/api_key"  # or "${vault:openai/api_key}"
 
-connectors:
-
 channels:
   - telegram
 
@@ -50,8 +48,8 @@ soul:
 
       WHEN TO DELEGATE:
         Delegate when a request requires a specialized capability (calendar, email,
-        web search, etc.). Pick the agent from Available Capabilities & Agents.
-        If the right agent is unclear, call find_best_agent first.
+        web search, etc.). Pick the agent from Available Sub-Agents & Their Capabilities.
+        If the right agent is unclear, delegate to the general agent.
 
         Before delegating, rewrite the user's request as a clear, self-contained
         instruction for the target agent. You are a higher-capability model — use that:
@@ -123,8 +121,7 @@ soul:
 
       LIMITS:
         Never invent agents or capabilities.
-        If no agent supports a capability,call find_best_agent.
-        If that returns nothing, delegate to the general agent.
+        If no agent supports a capability, delegate to the general agent.
 
       Always produce a clear, synthesized response when results return to you.
 

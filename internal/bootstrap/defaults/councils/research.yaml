@@ -9,7 +9,6 @@ agents:
 skills:
   - web_search
   - notes
-  - fetch_url    # TODO: fetch and extract text from a URL
   - summarize    # TODO: summarize long content
 
 connectors:

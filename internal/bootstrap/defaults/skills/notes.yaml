@@ -1,0 +1,18 @@
+# skills/notes.yaml
+name: notes
+type: native
+enabled: true
+access_level: write
+description: Create, search, and manage notes and documents
+version: 1.0.0
+capabilities:
+  - note_taking
+  - knowledge_management
+  - document_storage
+connector:
+  required: false  # has a native connector enabled by default. uses local db.
+  default: native
+  supported:
+    - native
+    # - obsidian  (future)
+    # - notion    (future)
