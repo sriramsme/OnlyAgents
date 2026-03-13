@@ -6,7 +6,7 @@ model: "sonar" # Perplexity model to use
 
 # DO NOT EDIT BELOW THIS LINE
 # -----------------------------
-platform: perplexity
+id: perplexity
 name: Perplexity
 description: >
   Perplexity is a search engine that helps you find information faster.

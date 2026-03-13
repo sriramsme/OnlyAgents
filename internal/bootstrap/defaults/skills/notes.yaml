@@ -10,9 +10,9 @@ capabilities:
   - knowledge_management
   - document_storage
 connector:
-  required: false  # has a native connector enabled by default. uses local db.
-  default: native
+  required: false  # has a local  connector enabled by default. uses local db.
+  default: local_notes
   supported:
-    - native
+    - local_notes
     # - obsidian  (future)
     # - notion    (future)

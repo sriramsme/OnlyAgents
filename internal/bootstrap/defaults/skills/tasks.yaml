@@ -10,10 +10,10 @@ capabilities:
   - project_tracking
   - to_do
 connector:
-  required: false  # has a native connector enabled by default. uses local db.
+  required: false  # has a local tasks connector enabled by default. uses local db.
 
-  default: native
+  default: local_tasks
   supported:
-    - native
+    - local_tasks
     # - todoist   (future)
     # - linear    (future)

@@ -5,6 +5,7 @@ Handles delegation, coordination, and synthesis of results."
 is_executive: true   # only one agent can be an executive
 max_concurrency: 4
 buffer_size: 20
+enabled: true
 
 # Executive has looser limits since it coordinates rather than executes
 max_iterations: 5               # Should delegate quickly

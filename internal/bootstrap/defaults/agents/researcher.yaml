@@ -4,6 +4,7 @@ description: "Does research and gathers information from multiple sources.
 Supports web search, and citation."
 max_concurrency: 5
 buffer_size: 50
+enabled: true
 
 logging:
   level: "info"  # debug, info, warn, error

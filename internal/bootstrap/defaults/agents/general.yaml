@@ -5,6 +5,7 @@ Supports skill discovery and execution."
 is_general: true  # only one agent can be a general agent
 max_concurrency: 10
 buffer_size: 100
+enabled: true
 
 max_iterations: 15
 max_tool_calls_per_iteration: 3

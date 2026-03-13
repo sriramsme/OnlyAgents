@@ -4,6 +4,7 @@ description: "Handles ALL productivity operations (calendar, notes, reminders, t
 Supports creating multiple tasks, events, or reminders etc in one request."
 max_concurrency: 5
 buffer_size: 50
+enabled: true
 
 logging:
   level: "info"
@@ -19,20 +20,13 @@ llm:
   api_key_vault: "openai/api_key"
 
 skills:
-  - calendar
-  - notes
-  - reminders
-  - tasks
-
-# Alternatively, you can specify skills by name and connector:
-# some skills may have native connectors enabled by default. check skill's config.
-# skills:
-#   - name: calendar
-#     connector: google_calendar
-#   - name: notes
-#     connector: native
-#   - reminders
-#   - tasks
+  - name: calendar
+    connector: local_calendar
+  - name: notes
+    connector: local_notes
+  - name: reminders  # you can omit the connector field if you use the default
+  - name: tasks
+    connector: ""  # or you can put an empty string to use the default
 
 # ============================================
 # EXECUTION LIMITS

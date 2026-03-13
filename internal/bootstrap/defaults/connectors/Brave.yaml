@@ -5,7 +5,7 @@ max_results: 5 # Default number of results
 
 # DO NOT EDIT BELOW THIS LINE
 # -----------------------------
-platform: brave
+id: brave
 name: Brave
 description: >
   Brave is a search engine that helps you find information faster.
