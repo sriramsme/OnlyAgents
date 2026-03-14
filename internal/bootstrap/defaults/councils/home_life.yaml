@@ -3,7 +3,7 @@ description: Life management assistant for the non-work side of things. Handles 
 enabled: false
 
 agents:
-  - productivity  # ships by default — handles calendar, reminders, tasks
+  - productivity # ships by default — handles calendar, reminders, tasks
   - general
 
 skills:
@@ -12,9 +12,9 @@ skills:
   - tasks
   - notes
   - web_search
-  - weather      # CLI — ships today
-  - email        # TODO: native skill
-  - home_assistant  # TODO: CLI skill — home automation via HA REST API
+  - weather # CLI — ships today
+  - email # TODO: native skill
+  - home_assistant # TODO: CLI skill — home automation via HA REST API
 
 connectors:
   - calendar
@@ -22,4 +22,4 @@ connectors:
   - tasks
   - notes
   - duckduckgo
-  - gmail        # TODO: native connector
+  - gmail # TODO: native connector

@@ -13,8 +13,12 @@ capabilities:
   - geolocation
 requires:
   bins:
-    - curl
-  env: []
+    - name: curl
+      install:
+        brew: brew install curl
+        apt: sudo apt install curl
+        manual: https://curl.se/download.html
+  env:
 security:
   sanitized: true
   sanitized_at: 2026-03-13T00:00:00Z

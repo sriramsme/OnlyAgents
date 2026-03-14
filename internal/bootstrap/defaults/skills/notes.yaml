@@ -10,7 +10,7 @@ capabilities:
   - knowledge_management
   - document_storage
 connector:
-  required: false  # has a local  connector enabled by default. uses local db.
+  required: false # has a local  connector enabled by default. uses local db.
   default: local_notes
   supported:
     - local_notes

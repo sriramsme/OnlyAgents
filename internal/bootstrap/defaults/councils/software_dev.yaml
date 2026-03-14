@@ -3,20 +3,20 @@ description: Collaborative engineering team for software development workflows. 
 enabled: false
 
 agents:
-  - developer    # TODO: new agent — code writing, debugging, file ops
-  - reviewer     # TODO: new agent — code review, suggestions
-  - tester       # TODO: new agent — test generation, test analysis
+  - developer # TODO: new agent — code writing, debugging, file ops
+  - reviewer # TODO: new agent — code review, suggestions
+  - tester # TODO: new agent — test generation, test analysis
   - general
 
 skills:
-  - github       # CLI — ships today
-  - git          # TODO: CLI skill
-  - filesystem   # TODO: read/write/search files
-  - ripgrep      # TODO: CLI skill — fast code search
-  - make         # TODO: CLI skill
-  - docker       # TODO: CLI skill
-  - web_search   # for docs lookup
+  - github # CLI — ships today
+  - git # TODO: CLI skill
+  - filesystem # TODO: read/write/search files
+  - ripgrep # TODO: CLI skill — fast code search
+  - make # TODO: CLI skill
+  - docker # TODO: CLI skill
+  - web_search # for docs lookup
 
 connectors:
-  - github       # TODO: native connector (PR status, CI logs, issues)
-  - brave        # docs and Stack Overflow searches
+  - github # TODO: native connector (PR status, CI logs, issues)
+  - brave # docs and Stack Overflow searches

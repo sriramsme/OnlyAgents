@@ -9,15 +9,15 @@ timeouts:
 
 cors:
   allowed_origins:
-    - http://localhost:5173   # vite dev server
-    - http://localhost:19965  # production UI
+    - http://localhost:5173 # vite dev server
+    - http://localhost:19965 # production UI
 
 tls:
   enabled: false
   cert_path: ""
   key_path: ""
 
-vault_paths:  # secrets used by the API
+vault_paths: # secrets used by the API
   api_key:
     path: server/api_key
     prompt: API key for the OnlyAgents server

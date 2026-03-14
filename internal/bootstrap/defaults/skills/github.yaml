@@ -15,7 +15,11 @@ capabilities:
   - issue_tracking
 requires:
   bins:
-    - gh
+    - name: gh
+      install:
+        brew: brew install gh
+        apt: sudo apt install gh
+        manual: https://cli.github.com
   env:
     - GITHUB_TOKEN
 security:

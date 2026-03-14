@@ -6,14 +6,6 @@ max_concurrency: 5
 buffer_size: 50
 enabled: true
 
-logging:
-  level: "info"
-  format: "text"
-
-security:
-  key_path: "./keys/agent.key"
-  credentials_path: "./credentials"
-
 llm:
   provider: "openai"
   model: "gpt-5-nano"
@@ -27,6 +19,7 @@ skills:
   - name: reminders  # you can omit the connector field if you use the default
   - name: tasks
     connector: ""  # or you can put an empty string to use the default
+  - name: weather
 
 # ============================================
 # EXECUTION LIMITS

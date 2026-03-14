@@ -1,6 +1,18 @@
+name: OnlyAgents
 bus_buffer_size: 256
-default_agent_id: "general"
 
-clawhub_enabled: true
-clawhub_token_vault_key: "clawhub_token"
-clawhub_url: "https://clawhub.dev"
+security:
+  execution_mode: restricted # restricted | native
+  working_dir: "" # ~/.onlyagents/ by default
+  allow_network: true # cli tools can make network calls
+  allow_system_bins: true # can use /usr/bin etc
+
+# skill marketplaces
+marketplaces:
+  - name: clawhub
+    enabled: true
+    url: https://clawhub.ai
+    vault_paths:
+      api_key:
+        path: clawhub/api_key
+        prompt: ClawHub API key

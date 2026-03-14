@@ -3,16 +3,16 @@ description: Deep research assistant for gathering, synthesizing, and organizing
 enabled: false
 
 agents:
-  - researcher   # ships — web_search, citations (needs fetch_url + summarize skills)
+  - researcher # ships — web_search, citations (needs fetch_url + summarize skills)
   - general
 
 skills:
   - web_search
   - notes
-  - summarize    # TODO: summarize long content
+  - summarize # TODO: summarize long content
 
 connectors:
   - notes
-  - brave        # preferred for research — cleaner results
-  - perplexity   # fallback for complex queries
+  - brave # preferred for research — cleaner results
+  - perplexity # fallback for complex queries
   - duckduckgo

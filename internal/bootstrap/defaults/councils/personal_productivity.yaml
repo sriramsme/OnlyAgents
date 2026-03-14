@@ -3,7 +3,7 @@ description: Daily life assistant for managing time, tasks, and information. Han
 enabled: false
 
 agents:
-  - productivity  # calendar, notes, reminders, tasks (Friday — ships by default)
+  - productivity # calendar, notes, reminders, tasks (Friday — ships by default)
   - general
 
 skills:

@@ -10,7 +10,7 @@ capabilities:
   - calendar_management
   - time_management
 connector:
-  required: false  # has a local connector enabled by default. uses local db.
+  required: false # has a local connector enabled by default. uses local db.
   default: local_calendar
   supported:
     - local_calendar
