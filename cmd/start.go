@@ -62,6 +62,7 @@ func init() {
 	startCmd.Flags().BoolVar(&startLogDetailedTools, "log-detailed-tools", false, "Detailed tool calls")
 }
 
+// nolint:gocyclo
 func runStart(cmd *cobra.Command, args []string) error {
 	logger.Initialize(startLogLevel, startLogFormat)
 	if startLogDetailed {
@@ -94,6 +95,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("initialising kernel: %w", err)
 	}
+
+	// ── Boot kernel ─────────────────────────────────────────────────────────
+	if err := k.Boot(); err != nil {
+		return fmt.Errorf("booting kernel: %w", err)
+	}
+
 	if err := k.Run(); err != nil {
 		return fmt.Errorf("starting kernel: %w", err)
 	}

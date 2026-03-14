@@ -5,6 +5,7 @@ func kernelInitializers() []Initializer {
 		connectorsInitializer{},
 		agentsInitializer{},
 		promptsInitializer{},
+		serverInitializer{},
 	}
 }
 

@@ -12,6 +12,7 @@ type (
 	connectorsInitializer struct{}
 	agentsInitializer     struct{}
 	promptsInitializer    struct{}
+	serverInitializer     struct{}
 )
 
 func (i connectorsInitializer) Init(ctx context.Context, k *Kernel) error {
@@ -25,4 +26,9 @@ func (i agentsInitializer) Init(ctx context.Context, k *Kernel) error {
 
 func (i promptsInitializer) Init(ctx context.Context, k *Kernel) error {
 	return k.buildSystemPrompts()
+}
+
+func (i serverInitializer) Init(ctx context.Context, k *Kernel) error {
+	k.wireOAChannel()
+	return nil
 }

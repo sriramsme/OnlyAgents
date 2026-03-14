@@ -41,9 +41,6 @@ func (k *Kernel) Run() error {
 		}
 	}
 
-	k.logger.Info("wiring onlyagents Channel")
-	k.wireOAChannel()
-
 	// Start event router
 	k.wg.Add(1)
 	go k.run()

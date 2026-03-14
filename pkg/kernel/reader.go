@@ -6,6 +6,7 @@ import (
 )
 
 // implements KernelReader
+// Used by UI/server
 
 func (k *Kernel) OAChannel() *oaChannel.OAChannel {
 	ch, err := k.channels.Get("onlyagents")
@@ -51,4 +52,20 @@ func (k *Kernel) AgentsStatus() []core.AgentStatus {
 
 func (k *Kernel) IsHealthy() bool {
 	return k.ctx.Err() == nil
+}
+
+// Helpers
+
+func (k *Kernel) wireOAChannel() {
+	ch, err := k.channels.Get("onlyagents")
+	if err != nil {
+		return
+	}
+	oaCh, ok := ch.(*oaChannel.OAChannel)
+	if !ok {
+		return
+	}
+	// Inject Subscribe so each WS connection gets its own UIBus subscription.
+	oaCh.SetSubscribe(k.Subscribe)
+	oaCh.SetAgentsStatus(k.AgentsStatus)
 }
