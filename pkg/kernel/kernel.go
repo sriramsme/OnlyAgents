@@ -66,10 +66,8 @@ type Kernel struct {
 	logger *slog.Logger
 
 	// UI fan-out — nil when running headless (no GUI/server).
-	// Agents write UIEvents here; runUI() fans them out to SSE subscribers.
-	uiBus    core.UIBus
-	uiSubsMu sync.RWMutex
-	uiSubs   map[string]chan core.UIEvent
+	// Agents write UIEvents here;
+	uiBus core.UIBus
 }
 
 func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus) (*Kernel, error) {
@@ -114,7 +112,6 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus)
 		cancel: cancel,
 		logger: slog.Default().With("component", "kernel"),
 		uiBus:  uiBus,
-		uiSubs: make(map[string]chan core.UIEvent),
 	}, nil
 }
 

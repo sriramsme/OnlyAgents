@@ -1,6 +1,8 @@
 package cmdutil
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -125,6 +127,28 @@ func AppendEnvVar(envPath, vaultPath, value string) error {
 	return err
 }
 
+func SetEnvVar(envPath, key, value string) error {
+	data, err := os.ReadFile(envPath) // #nosec G304
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	updated := false
+	for i, line := range lines {
+		if strings.HasPrefix(line, key+"=") {
+			lines[i] = key + "=" + value
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		lines = append(lines, key+"="+value)
+	}
+
+	return os.WriteFile(envPath, []byte(strings.Join(lines, "\n")), 0o600) //nolint:gosec
+}
+
 // ViewResource prints a resource config. If field is set, prints just that
 // field's value (useful for scripting). If raw is set, dumps the YAML file.
 func ViewResource(path string, v any, field string, raw bool) error {
@@ -159,6 +183,14 @@ func ViewResource(path string, v any, field string, raw bool) error {
 	}
 	fmt.Print(StyleBorder.Render(string(data)))
 	return nil
+}
+
+func GenerateAPIKey() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
 }
 
 // ── Table helpers ─────────────────────────────────────────────────────────────

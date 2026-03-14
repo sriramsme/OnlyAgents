@@ -5,36 +5,11 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
-// implements KernelReader
-// Used by UI/server
-
-func (k *Kernel) OAChannel() *oaChannel.OAChannel {
-	ch, err := k.channels.Get("onlyagents")
-	if err != nil {
-		k.logger.Error("failed to get channel", "name", "oaChannel", "err", err)
-		return nil
-	}
-
-	oaCh, ok := ch.(*oaChannel.OAChannel)
-	if !ok {
-		k.logger.Error("channel type mismatch", "expected", "*oaChannel.OAChannel")
-		return nil
-	}
-
-	return oaCh
-}
-
-func (k *Kernel) Subscribe(id string) (<-chan core.UIEvent, func()) {
-	ch := make(chan core.UIEvent, 64)
-	k.uiSubsMu.Lock()
-	k.uiSubs[id] = ch
-	k.uiSubsMu.Unlock()
-
-	return ch, func() {
-		k.uiSubsMu.Lock()
-		delete(k.uiSubs, id)
-		k.uiSubsMu.Unlock()
-	}
+// KernelReader is the read-only interface exposed to the server.
+type KernelReader interface {
+	AgentsStatus() []core.AgentStatus
+	IsHealthy() bool
+	UIBus() core.UIBus
 }
 
 func (k *Kernel) AgentsStatus() []core.AgentStatus {
@@ -54,18 +29,20 @@ func (k *Kernel) IsHealthy() bool {
 	return k.ctx.Err() == nil
 }
 
-// Helpers
+func (k *Kernel) UIBus() core.UIBus {
+	return k.uiBus
+}
 
-func (k *Kernel) wireOAChannel() {
+func (k *Kernel) OAChannel() *oaChannel.OAChannel {
 	ch, err := k.channels.Get("onlyagents")
 	if err != nil {
-		return
+		return nil
 	}
+
 	oaCh, ok := ch.(*oaChannel.OAChannel)
 	if !ok {
-		return
+		return nil
 	}
-	// Inject Subscribe so each WS connection gets its own UIBus subscription.
-	oaCh.SetSubscribe(k.Subscribe)
-	oaCh.SetAgentsStatus(k.AgentsStatus)
+
+	return oaCh
 }

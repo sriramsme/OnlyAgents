@@ -153,9 +153,53 @@ var authStatusCmd = &cobra.Command{
 	},
 }
 
+var authAPIKeyCmd = &cobra.Command{
+	Use:   "api-key",
+	Short: "Generate a new API key for programmatic access",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		paths, err := resolvePaths()
+		if err != nil {
+			return err
+		}
+
+		// Warn if rotating existing key
+		existing := os.Getenv("SERVER_API_KEY")
+		if existing != "" {
+			var confirm bool
+			if err := cmdutil.RunForm(
+				huh.NewGroup(
+					cmdutil.ConfirmField("An API key already exists. Rotate it?", &confirm),
+				),
+			); err != nil {
+				return err
+			}
+			if !confirm {
+				cmdutil.Warn("cancelled — existing key unchanged")
+				return nil
+			}
+		}
+
+		apiKey, err := cmdutil.GenerateAPIKey()
+		if err != nil {
+			return fmt.Errorf("generate api key: %w", err)
+		}
+
+		if err := cmdutil.SetEnvVar(paths.EnvPath, "SERVER_API_KEY", apiKey); err != nil {
+			return fmt.Errorf("save api key: %w", err)
+		}
+
+		cmdutil.Success("new API key generated and saved to vault")
+		cmdutil.Hint("  %s", apiKey)
+		cmdutil.Hint("This key won't be shown again. Find it in ~/.onlyagents/.env if needed.")
+		cmdutil.Warn("Restart OnlyAgents for the new key to take effect.")
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(authCmd)
 	authCmd.AddCommand(authResetCmd)
 	authCmd.AddCommand(authSetPasswordCmd)
 	authCmd.AddCommand(authStatusCmd)
+	authCmd.AddCommand(authAPIKeyCmd)
 }

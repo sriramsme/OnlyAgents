@@ -20,9 +20,15 @@ type Server struct {
 
 // NewServer creates a new API server.
 // deps holds all the dependencies handlers need.
-func NewServer(cfg config.ServerConfig, deps handlers.Deps, a *auth.Auth, logger *slog.Logger) *Server {
+func NewServer(
+	cfg config.ServerConfig,
+	deps handlers.Deps,
+	a *auth.Auth,
+	apiKey string,
+	logger *slog.Logger,
+) *Server {
 	mux := http.NewServeMux()
-	mid := NewMiddleware(cfg, a, logger)
+	mid := NewMiddleware(cfg, a, apiKey, logger)
 
 	// Register all routes - see routes.go
 	registerRoutes(mux, mid, deps, a, logger)
@@ -31,9 +37,9 @@ func NewServer(cfg config.ServerConfig, deps handlers.Deps, a *auth.Auth, logger
 		httpServer: &http.Server{
 			Addr:         fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 			Handler:      mid.corsGlobal(mux),
-			ReadTimeout:  cfg.ReadTimeout,
-			WriteTimeout: cfg.WriteTimeout,
-			IdleTimeout:  cfg.IdleTimeout,
+			ReadTimeout:  cfg.Timeouts.Read,
+			WriteTimeout: cfg.Timeouts.Write,
+			IdleTimeout:  cfg.Timeouts.Idle,
 		},
 		config: cfg,
 		logger: logger,

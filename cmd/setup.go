@@ -151,7 +151,7 @@ func (s *userIdentityStep) Run(ctx *cmdutil.SetupContext) error {
 	cfg.Identity.Role = role
 	cfg.Identity.Timezone = tz
 
-	return writeYAML(ctx.Paths.UserPath, cfg)
+	return cmdutil.WriteYAML(ctx.Paths.UserPath, cfg)
 }
 
 // ── Step 3: Vault ─────────────────────────────────────────────────────────────
@@ -335,7 +335,7 @@ func updateAgentLLM(path string, choice cmdutil.LLMChoice) error {
 		"api_key_vault": choice.APIKeyVault,
 	}
 
-	return writeYAML(path, raw)
+	return cmdutil.WriteYAML(path, raw)
 }
 
 // ── Step 5: Channel ───────────────────────────────────────────────────────────
@@ -362,7 +362,7 @@ func (s *channelStep) Run(ctx *cmdutil.SetupContext) error {
 	}
 	if !skip {
 		ctx.ChannelChoice = "oachannel"
-		cmdutil.Success("using built-in OAChannel — run 'onlyagents server start' and open http://localhost:8080")
+		cmdutil.Success("using built-in OAChannel — run 'onlyagents server start' and open http://localhost:19965")
 		return nil
 	}
 
@@ -484,24 +484,18 @@ func (s *authSetupStep) Run(ctx *cmdutil.SetupContext) error {
 		return err
 	}
 
-	cmdutil.Success("auth configured — username: admin")
-	return nil
-}
-
-// ── Utilities ─────────────────────────────────────────────────────────────────
-
-func writeYAML(path string, v any) error {
-	clean := filepath.Clean(path)
-	f, err := os.OpenFile(clean, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600) //nolint:gosec
+	// Generate and store API key for programmatic access
+	apiKey, err := cmdutil.GenerateAPIKey()
 	if err != nil {
-		return err
+		return fmt.Errorf("generate api key: %w", err)
 	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, cmdutil.StyleYellow.Render("  ! could not close %s: %v\n"), path, err)
-		}
-	}()
-	enc := yaml.NewEncoder(f)
-	enc.SetIndent(2)
-	return enc.Encode(v)
+	if err := cmdutil.AppendEnvVar(ctx.EnvFilePath, "server/api_key", apiKey); err != nil {
+		return fmt.Errorf("store api key: %w", err)
+	}
+
+	cmdutil.Success("auth configured — username: %s", username)
+	cmdutil.Info("API key saved to vault — for programmatic access:")
+	cmdutil.Hint("  %s", apiKey)
+	cmdutil.Hint("This key won't be shown again. Find it in ~/.onlyagents/.env if needed.")
+	return nil
 }

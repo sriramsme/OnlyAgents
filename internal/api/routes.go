@@ -45,11 +45,11 @@ func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, a *
 	// Query params: ?session_id=<uuid>&agent_id=<id>
 	// session_id: omit to start a new session, pass existing to resume
 	// agent_id:   defaults to "executive"
-	if deps.Kernel.OAChannel() != nil {
+	if deps.WSHandler != nil {
 		mux.HandleFunc("GET /v1/ws", authed(func(w http.ResponseWriter, r *http.Request) {
 			rc := http.NewResponseController(w)
 			err := rc.SetWriteDeadline(time.Time{}) // zero = no deadline for this connection only
-			deps.Kernel.OAChannel().WSHandler(w, r)
+			deps.WSHandler(w, r)
 			if err != nil {
 				logger.Error("failed to set write deadline", "error", err)
 			}

@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"context"
+	"net/http"
 
-	"github.com/sriramsme/OnlyAgents/pkg/channels/oaChannel"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
@@ -14,11 +14,34 @@ import (
 //
 // This is the idiomatic Go alternative to a global service locator.
 type Deps struct {
-	Bus     chan<- core.Event
-	Version string
-	Kernel  KernelReader
-	Store   storage.Storage
+	Bus       chan<- core.Event
+	Version   string
+	Kernel    KernelReader
+	Store     storage.Storage
+	WSHandler http.HandlerFunc // WebSocket handler from custom channels like OAChannel
+
+	// add these as you build them:
+	// Skills    SkillsReader    — for /v1/skills
+	// Memory    MemoryReader    — for /v1/memory
+	// Agents    AgentsReader    — for /v1/agents
 }
+
+// Here's an example of how we can wire the skills reader and  kernel:
+// // handlers/deps.go
+// type SkillsReader interface {
+//     ListSkills() []core.SkillInfo
+//     GetSkill(name string) (core.SkillInfo, bool)
+// }
+//
+// // pkg/kernel/reader.go
+// func (k *Kernel) ListSkills() []core.SkillInfo { ... }
+// func (k *Kernel) GetSkill(name string) (core.SkillInfo, bool) { ... }
+//
+// // start.go
+// deps := handlers.Deps{
+//     Kernel: k,
+//     Skills: k, // same k, different interface
+// }
 
 // ─── Kernel interface ─────────────────────────────────────────────────────────
 
@@ -33,13 +56,6 @@ type KernelReader interface {
 
 	// IsHealthy returns false if the kernel context has been cancelled.
 	IsHealthy() bool
-
-	// Subscribe registers a new SSE client and returns:
-	//   ch          — read-only channel receiving UIEvents
-	//   unsubscribe — call this (defer it) when the client disconnects
-	Subscribe(id string) (<-chan core.UIEvent, func())
-
-	OAChannel() *oaChannel.OAChannel
 }
 
 // ─── Agent interface ──────────────────────────────────────────────────────────

@@ -95,7 +95,7 @@ func (a *Auth) Login(r *http.Request, req LoginRequest) (LoginResult, error) {
 // ─────────────────────────────────────────
 
 // ValidateRequest checks session cookie or API key.
-func (a *Auth) ValidateRequest(r *http.Request, apiKeyVault string) bool {
+func (a *Auth) ValidateRequest(r *http.Request, apiKey string) bool {
 	// Session cookie (browser)
 	if cookie, err := r.Cookie(SessionCookieName); err == nil {
 		if a.sessions.validate(cookie.Value) {
@@ -104,10 +104,10 @@ func (a *Auth) ValidateRequest(r *http.Request, apiKeyVault string) bool {
 	}
 
 	// API key fallback
-	if apiKeyVault != "" {
+	if apiKey != "" {
 		key := extractAPIKey(r)
 		if key != "" &&
-			subtle.ConstantTimeCompare([]byte(key), []byte(apiKeyVault)) == 1 {
+			subtle.ConstantTimeCompare([]byte(key), []byte(apiKey)) == 1 {
 			return true
 		}
 	}

@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/spf13/viper"
 )
@@ -44,10 +43,15 @@ func loadServer() (*ServerConfig, error) {
 }
 
 func setServerDefaults(v *viper.Viper) {
-	v.SetDefault("host", "")
-	v.SetDefault("port", 8080)
-	v.SetDefault("read_timeout", 30*time.Second)
-	v.SetDefault("write_timeout", 30*time.Second)
-	v.SetDefault("idle_timeout", 120*time.Second)
-	v.SetDefault("version", "0.1.0")
+	v.SetDefault("host", "0.0.0.0")
+	v.SetDefault("port", 19965)
+	v.SetDefault("timeouts.read", "30s")
+	v.SetDefault("timeouts.write", "30s")
+	v.SetDefault("timeouts.idle", "120s")
+	v.SetDefault("timeouts.shutdown", "10s")
+	v.SetDefault("cors.allowed_origins", []string{
+		"http://localhost:5173",
+		"http://localhost:19965",
+	})
+	v.SetDefault("tls.enabled", false)
 }

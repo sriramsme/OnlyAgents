@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -14,10 +15,13 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/time/rate"
+
 	"github.com/sriramsme/OnlyAgents/internal/api"
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
 	"github.com/sriramsme/OnlyAgents/internal/auth"
 	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/internal/ui"
 	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
 	_ "github.com/sriramsme/OnlyAgents/pkg/connectors/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -25,7 +29,6 @@ import (
 	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	_ "github.com/sriramsme/OnlyAgents/pkg/skills/bootstrap"
-	"golang.org/x/time/rate"
 )
 
 var startCmd = &cobra.Command{
@@ -53,7 +56,7 @@ func init() {
 	rootCmd.AddCommand(startCmd)
 
 	startCmd.Flags().StringVar(&startHost, "host", "0.0.0.0", "Server host")
-	startCmd.Flags().IntVarP(&startPort, "port", "p", 8080, "Server port")
+	startCmd.Flags().IntVarP(&startPort, "port", "p", 19965, "Server port")
 	startCmd.Flags().StringVar(&startLogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	startCmd.Flags().StringVar(&startLogFormat, "log-format", "text", "Log format (json, text)")
 	startCmd.Flags().BoolVar(&startNoServer, "no-server", false, "Run kernel only, no web server (headless mode)")
@@ -137,21 +140,35 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading auth: %w", err)
 	}
 
+	bridge := ui.NewBridge(uiBus)
+	go bridge.Run(ctx)
+
+	// Wire OAChannel
+	var wsHandler http.HandlerFunc
+	if oaCh := k.OAChannel(); oaCh != nil {
+		oaCh.SetSubscribe(bridge.Subscribe)
+		oaCh.SetAgentsStatus(k.AgentsStatus)
+		wsHandler = oaCh.WSHandler
+	}
+
+	v, err := config.LoadVault()
+	if err != nil {
+		return fmt.Errorf("load vault: %w", err)
+	}
+	apiKey, err := v.GetSecret(ctx, serverConfig.VaultPaths["api_key"].Path)
+	if err != nil {
+		return fmt.Errorf("load server api key: %w", err)
+	}
 	server := api.NewServer(
-		config.ServerConfig{
-			Host:         serverConfig.Host,
-			Port:         serverConfig.Port,
-			Version:      "0.1.0",
-			ReadTimeout:  serverConfig.ReadTimeout,
-			WriteTimeout: serverConfig.WriteTimeout,
-			IdleTimeout:  serverConfig.IdleTimeout,
-		},
+		*serverConfig,
 		handlers.Deps{
-			Bus:     k.Bus(),
-			Version: "0.1.0",
-			Kernel:  k,
+			Bus:       k.Bus(),
+			Version:   "0.1.0",
+			Kernel:    k,
+			WSHandler: wsHandler,
 		},
 		a,
+		apiKey,
 		logger.Log,
 	)
 
@@ -175,7 +192,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("\nShutting down...")
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), serverConfig.Timeouts.Shutdown)
 	defer shutdownCancel()
 
 	// Kernel first — closes WS connections before HTTP server stops

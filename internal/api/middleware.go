@@ -21,11 +21,12 @@ type (
 type Middleware struct {
 	cfg    config.ServerConfig
 	auth   *auth.Auth
+	apiKey string
 	logger *slog.Logger
 }
 
-func NewMiddleware(cfg config.ServerConfig, a *auth.Auth, logger *slog.Logger) *Middleware {
-	return &Middleware{cfg: cfg, auth: a, logger: logger}
+func NewMiddleware(cfg config.ServerConfig, a *auth.Auth, apiKey string, logger *slog.Logger) *Middleware {
+	return &Middleware{cfg: cfg, auth: a, apiKey: apiKey, logger: logger}
 }
 
 // corsGlobal wraps the entire mux. OPTIONS preflights are handled here
@@ -59,7 +60,7 @@ func (m *Middleware) Authed() middlewareFn {
 
 func (m *Middleware) authCheck(next handlerFunc) handlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !m.auth.ValidateRequest(r, m.cfg.APIKeyVault) {
+		if !m.auth.ValidateRequest(r, m.apiKey) {
 			w.Header().Set("Content-Type", "application/json")
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			return

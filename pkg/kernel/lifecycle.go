@@ -45,11 +45,6 @@ func (k *Kernel) Run() error {
 	k.wg.Add(1)
 	go k.run()
 
-	if k.uiBus != nil {
-		k.wg.Add(1)
-		go k.runUI()
-	}
-
 	k.logger.Info("kernel started")
 	fmt.Println("kernel started")
 	return nil
@@ -173,32 +168,6 @@ func (k *Kernel) run() {
 		case <-k.ctx.Done():
 			k.logger.Info("event router shutting down")
 			return
-		}
-	}
-}
-
-// reads UIBus, fans out to all SSE subscribers
-func (k *Kernel) runUI() {
-	defer k.wg.Done()
-	for {
-		select {
-		case evt := <-k.uiBus:
-			k.broadcastUI(evt)
-		case <-k.ctx.Done():
-			k.logger.Info("ui event router shutting down")
-			return
-		}
-	}
-}
-
-// non-blocking fan-out to all SSE subscriber channels
-func (k *Kernel) broadcastUI(evt core.UIEvent) {
-	k.uiSubsMu.RLock()
-	defer k.uiSubsMu.RUnlock()
-	for _, ch := range k.uiSubs {
-		select {
-		case ch <- evt:
-		default: // slow client — drop rather than block the fan-out loop
 		}
 	}
 }

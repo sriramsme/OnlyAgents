@@ -234,13 +234,32 @@ type VaultPathEntry struct {
 }
 
 type ServerConfig struct {
-	Host         string        `mapstructure:"host"`
-	Port         int           `mapstructure:"port"`
-	APIKeyVault  string        `mapstructure:"api_key_vault"` // empty = no auth (local dev)
-	ReadTimeout  time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout time.Duration `mapstructure:"write_timeout"`
-	IdleTimeout  time.Duration `mapstructure:"idle_timeout"`
-	Version      string        `mapstructure:"version"`
+	Host    string `yaml:"host"    mapstructure:"host"`
+	Port    int    `yaml:"port"    mapstructure:"port"`
+	Version string `yaml:"-"`
+
+	Timeouts TimeoutConfig `yaml:"timeouts" mapstructure:"timeouts"`
+	CORS     CORSConfig    `yaml:"cors"     mapstructure:"cors"`
+	TLS      TLSConfig     `yaml:"tls"      mapstructure:"tls"`
+
+	VaultPaths map[string]VaultPathEntry `mapstructure:"vault_paths"`
+}
+
+type TimeoutConfig struct {
+	Read     time.Duration `yaml:"read"     mapstructure:"read"`
+	Write    time.Duration `yaml:"write"    mapstructure:"write"`
+	Idle     time.Duration `yaml:"idle"     mapstructure:"idle"`
+	Shutdown time.Duration `yaml:"shutdown" mapstructure:"shutdown"`
+}
+
+type CORSConfig struct {
+	AllowedOrigins []string `yaml:"allowed_origins" mapstructure:"allowed_origins"`
+}
+
+type TLSConfig struct {
+	Enabled  bool   `yaml:"enabled"   mapstructure:"enabled"`
+	CertPath string `yaml:"cert_path" mapstructure:"cert_path"`
+	KeyPath  string `yaml:"key_path"  mapstructure:"key_path"`
 }
 
 type SoulConfig struct {
