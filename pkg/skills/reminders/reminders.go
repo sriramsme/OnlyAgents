@@ -23,7 +23,9 @@ type RemindersSkill struct {
 	conn connectors.RemindersConnector
 }
 
-func NewRemindersSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+func NewRemindersSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+	security config.SecurityConfig,
+) (skills.Skill, error) {
 	remindersConn, ok := conn.(connectors.RemindersConnector)
 	if !ok {
 		return nil, fmt.Errorf("reminders skill: connector is not a RemindersConnector")

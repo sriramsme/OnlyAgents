@@ -22,7 +22,10 @@ import (
 )
 
 type AgentInfo struct {
+	ID           string   `json:"id"`
 	Name         string   `json:"name"`
+	IsGeneral    bool     `json:"is_general,omitempty"`
+	Description  string   `json:"description"`
 	Capabilities []string `json:"capabilities"`
 }
 
@@ -43,7 +46,7 @@ type kernelComponents struct {
 func loadComponents(
 	ctx context.Context,
 	paths *bootstrap.Paths,
-	cfg *config.KernelConfig,
+	cfg *config.AppConfig,
 	kernelBus chan core.Event,
 	uiBus core.UIBus,
 ) (kernelComponents, error) {
@@ -74,11 +77,12 @@ func loadComponents(
 	c.skillMarketplaceManager = marketplace.NewManager(paths.SkillCache, paths.Skills)
 
 	// Register ClawHub marketplace
-	if cfg.ClawHubEnabled {
-		key, err := v.GetSecret(ctx, cfg.ClawHubTokenVaultKey)
+	clawHub := cfg.Marketplace("clawhub")
+	if clawHub.Enabled {
+		key, err := v.GetSecret(ctx, clawHub.VaultPaths["api_key"].Path)
 		if err == nil {
 			clawHub := marketplace.NewClawHubMarketplace(
-				cfg.ClawHubURL,
+				clawHub.URL,
 				key,
 			)
 			c.skillMarketplaceManager.RegisterMarketplace(clawHub)

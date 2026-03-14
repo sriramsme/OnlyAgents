@@ -21,6 +21,7 @@ import (
 type Agent struct {
 	id               string
 	name             string
+	description      string
 	isExecutive      bool
 	isGeneral        bool
 	maxConcurrency   int
@@ -45,8 +46,9 @@ type Agent struct {
 	cm *memory.ConversationManager // shared across all agents, injected by kernel
 	mm *memory.MemoryManager       // shared across all agents, injected by kernel
 
-	systemPrompt    string
-	handleFindSkill handleFindSkillFunc // injected by kernel only for general agents
+	systemPrompt     string
+	handleFindSkill  handleFindSkillFunc // injected by kernel only for general agents
+	resolveAgentName AgentNameResolver
 
 	// Lifecycle
 	ctx    context.Context
@@ -118,4 +120,5 @@ type Purpose struct {
 
 type (
 	handleFindSkillFunc func(ctx context.Context, a *Agent, skillName string) (any, error)
+	AgentNameResolver   func(agentID string) string
 )

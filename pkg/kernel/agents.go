@@ -82,10 +82,10 @@ func (k *Kernel) assignAgentSkills() error {
 			}
 			generalAgent.AddSkill(skill)
 		}
-		generalAgent.SetHandleFindSkill(k.handleFindSkill)
 		k.logger.Info("general agent configured",
 			"agent_id", generalAgent.ID(),
-			"skills", generalAgent.GetSkillNames())
+			"skills", generalAgent.GetSkillNames(),
+			"tools", generalAgent.ListToolNames())
 	}
 	return nil
 }
@@ -129,6 +129,12 @@ func (k *Kernel) validateSkillBindings(agent *agents.Agent) error {
 	return nil
 }
 
+func (k *Kernel) assignAgentDependencies() error {
+	k.agents.GetExecutive().SetResolveAgentName(k.ResolveAgentName)
+	k.agents.GetGeneral().SetHandleFindSkill(k.handleFindSkill)
+	return nil
+}
+
 // Agent Dependencies
 
 // FindByCapability searches for skills
@@ -137,7 +143,7 @@ func (k *Kernel) findSkill(ctx context.Context, skillName string) (skills.Skill,
 	// 1. Check local registry
 	if cfg, ok := k.skills.Get(tools.SkillName(skillName)); ok {
 		logger.Log.Info("found skill locally", "skill", cfg.Name)
-		return k.skills.Instantiate(k.ctx, cfg.Name, nil, k.bus)
+		return k.skills.Instantiate(k.ctx, cfg.Name, nil, k.cfg.Security)
 	}
 
 	// 2. Search marketplace
@@ -169,7 +175,7 @@ func (k *Kernel) findSkill(ctx context.Context, skillName string) (skills.Skill,
 	logger.Log.Info("skill registered", "skill", skillCfg.Name)
 
 	// 6. Instantiate
-	return k.skills.Instantiate(k.ctx, skillCfg.Name, nil, k.bus)
+	return k.skills.Instantiate(k.ctx, skillCfg.Name, nil, k.cfg.Security)
 }
 
 // find_skill execution in kernel
@@ -195,6 +201,14 @@ func (k *Kernel) handleFindSkill(ctx context.Context, agent *agents.Agent, skill
 	}, nil
 }
 
+func (k *Kernel) ResolveAgentName(agentID string) string {
+	agent, err := k.agents.Get(agentID)
+	if err != nil {
+		return agentID
+	}
+	return agent.Name()
+}
+
 // Helpers
 
 // resolveConnector returns the Connector by name or nil, with ok=false if not found
@@ -213,7 +227,7 @@ func (k *Kernel) resolveConnector(skillName tools.SkillName, connectorName strin
 
 // instantiateSkill instantiates a skill and returns its tools; logs warnings on failure
 func (k *Kernel) instantiateSkill(agentID string, skillName tools.SkillName, connector connectors.Connector) skills.Skill {
-	skill, err := k.skills.Instantiate(k.ctx, skillName, connector, k.bus)
+	skill, err := k.skills.Instantiate(k.ctx, skillName, connector, k.cfg.Security)
 	if err != nil {
 		k.logger.Warn("failed to instantiate skill",
 			"agent", agentID,

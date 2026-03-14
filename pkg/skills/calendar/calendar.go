@@ -23,7 +23,9 @@ type CalendarSkill struct {
 	conn connectors.CalendarConnector
 }
 
-func NewCalendarSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+func NewCalendarSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+	security config.SecurityConfig,
+) (skills.Skill, error) {
 	calendarConn, ok := conn.(connectors.CalendarConnector)
 	if !ok {
 		fmt.Printf("calendar skill: connector is not a CalendarConnector %T\n", conn)

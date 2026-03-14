@@ -20,7 +20,15 @@ func (i connectorsInitializer) Init(ctx context.Context, k *Kernel) error {
 }
 
 func (i agentsInitializer) Init(ctx context.Context, k *Kernel) error {
-	return k.assignAgentSkills()
+	err := k.assignAgentSkills()
+	if err != nil {
+		return err
+	}
+	err = k.assignAgentDependencies()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (i promptsInitializer) Init(ctx context.Context, k *Kernel) error {

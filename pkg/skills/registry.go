@@ -8,7 +8,6 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -45,7 +44,7 @@ func (r *Registry) Instantiate(
 	ctx context.Context,
 	name tools.SkillName,
 	connector connectors.Connector,
-	bus chan<- core.Event,
+	security config.SecurityConfig,
 ) (Skill, error) {
 	cfg, ok := r.Get(name)
 	if !ok {
@@ -55,7 +54,7 @@ func (r *Registry) Instantiate(
 	if err != nil {
 		return nil, err
 	}
-	return factory(ctx, cfg, connector)
+	return factory(ctx, cfg, connector, security)
 }
 
 // Get retrieves a skill by name

@@ -5,6 +5,8 @@ import (
 	"os"
 	"text/tabwriter"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
+
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
@@ -23,7 +25,10 @@ func init() {
 	skillCmd.AddCommand(skillViewCmd)
 	skillCmd.AddCommand(skillEditCmd)
 	skillCmd.AddCommand(skillToolsCmd)
+	skillCmd.AddCommand(skillValidateCmd)
+	skillCmd.AddCommand(skillInstallCmd)
 
+	skillValidateCmd.Flags().Bool("all", false, "Validate all skills")
 	skillToolsCmd.Flags().BoolP("commands", "c", false, "Show command templates")
 	skillToolsCmd.Flags().String("access", "", "Filter by access level (read, write, admin)")
 	skillToolsCmd.Flags().BoolP("verbose", "v", false, "Show parameters, timeout, and full descriptions")
@@ -297,8 +302,121 @@ var skillToolsCmd = &cobra.Command{
 	},
 }
 
-func init() {
-	// add inside existing init()
+var skillValidateCmd = &cobra.Command{
+	Use:   "validate [name]",
+	Short: "Validate a skill's requirements (bins, env vars)",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		paths, err := resolvePaths()
+		if err != nil {
+			return err
+		}
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
+			return err
+		}
+		skills, err := cmdutil.SkillRegistry(paths.Skills)
+		if err != nil {
+			return err
+		}
+
+		// Determine which skills to validate
+		var toValidate []config.SkillConfig
+		if all || len(args) == 0 {
+			toValidate = skills
+		} else {
+			s, err := cmdutil.FindSkill(skills, args[0])
+			if err != nil {
+				return err
+			}
+			toValidate = []config.SkillConfig{s}
+		}
+
+		noRequirementSkills := []string{}
+		failedSkills := []string{}
+		for _, s := range toValidate {
+			failed, noReq := cmdutil.PrintSkillValidation(s)
+			if noReq {
+				noRequirementSkills = append(noRequirementSkills, string(s.Name))
+			}
+			if failed {
+				failedSkills = append(failedSkills, string(s.Name))
+			}
+		}
+
+		if len(failedSkills) > 0 {
+			fmt.Printf("\n%s\n", cmdutil.StyleDim.Render("One or more skills failed validation:"))
+			for _, s := range failedSkills {
+				fmt.Printf("  %s\n", cmdutil.StyleDim.Render(s))
+			}
+		}
+		if len(noRequirementSkills) > 0 {
+			fmt.Printf("\n%s\n", cmdutil.StyleDim.Render("No requirements found for skills:"))
+			for _, s := range noRequirementSkills {
+				fmt.Printf("  %s\n", cmdutil.StyleDim.Render(s))
+			}
+		}
+		return nil
+	},
+}
+
+var skillInstallCmd = &cobra.Command{
+	Use:   "install <name>",
+	Short: "Install required binaries for a skill",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		paths, err := resolvePaths()
+		if err != nil {
+			return err
+		}
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
+			return err
+		}
+
+		skills, err := cmdutil.SkillRegistry(paths.Skills)
+		if err != nil {
+			return err
+		}
+
+		var toInstall []config.SkillConfig
+		if all {
+			toInstall = skills
+		} else {
+			if len(args) == 0 {
+				return fmt.Errorf("provide a skill name or use --all")
+			}
+			s, err := cmdutil.FindSkill(skills, args[0])
+			if err != nil {
+				return err
+			}
+			toInstall = []config.SkillConfig{s}
+		}
+
+		anyFailed := false
+		for i, s := range toInstall {
+			if all {
+				fmt.Printf("\n%s\n",
+					cmdutil.StyleDim.Render(fmt.Sprintf("── %d/%d ──────────────────────", i+1, len(toInstall))),
+				)
+			}
+			if err := cmdutil.SkillInstallRequirements(s, paths.EnvPath); err != nil {
+				cmdutil.Warn("%s: %v", s.Name, err)
+				anyFailed = true
+			}
+		}
+
+		if all {
+			fmt.Println()
+			if anyFailed {
+				cmdutil.Warn("some skills have unmet requirements — run `onlyagents skill validate --all` to review")
+			} else {
+				cmdutil.Success("all skills ready")
+			}
+		}
+
+		return nil
+	},
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

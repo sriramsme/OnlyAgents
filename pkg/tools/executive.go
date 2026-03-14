@@ -6,10 +6,9 @@ package tools
 
 // DelegateInput is the input schema for the delegate_to_agent tool.
 type DelegateInput struct {
-	AgentID   string         `json:"agent_id" desc:"ID of the agent to delegate to — use the 'id' field from the Available Capabilities & Agents section"`
-	AgentName string         `json:"agent_name" desc:"Name of the agent to delegate to - use the 'name' field from the Available Capabilities & Agents section"`
-	Task      string         `json:"task" desc:"Clear description of the task to delegate"`
-	Context   map[string]any `json:"context,omitempty" desc:"Additional context for the delegated task (optional)"`
+	AgentID string         `json:"agent_id" desc:"ID of the agent to delegate to — use the 'id' field from the Available Sub-Agents & Their Capabilities section"`
+	Task    string         `json:"task" desc:"Clear description of the task to delegate"`
+	Context map[string]any `json:"context,omitempty" desc:"Additional context for the delegated task (optional)"`
 
 	// SendDirectlyToUser controls response routing:
 	// - true: Sub-agent sends response directly to user (faster, for simple requests)
@@ -34,11 +33,11 @@ type CreateWorkflowInput struct {
 
 // WorkflowTask defines a single task within a workflow.
 type WorkflowStep struct {
-	ID          string   `json:"id" desc:"Unique step identifier (e.g. step_1, step_2)"`
-	Name        string   `json:"name" desc:"Short name for this step"`
-	Description string   `json:"description" desc:"Clear description of what this step should do"`
-	AgentID     string   `json:"agent_id" desc:"ID of the agent capable to execute this step  — use the 'id' field from the AVAILABLE SUB-AGENTS & THEIR CAPABILITIES section"`
-	DependsOn   []string `json:"depends_on,omitempty" desc:"IDs of steps that must complete before this one"`
+	ID        string   `json:"id" desc:"Unique step identifier (e.g. step_1, step_2)"`
+	Name      string   `json:"name" desc:"Short name for this step"`
+	Task      string   `json:"description" desc:"Clear description of what this step should do"`
+	AgentID   string   `json:"agent_id" desc:"ID of the agent capable to execute this step  — use the 'id' field from the AVAILABLE SUB-AGENTS & THEIR CAPABILITIES section"`
+	DependsOn []string `json:"depends_on,omitempty" desc:"IDs of steps that must complete before this one"`
 }
 
 // ====================

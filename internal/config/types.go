@@ -20,8 +20,6 @@ type AgentConfig struct {
 	StreamingEnabled bool           `mapstructure:"streaming_enabled"`
 	MaxConcurrency   int            `mapstructure:"max_concurrency"`
 	BufferSize       int            `mapstructure:"buffer_size"`
-	Logging          LoggingConfig  `mapstructure:"logging"`
-	Security         SecurityConfig `mapstructure:"security"`
 	LLM              LLMConfig      `mapstructure:"llm"`
 	Vault            vault.Config   `mapstructure:"vault"`
 	Skills           []SkillBinding `mapstructure:"skills"`
@@ -102,16 +100,6 @@ type SkillBinding struct {
 	ConnectorID string          `mapstructure:"connector,omitempty"` // empty = use skill default
 }
 
-type LoggingConfig struct {
-	Level  string `mapstructure:"level"`
-	Format string `mapstructure:"format"`
-}
-
-type SecurityConfig struct {
-	KeyPath         string `mapstructure:"key_path"`
-	CredentialsPath string `mapstructure:"credentials_path"`
-}
-
 // LLMConfig holds model settings. The actual API key lives in vault.
 type LLMConfig struct {
 	Provider    string            `mapstructure:"provider"`
@@ -123,85 +111,90 @@ type LLMConfig struct {
 
 type SkillConfig struct {
 	// Common fields — all skill types
-	Name        tools.SkillName `yaml:"name"`
-	Type        string          `yaml:"type"` // "cli" | "native"
-	Enabled     bool            `yaml:"enabled"`
-	AccessLevel string          `yaml:"access_level"`
-	Description string          `yaml:"description"`
-	Version     string          `yaml:"version"`
+	Name        tools.SkillName `mapstructure:"name"`
+	Type        string          `mapstructure:"type"` // "cli" | "native"
+	Enabled     bool            `mapstructure:"enabled"`
+	AccessLevel string          `mapstructure:"access_level"`
+	Description string          `mapstructure:"description"`
+	Version     string          `mapstructure:"version"`
 
-	Capabilities []string          `yaml:"capabilities"`
-	Instructions string            `yaml:"instructions"`
-	Authors      []SkillAuthor     `yaml:"authors,omitempty"`
-	Homepage     string            `yaml:"homepage,omitempty"`
-	Requires     SkillRequirements `yaml:"requires,omitempty"`
-	Security     SkillSecurity     `yaml:"security,omitempty"`
+	Capabilities []string          `mapstructure:"capabilities"`
+	Instructions string            `mapstructure:"instructions"`
+	Authors      []SkillAuthor     `mapstructure:"authors,omitempty"`
+	Homepage     string            `mapstructure:"homepage,omitempty"`
+	Requires     SkillRequirements `mapstructure:"requires,omitempty"`
+	Security     SkillSecurity     `mapstructure:"security,omitempty"`
 
-	Connector *SkillConnectorSpec `yaml:"connector,omitempty"`
+	Connector *SkillConnectorSpec `mapstructure:"connector,omitempty"`
 	// CLI skill — tools block
-	Tools []SkillToolEntry `yaml:"tools,omitempty"`
+	Tools []SkillToolEntry `mapstructure:"tools,omitempty"`
 
 	// Executor config
-	Executor ExecutorConfig `yaml:"executor,omitempty"`
+	Executor ExecutorConfig `mapstructure:"executor,omitempty"`
 
 	// Native skill — arbitrary per-skill config
-	RawConfig map[string]any `yaml:"config,omitempty"`
+	RawConfig map[string]any `mapstructure:"config,omitempty"`
 }
 type SkillConnectorSpec struct {
-	Required  bool     `yaml:"required"`
-	Default   string   `yaml:"default"`
-	Supported []string `yaml:"supported"`
+	Required  bool     `mapstructure:"required"`
+	Default   string   `mapstructure:"default"`
+	Supported []string `mapstructure:"supported"`
 }
 type SkillToolEntry struct {
-	Name        string           `yaml:"name"`
-	Description string           `yaml:"description"`
-	Access      string           `yaml:"access"`
-	Command     string           `yaml:"command"`
-	Timeout     int              `yaml:"timeout"`
-	Parameters  []SkillParamDef  `yaml:"parameters"`
-	Validation  *SkillValidation `yaml:"validation,omitempty"`
+	Name        string           `mapstructure:"name"`
+	Description string           `mapstructure:"description"`
+	Access      string           `mapstructure:"access"`
+	Command     string           `mapstructure:"command"`
+	Timeout     int              `mapstructure:"timeout"`
+	Parameters  []SkillParamDef  `mapstructure:"parameters"`
+	Validation  *SkillValidation `mapstructure:"validation,omitempty"`
 }
 
 type SkillParamDef struct {
-	Name        string `yaml:"name"`
-	Type        string `yaml:"type"`
-	Description string `yaml:"description"`
+	Name        string `mapstructure:"name"`
+	Type        string `mapstructure:"type"`
+	Description string `mapstructure:"description"`
 }
 
 type SkillValidation struct {
-	AllowedCommands []string `yaml:"allowed_commands"`
-	DeniedPatterns  []string `yaml:"denied_patterns"`
-	MaxOutputSize   int      `yaml:"max_output_size"`
-	RequireConfirm  bool     `yaml:"require_confirm"`
+	AllowedCommands []string `mapstructure:"allowed_commands"`
+	DeniedPatterns  []string `mapstructure:"denied_patterns"`
+	MaxOutputSize   int      `mapstructure:"max_output_size"`
+	RequireConfirm  bool     `mapstructure:"require_confirm"`
+}
+
+type BinRequirement struct {
+	Name    string            `yaml:"name"`
+	Install map[string]string `yaml:"install,omitempty"` // pkg manager → command/url
 }
 
 type SkillRequirements struct {
-	Bins []string `yaml:"bins,omitempty"`
-	Env  []string `yaml:"env,omitempty"`
+	Bins []BinRequirement `yaml:"bins,omitempty"`
+	Env  []string         `yaml:"env,omitempty"`
 }
 
 type SkillSecurity struct {
-	Sanitized   bool   `yaml:"sanitized"`
-	SanitizedAt string `yaml:"sanitized_at"`
-	SanitizedBy string `yaml:"sanitized_by"`
+	Sanitized   bool      `mapstructure:"sanitized"`
+	SanitizedAt time.Time `mapstructure:"sanitized_at"`
+	SanitizedBy string    `mapstructure:"sanitized_by"`
 }
 
 type SkillAuthor struct {
-	Name  string `yaml:"name"`
-	Email string `yaml:"email,omitempty"`
+	Name  string `mapstructure:"name"`
+	Email string `mapstructure:"email,omitempty"`
 }
 
 // ExecutorConfig holds CLI executor configuration
 type ExecutorConfig struct {
 	// Security settings
-	AllowedShells    []string `yaml:"allowed_shells"`     // Default: ["bash", "sh"]
-	MaxOutputSize    int      `yaml:"max_output_size"`    // Bytes, default: 1MB
-	MaxExecutionTime int      `yaml:"max_execution_time"` // Seconds, default: 60
-	WorkingDir       string   `yaml:"working_dir"`        // Default: /tmp
+	AllowedShells      []string `mapstructure:"allowed_shells"`       // Default: ["bash", "sh"]
+	MaxOutputSize      int      `mapstructure:"max_output_size"`      // Bytes, default: 1MB
+	MaxExecutionTime   int      `mapstructure:"max_execution_time"`   // Seconds, default: 60
+	MissingBinBehavior string   `mapstructure:"missing_bin_behavior"` // Default: "error  warn | error | disable"
 
 	// Sandboxing (future)
-	UseSandbox  bool   `yaml:"use_sandbox"`
-	SandboxType string `yaml:"sandbox_type"` // docker, firejail, etc.
+	UseSandbox  bool   `mapstructure:"use_sandbox"`
+	SandboxType string `mapstructure:"sandbox_type"` // docker, firejail, etc.
 }
 type ConnectorConfig struct {
 	ID           string                    `mapstructure:"id"`

@@ -27,7 +27,9 @@ type EmailSkill struct {
 }
 
 // NewEmailSkill creates a new email skill
-func NewEmailSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+func NewEmailSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+	security config.SecurityConfig,
+) (skills.Skill, error) {
 	emailConn, ok := conn.(connectors.EmailConnector)
 	if !ok {
 		return nil, fmt.Errorf("email skill: connector is not a EmailConnector")

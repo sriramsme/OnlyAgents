@@ -23,7 +23,9 @@ type TasksSkill struct {
 	conn connectors.TasksConnector
 }
 
-func NewTasksSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+func NewTasksSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+	security config.SecurityConfig,
+) (skills.Skill, error) {
 	tasksConn, ok := conn.(connectors.TasksConnector)
 	if !ok {
 		return nil, fmt.Errorf("tasks skill: connector is not a TasksConnector")

@@ -15,6 +15,7 @@ type Factory func(
 	ctx context.Context,
 	cfg config.SkillConfig,
 	conn connectors.Connector,
+	security config.SecurityConfig,
 ) (Skill, error)
 
 var (

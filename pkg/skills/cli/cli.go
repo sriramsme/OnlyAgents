@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
 	"regexp"
 	"strings"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
@@ -34,17 +36,41 @@ type CLISkill struct {
 // ──────────────────────────────────────────────────────────────
 
 // NewCLISkill creates a CLISkill from a ParsedSkill definition.
-func NewCLISkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector) (skills.Skill, error) {
+func NewCLISkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+	security config.SecurityConfig,
+) (skills.Skill, error) {
 	// cli doesnt need a connector, check if its empty
 	if conn != nil {
 		return nil, fmt.Errorf("cli skill: connector is not empty")
 	}
-	cliCtx, cancel := context.WithCancel(ctx)
 	base := skills.NewBaseSkill(cfg, skills.SkillTypeCLI)
-	executor := NewCLIExecutor(ctx, &cfg.Executor)
+	executor := NewCLIExecutor(ctx, &cfg.Executor, security, cfg.Requires.Env)
 
 	toolDefs := make([]tools.ToolDef, 0, len(cfg.Tools))
 	commandMap := make(map[string]*config.SkillToolEntry, len(cfg.Tools))
+
+	logger.Log.Info("initializing cli skill",
+		"skill", cfg.Name,
+		"tools", len(cfg.Tools),
+		"access_level", cfg.AccessLevel)
+
+	missing, err := checkRequiredBins(cfg.Requires)
+	if err != nil {
+		return nil, fmt.Errorf("skill %s: check required bins: %w", cfg.Name, err)
+	}
+	if len(missing) > 0 {
+		switch cfg.Executor.MissingBinBehavior {
+		case "disable":
+			return nil, fmt.Errorf("skill %s disabled: missing bins: %s", cfg.Name, strings.Join(missing, ", "))
+		case "warn":
+			logger.Log.Warn("skill missing required bins — tools may fail",
+				"skill", cfg.Name,
+				"missing", missing)
+			// continue loading
+		default: // "error" — default
+			return nil, fmt.Errorf("skill %s: required bins not found: %s", cfg.Name, strings.Join(missing, ", "))
+		}
+	}
 
 	for i := range cfg.Tools {
 		t := &cfg.Tools[i] // pointer into slice — avoid copy
@@ -73,6 +99,12 @@ func NewCLISkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Co
 		))
 		commandMap[t.Name] = t
 	}
+
+	cliCtx, cancel := context.WithCancel(ctx)
+	logger.Log.Info("parsed cli skill",
+		"skill", cfg.Name,
+		"tools", len(toolDefs),
+		"commands", len(commandMap))
 
 	return &CLISkill{
 		BaseSkill: base,
@@ -129,6 +161,14 @@ func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) (a
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+func checkRequiredBins(requires config.SkillRequirements) (missing []string, err error) {
+	for _, bin := range requires.Bins {
+		if _, err := exec.LookPath(bin.Name); err != nil {
+			missing = append(missing, bin.Name)
+		}
+	}
+	return missing, nil
+}
 
 func accessPermits(granted, required string) bool {
 	levels := map[string]int{"read": 1, "write": 2, "admin": 3}

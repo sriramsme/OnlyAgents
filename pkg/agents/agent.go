@@ -53,6 +53,7 @@ func NewAgent(
 	return &Agent{
 		id:               cfg.ID,
 		name:             cfg.Name,
+		description:      cfg.Description,
 		isExecutive:      cfg.IsExecutive,
 		isGeneral:        cfg.IsGeneral,
 		maxConcurrency:   cfg.MaxConcurrency,
@@ -198,6 +199,8 @@ func (a *Agent) ID() string { return a.id }
 
 func (a *Agent) Name() string { return a.name }
 
+func (a *Agent) Description() string { return a.description }
+
 func (a *Agent) IsExecutive() bool { return a.isExecutive }
 
 func (a *Agent) IsGeneral() bool { return a.isGeneral }
@@ -222,6 +225,14 @@ func (a *Agent) SetTools(tools []tools.ToolDef) {
 	}
 }
 
+func (a *Agent) ListToolNames() []string {
+	names := make([]string, len(a.tools))
+	for i, t := range a.tools {
+		names[i] = t.Name
+	}
+	return names
+}
+
 func (a *Agent) AddTools(tools []tools.ToolDef) {
 	for _, tool := range tools {
 		a.toolSkillMap[tool.Name] = tool.Skill
@@ -231,6 +242,10 @@ func (a *Agent) AddTools(tools []tools.ToolDef) {
 
 func (a *Agent) SetHandleFindSkill(fn handleFindSkillFunc) {
 	a.handleFindSkill = fn
+}
+
+func (a *Agent) SetResolveAgentName(fn AgentNameResolver) {
+	a.resolveAgentName = fn
 }
 
 func (a *Agent) SetSystemPrompt(userSection string, availableAgents string) {
@@ -353,6 +368,13 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 			sendDirectlyToUser = payload.Delegation.SendDirectlyToUser
 		}
 		if sendDirectlyToUser {
+			a.logger.Info("sending directly to user, delegation result received (via event bus)",
+				"agent_id", a.id,
+				"from_agent_id", payload.Delegation.FromAgentID,
+				"delegated_at", payload.Delegation.DelegatedAt,
+				"send_directly_to_user", sendDirectlyToUser,
+				"channel", payload.Channel,
+				"response", response)
 			// Task was delegated to this agent - send result back
 			a.sendOutboundMessage(payload, evt.CorrelationID, response)
 
@@ -372,6 +394,12 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 				}
 			}
 		} else {
+			a.logger.Info("delegation result received (via event bus)",
+				"agent_id", a.id,
+				"from_agent_id", payload.Delegation.FromAgentID,
+				"delegated_at", payload.Delegation.DelegatedAt,
+				"send_directly_to_user", sendDirectlyToUser,
+				"channel", payload.Channel)
 			// Task was delegated to this agent - send result back
 			a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response)
 		}
@@ -916,14 +944,16 @@ func (a *Agent) healthCheck() {
 	}
 }
 
-func (a *Agent) delegationAck(agentName string) string {
+func (a *Agent) delegationAck(agentID string) string {
+	name := a.resolveAgentName(agentID)
+
 	msgs := a.soul.DelegationAcknowledgments()
 	if len(msgs) == 0 {
-		// fallback if not configured
-		return fmt.Sprintf("I've handed that off to %s.", agentName)
+		return fmt.Sprintf("I've handed that off to %s.", name)
 	}
+
 	template := msgs[rand.Intn(len(msgs))] // nolint:gosec
-	return strings.ReplaceAll(template, "{agent_name}", agentName)
+	return strings.ReplaceAll(template, "{agent_name}", name)
 }
 
 func truncate(s string, max int) string {

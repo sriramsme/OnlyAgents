@@ -52,13 +52,10 @@ type Kernel struct {
 	mm                      *memory.MemoryManager
 	store                   storage.Storage
 
-	// defaultAgentID is used when a channel message doesn't specify a target agent
-	defaultAgentID string
-
 	// helperClient is used for skill installation
 	helperClient llm.Client
 
-	cfg *config.KernelConfig
+	cfg *config.AppConfig
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -76,9 +73,9 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus)
 		return nil, fmt.Errorf("init paths: %w", err)
 	}
 
-	cfg, err := config.LoadKernelConfig()
+	cfg, err := config.LoadAppConfig()
 	if err != nil {
-		return nil, fmt.Errorf("load kernel config: %w", err)
+		return nil, fmt.Errorf("load application config: %w", err)
 	}
 
 	kernelBus := make(chan core.Event, cfg.BusBufferSize)
@@ -105,7 +102,6 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus)
 		cm:                      components.cm,
 		mm:                      components.mm,
 		store:                   components.store,
-		defaultAgentID:          cfg.DefaultAgentID,
 		// helperClient:            components.helperClient,
 		cfg:    cfg,
 		ctx:    ctx,

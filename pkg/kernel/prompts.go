@@ -13,15 +13,6 @@ func (k *Kernel) buildSystemPrompts() error {
 		extra := ""
 		if agent.IsExecutive() {
 			extra = k.buildAvailableAgentsSection()
-
-			generalAgentInfo := AgentInfo{
-				Name: k.agents.GetGeneral().Name(),
-			}
-			generalJSON, err := json.MarshalIndent(generalAgentInfo, "", "  ")
-			if err != nil {
-				return err
-			}
-			extra += "\n\n=== GENERAL AGENT ===\n" + string(generalJSON)
 		}
 		agent.SetSystemPrompt(userSection, extra)
 	}
@@ -31,8 +22,13 @@ func (k *Kernel) buildSystemPrompts() error {
 
 func (k *Kernel) buildAvailableAgentsSection() string {
 	out := make(map[string]AgentInfo)
-	for _, agent := range k.agents.All() {
-		if agent.IsExecutive() || agent.IsGeneral() {
+	agents := k.agents.All()
+	sort.Slice(agents, func(i, j int) bool {
+		return agents[i].Name() < agents[j].Name()
+	})
+
+	for _, agent := range agents {
+		if agent.IsExecutive() {
 			continue
 		}
 		// Union of all skill capabilities
@@ -50,12 +46,21 @@ func (k *Kernel) buildAvailableAgentsSection() string {
 		for c := range capSet {
 			caps = append(caps, c)
 		}
+		if agent.IsGeneral() {
+			caps = append(caps, "find_skill_online")
+		}
 		sort.Strings(caps)
 
-		out[agent.ID()] = AgentInfo{
+		agentInfo := AgentInfo{
+			ID:           agent.ID(),
 			Name:         agent.Name(),
+			Description:  agent.Description(),
 			Capabilities: caps,
 		}
+		if agent.IsGeneral() {
+			agentInfo.IsGeneral = true
+		}
+		out[agent.ID()] = agentInfo
 	}
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

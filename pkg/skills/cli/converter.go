@@ -167,13 +167,17 @@ version: 1.0.0
 instructions: |
   1. Install <binary>: <install URL or command>
   2. Set <ENV_VAR_NAME> in ~/.onlyagents/.env
+     Get it at: <where to obtain the value>
 capabilities:
-  - web_search       # primary capability
-  - arxiv            # sub-capability
-  - fact_checking    # what it enables, not what it is
+  - <primary_capability>
+  - <sub_capability>
 requires:
   bins:
-    - <binary>
+    - name: <binary>
+      install:
+        brew: brew install <binary>
+        apt: sudo apt install <binary>
+        manual: <https://install-url>
   env:
     - ENV_VAR_NAME
 security:
@@ -207,7 +211,6 @@ func buildSystemPrompt(nameHint string) string {
 			nameHint,
 		)
 	}
-
 	return fmt.Sprintf(`You are a skill formatter. Convert skill definitions into the exact canonical YAML format shown below.
 
 RULES:
@@ -225,25 +228,24 @@ RULES:
   - write: creates, updates, or sends data
   - admin: deletes, destroys, or irreversible system effects
   - When a command can be read or write depending on flags, mark it write.
+- requires.bins: each bin is an object with name and install map.
+  - Include install commands for common package managers (brew, apt etc) when known.
+  - Always include manual with the official install URL.
+  - Only include package managers you are confident about — omit uncertain ones.
 - Always include instructions if requires.bins or requires.env are non-empty:
-  - bins: include install step with URL
-  - env: include step to add to ~/.onlyagents/.env with note on where to get the value
-  - If neither, omit instructions entirely.
-- Capabilities: domain-level slugs describing what workflows this skill enables.
+  - bins: one install step per binary referencing the manual URL
+  - env: one step per env var telling user to add to ~/.onlyagents/.env with note on where to get the value
+  - If neither bins nor env, omit instructions entirely.
+- capabilities: domain-level slugs describing what workflows this skill enables.
   Think from an executive agent's perspective: "what kind of task would I route here?"
   Rules:
-  - Describe the OUTCOME or DOMAIN, not the implementation (not how it works, what it produces)
+  - Describe the OUTCOME or DOMAIN, not the implementation
   - 3-5 capabilities max
   - Ask: "would a non-technical user use this phrase to describe what they need?"
     Yes → good capability. No → too technical or too granular.
-  - Examples by domain:
-    technical:   github, repository_management, issue_tracking, ci_cd
-    creative:    creative_writing, content_editing, storytelling
-    productivity: task_management, scheduling, note_taking
-
 %s
+CANONICAL FORMAT:
 
-CANONICAL FORMAT:\n\n
 %s`, nameConstraint, canonicalFormat)
 }
 

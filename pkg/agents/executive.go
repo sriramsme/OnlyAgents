@@ -77,7 +77,7 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		logger.Timing.EndPhaseWithMetadata(correlationID, delegationPhase, map[string]any{
 			"direct_response": true,
 		})
-		return tools.ExecDone(a.delegationAck(input.AgentName))
+		return tools.ExecDone(a.delegationAck(input.AgentID))
 	}
 
 	// Wait for result
@@ -179,7 +179,7 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 		tasks = append(tasks, &workflow.WFTaskDefinition{
 			ID:              idMap[t.ID],
 			Name:            t.Name,
-			Description:     t.Description,
+			Description:     t.Task,
 			Type:            "agent_execution",
 			DependsOn:       newDeps,
 			AssignedAgentID: t.AgentID,
