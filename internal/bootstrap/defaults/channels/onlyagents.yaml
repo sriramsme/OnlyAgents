@@ -1,7 +1,7 @@
 enabled: true
 
 allowed_origins:
-  - http://localhost:8080
+  - http://localhost:19965
 
 # DO NOT EDIT BELOW THIS LINE
 # -----------------------------

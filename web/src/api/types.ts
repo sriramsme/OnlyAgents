@@ -102,6 +102,6 @@ export interface ChatHistoryResponse {
 // ─── Connection config (stored in localStorage) ───────────────────────────────
 
 export interface ConnectionConfig {
-  serverUrl: string   // e.g. "http://localhost:8080" or "https://myserver.com"
+  serverUrl: string   // e.g. "http://localhost:19965" or "https://myserver.com"
   apiKey: string      // empty string if no auth configured
 }

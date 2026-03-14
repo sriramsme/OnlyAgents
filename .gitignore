@@ -52,6 +52,7 @@ credentials.json
 secrets/
 .env
 .env.local
+.env.dev
 
 # Logs
 *.log

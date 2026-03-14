@@ -1,3 +1,23 @@
 host: 0.0.0.0
-port: 8080
-api_key_vault: "" # or "${vault:llm/openai/api_key}"
+port: 19965
+
+timeouts:
+  read: 30s
+  write: 30s
+  idle: 120s
+  shutdown: 10s
+
+cors:
+  allowed_origins:
+    - http://localhost:5173   # vite dev server
+    - http://localhost:19965  # production UI
+
+tls:
+  enabled: false
+  cert_path: ""
+  key_path: ""
+
+vault_paths:  # secrets used by the API
+  api_key:
+    path: server/api_key
+    prompt: API key for the OnlyAgents server

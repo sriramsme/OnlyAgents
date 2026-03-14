@@ -27,18 +27,11 @@ export function clearConnectionConfig(): void {
 
 export function getBaseUrl(): string {
   const cfg = getConnectionConfig()
-
   if (cfg?.serverUrl) {
     return cfg.serverUrl.replace(/\/$/, '')
   }
-
-  if (typeof window !== 'undefined') {
-    if (window.location.port === '5173') {
-      return '' // Vite dev proxy — relative paths
-    }
-  }
-
-  return 'http://localhost:8080'
+  // Always use relative URLs — works in both dev (vite proxy) and production
+  return ''
 }
 
 // ─── Core fetch wrapper ───────────────────────────────────────────────────────

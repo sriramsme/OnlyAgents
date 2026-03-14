@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { setConnectionConfig, apiFetch } from '../../api/client'
+import { setConnectionConfig, apiFetch, getBaseUrl } from '../../api/client'
 
 interface Props {
   onConnected: () => void
 }
 
 export function ConnectScreen({ onConnected }: Props) {
-  const [serverUrl, setServerUrl] = useState('http://localhost:8080')
+const [serverUrl, setServerUrl] = useState(getBaseUrl())
   const [apiKey, setApiKey]       = useState('')
   const [status, setStatus]       = useState<'idle' | 'checking' | 'error'>('idle')
   const [errorMsg, setErrorMsg]   = useState('')
@@ -97,7 +97,7 @@ export function ConnectScreen({ onConnected }: Props) {
               type="url"
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
-              placeholder="http://localhost:8080"
+              placeholder={getBaseUrl()}
               onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
             />
           </div>
