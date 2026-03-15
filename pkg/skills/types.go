@@ -26,7 +26,7 @@ const (
 // They receive everything they need via SkillDeps at initialization.
 type Skill interface {
 	// Metadata
-	Name() tools.SkillName
+	Name() string
 	Description() string
 	Version() string
 	Type() SkillType
@@ -46,7 +46,7 @@ type Skill interface {
 
 // BaseSkill provides common functionality for all skills
 type BaseSkill struct {
-	name        tools.SkillName
+	name        string
 	description string
 	enabled     bool
 	accessLevel string

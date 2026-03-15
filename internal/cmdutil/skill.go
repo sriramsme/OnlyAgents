@@ -11,7 +11,6 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
-	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // ── Registry ──────────────────────────────────────────────────────────────────
@@ -50,7 +49,7 @@ func EnabledSkills(skills []config.SkillConfig) []config.SkillConfig {
 // FindSkill returns the first skill matching name.
 func FindSkill(skills []config.SkillConfig, name string) (config.SkillConfig, error) {
 	for _, s := range skills {
-		if s.Name == tools.SkillName(name) {
+		if s.Name == name {
 			return s, nil
 		}
 	}
@@ -84,7 +83,7 @@ func SkillSetEnabled(skillsDir, name string, enabled bool) error {
 // ValidateSkills checks for common skill config problems.
 func ValidateSkills(skills []config.SkillConfig) []string {
 	var issues []string
-	seenNames := map[tools.SkillName]int{}
+	seenNames := map[string]int{}
 
 	for i, s := range skills {
 		prefix := fmt.Sprintf("skill[%d] %q", i, s.Name)

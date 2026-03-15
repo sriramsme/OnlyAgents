@@ -29,7 +29,7 @@ type RuntimeAgent interface {
 	SetTools(tools []tools.ToolDef)
 	AddTools(tools []tools.ToolDef)
 	AddSkill(skill skills.Skill)
-	GetSkillNames() []tools.SkillName
+	GetSkillNames() []string
 	ListToolNames() []string
 	GetSkillBindings() []config.SkillBinding
 

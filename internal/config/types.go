@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
-	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // Config represents the complete agent configuration.
@@ -96,8 +95,8 @@ type AgentConfig struct {
 }
 
 type SkillBinding struct {
-	Name        tools.SkillName `mapstructure:"name"`
-	ConnectorID string          `mapstructure:"connector,omitempty"` // empty = use skill default
+	Name        string `mapstructure:"name"`
+	ConnectorID string `mapstructure:"connector,omitempty"` // empty = use skill default
 }
 
 // LLMConfig holds model settings. The actual API key lives in vault.
@@ -111,12 +110,12 @@ type LLMConfig struct {
 
 type SkillConfig struct {
 	// Common fields — all skill types
-	Name        tools.SkillName `mapstructure:"name"`
-	Type        string          `mapstructure:"type"` // "cli" | "native"
-	Enabled     bool            `mapstructure:"enabled"`
-	AccessLevel string          `mapstructure:"access_level"`
-	Description string          `mapstructure:"description"`
-	Version     string          `mapstructure:"version"`
+	Name        string `mapstructure:"name"`
+	Type        string `mapstructure:"type"` // "cli" | "native"
+	Enabled     bool   `mapstructure:"enabled"`
+	AccessLevel string `mapstructure:"access_level"`
+	Description string `mapstructure:"description"`
+	Version     string `mapstructure:"version"`
 
 	Capabilities []string          `mapstructure:"capabilities"`
 	Instructions string            `mapstructure:"instructions"`

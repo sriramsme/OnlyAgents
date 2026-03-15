@@ -53,7 +53,7 @@ func FormatResult(result any) string {
 // ====================
 
 // NewToolDef creates a new tool definition with basic validation
-func NewToolDef(skill SkillName, name, description string, params map[string]any) ToolDef {
+func NewToolDef(skill string, name, description string, params map[string]any) ToolDef {
 	// Ensure params has required structure
 	if params == nil {
 		params = make(map[string]any)

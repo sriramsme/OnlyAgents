@@ -8,11 +8,10 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 type Registry struct {
-	templates map[tools.SkillName]config.SkillConfig // name → config, NOT live instances
+	templates map[string]config.SkillConfig // name → config, NOT live instances
 	mu        sync.RWMutex
 }
 
@@ -22,7 +21,7 @@ func NewRegistry() (*Registry, error) {
 		return nil, fmt.Errorf("load skill configs: %w", err)
 	}
 	reg := &Registry{
-		templates: make(map[tools.SkillName]config.SkillConfig),
+		templates: make(map[string]config.SkillConfig),
 	}
 	for name, cfg := range configs {
 		if !cfg.Enabled {
@@ -42,7 +41,7 @@ func (r *Registry) Register(cfg config.SkillConfig) {
 // Instantiate creates a live skill instance from a template + connector.
 func (r *Registry) Instantiate(
 	ctx context.Context,
-	name tools.SkillName,
+	name string,
 	connector connectors.Connector,
 	security config.SecurityConfig,
 ) (Skill, error) {
@@ -58,7 +57,7 @@ func (r *Registry) Instantiate(
 }
 
 // Get retrieves a skill by name
-func (r *Registry) Get(name tools.SkillName) (config.SkillConfig, bool) {
+func (r *Registry) Get(name string) (config.SkillConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.templates[name]
@@ -76,10 +75,10 @@ func (r *Registry) GetAll() []config.SkillConfig {
 	return out
 }
 
-func (r *Registry) ListAll() []tools.SkillName {
+func (r *Registry) ListAll() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]tools.SkillName, 0, len(r.templates))
+	out := make([]string, 0, len(r.templates))
 	for name := range r.templates {
 		out = append(out, name)
 	}

@@ -13,13 +13,13 @@ type WebSearchFetchInput struct {
 func GetWebSearchTools() []ToolDef {
 	return []ToolDef{
 		NewToolDef(
-			SkillWebSearch,
+			"websearch",
 			"websearch_search",
 			"Search the web for current information. Returns titles, URLs, and snippets from search results.",
 			SchemaFromStruct(WebSearchInput{}),
 		),
 		NewToolDef(
-			SkillWebSearch,
+			"websearch",
 			"websearch_fetch",
 			"Fetch a URL and extract its readable text content. Use after websearch_search to read the full content of a result.",
 			SchemaFromStruct(WebSearchFetchInput{}),

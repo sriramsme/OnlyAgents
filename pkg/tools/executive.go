@@ -55,7 +55,7 @@ func GetExecutiveTools() []ToolDef {
 
 	return []ToolDef{
 		NewToolDef(
-			SkillMetaTools,
+			"meta_tools",
 			"delegate_to_agent",
 			"Delegate a task to a specialized agent. Use when a request requires specific skills and capabilities "+
 				"(calendar, email, web_search, etc.) that you don't handle directly. "+
@@ -75,7 +75,7 @@ func GetExecutiveTools() []ToolDef {
 			delegateSchema,
 		),
 		NewToolDef(
-			SkillMetaTools,
+			"meta_tools",
 			"create_workflow",
 			"Create a multi-step workflow when a request requires coordination across DIFFERENT agents or capabilities. "+
 				"Each step is delegated to an agent matching its capabilities. "+

@@ -7,7 +7,6 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // Factory creates a skill from a config.
@@ -20,13 +19,13 @@ type Factory func(
 
 var (
 	factoryMu sync.RWMutex
-	factories = make(map[tools.SkillName]Factory)
+	factories = make(map[string]Factory)
 )
 
 // Register registers a factory.
 // Native skills register by name (e.g. "summarize").
 // The CLI loader registers as "cli".
-func Register(key tools.SkillName, factory Factory) {
+func Register(key string, factory Factory) {
 	factoryMu.Lock()
 	defer factoryMu.Unlock()
 	if factory == nil {

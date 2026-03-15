@@ -38,37 +38,37 @@ type EmailDeleteInput struct {
 func GetEmailTools() []ToolDef {
 	return []ToolDef{
 		NewToolDef(
-			SkillEmail,
+			"email",
 			"email_send",
 			"Send an email to one or more recipients",
 			SchemaFromStruct(EmailSendInput{}),
 		),
 		NewToolDef(
-			SkillEmail,
+			"email",
 			"email_search",
 			"Search for emails matching criteria",
 			SchemaFromStruct(EmailSearchInput{}),
 		),
 		NewToolDef(
-			SkillEmail,
+			"email",
 			"email_get",
 			"Get full details of a specific email by ID",
 			SchemaFromStruct(EmailGetInput{}),
 		),
 		NewToolDef(
-			SkillEmail,
+			"email",
 			"email_draft",
 			"Use AI to draft an email based on context and tone",
 			SchemaFromStruct(EmailDraftInput{}),
 		),
 		NewToolDef(
-			SkillEmail,
+			"email",
 			"email_mark_read",
 			"Mark an email as read",
 			SchemaFromStruct(EmailMarkReadInput{}),
 		),
 		NewToolDef(
-			SkillEmail,
+			"email",
 			"email_delete",
 			"Delete an email",
 			SchemaFromStruct(EmailDeleteInput{}),

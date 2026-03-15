@@ -39,11 +39,11 @@ type Agent struct {
 	llmClient      llm.Client
 	soul           *Soul
 	skillsBindings []config.SkillBinding
-	skills         map[tools.SkillName]skills.Skill // owns lifecycle
+	skills         map[string]skills.Skill // owns lifecycle
 	// Tool definitions given to LLM (schema only, no implementation)
 	// Kernel populates this based on which skills are assigned to this agent.
 	tools        []tools.ToolDef
-	toolSkillMap map[string]tools.SkillName
+	toolSkillMap map[string]string
 
 	// Kernel bus — agent fires events here (tool calls, outbound messages)
 	outbox chan<- core.Event
@@ -110,8 +110,8 @@ func NewAgent(
 		outbox:           outbox,
 		uiBus:            uiBus,
 		tools:            []tools.ToolDef{},
-		skills:           make(map[tools.SkillName]skills.Skill),
-		toolSkillMap:     make(map[string]tools.SkillName),
+		skills:           make(map[string]skills.Skill),
+		toolSkillMap:     make(map[string]string),
 		cm:               cm,
 		mm:               mm,
 		inbox:            make(chan core.Event, cfg.BufferSize),

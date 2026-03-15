@@ -29,31 +29,31 @@ type ReminderDeleteInput struct {
 func GetRemindersTools() []ToolDef {
 	return []ToolDef{
 		NewToolDef(
-			SkillReminders,
+			"reminders",
 			"reminders_create",
 			"Create one or more reminders that fires at a specific time via the user's active channel. Always use this tool even for single-reminder creation.",
 			SchemaFromStruct(ReminderCreateInput{}),
 		),
 		NewToolDef(
-			SkillReminders,
+			"reminders",
 			"reminder_get",
 			"Get details of a specific reminder by ID",
 			SchemaFromStruct(ReminderGetInput{}),
 		),
 		NewToolDef(
-			SkillReminders,
+			"reminders",
 			"reminder_update",
 			"Update the title, body, or due time of a reminder",
 			SchemaFromStruct(ReminderUpdateInput{}),
 		),
 		NewToolDef(
-			SkillReminders,
+			"reminders",
 			"reminder_delete",
 			"Delete a reminder by ID",
 			SchemaFromStruct(ReminderDeleteInput{}),
 		),
 		NewToolDef(
-			SkillReminders,
+			"reminders",
 			"reminder_list",
 			"List all pending (unsent) reminders",
 			SchemaFromStruct(struct{}{}),

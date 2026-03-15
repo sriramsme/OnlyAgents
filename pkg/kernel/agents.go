@@ -18,7 +18,7 @@ import (
 // Called after both agent and skill registries are created
 func (k *Kernel) assignAgentSkills() error {
 	// Track which skills are claimed by specialized agents
-	claimedSkills := make(map[tools.SkillName]bool)
+	claimedSkills := make(map[string]bool)
 
 	var generalAgent agents.RuntimeAgent
 
@@ -141,7 +141,7 @@ func (k *Kernel) assignAgentDependencies() error {
 // Tries local first, then searches marketplaces and auto-installs
 func (k *Kernel) findSkill(ctx context.Context, skillName string) (skills.Skill, error) {
 	// 1. Check local registry
-	if cfg, ok := k.skills.Get(tools.SkillName(skillName)); ok {
+	if cfg, ok := k.skills.Get(skillName); ok {
 		logger.Log.Info("found skill locally", "skill", cfg.Name)
 		return k.skills.Instantiate(k.ctx, cfg.Name, nil, k.cfg.Security)
 	}
@@ -212,7 +212,7 @@ func (k *Kernel) ResolveAgentName(agentID string) string {
 // Helpers
 
 // resolveConnector returns the Connector by name or nil, with ok=false if not found
-func (k *Kernel) resolveConnector(skillName tools.SkillName, connectorName string) (connectors.Connector, bool) {
+func (k *Kernel) resolveConnector(skillName string, connectorName string) (connectors.Connector, bool) {
 	// If explicit connector specified, use it
 	if connectorName != "" {
 		return k.connectors.Get(connectorName)
@@ -226,7 +226,7 @@ func (k *Kernel) resolveConnector(skillName tools.SkillName, connectorName strin
 }
 
 // instantiateSkill instantiates a skill and returns its tools; logs warnings on failure
-func (k *Kernel) instantiateSkill(agentID string, skillName tools.SkillName, connector connectors.Connector) skills.Skill {
+func (k *Kernel) instantiateSkill(agentID string, skillName string, connector connectors.Connector) skills.Skill {
 	skill, err := k.skills.Instantiate(k.ctx, skillName, connector, k.cfg.Security)
 	if err != nil {
 		k.logger.Warn("failed to instantiate skill",

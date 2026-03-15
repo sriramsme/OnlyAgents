@@ -7,18 +7,17 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
-	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // LoadAllSkillConfigs loads all *.yaml files from the skills config dir.
-func LoadAllSkillConfigs() (map[tools.SkillName]*SkillConfig, error) {
+func LoadAllSkillConfigs() (map[string]*SkillConfig, error) {
 	dir := SkillsDir()
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read skill dir: %w", err)
 	}
 
-	configs := make(map[tools.SkillName]*SkillConfig)
+	configs := make(map[string]*SkillConfig)
 
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {

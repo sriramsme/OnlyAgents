@@ -10,7 +10,7 @@ type FindSkillInput struct {
 func GetGeneralTools() []ToolDef {
 	return []ToolDef{
 		NewToolDef(
-			SkillMetaTools,
+			"meta_tools",
 			"find_skill",
 			`Discover and load a skill by name. Once loaded, the skill's tools are
 immediately available for you to call directly in subsequent steps.

@@ -92,7 +92,7 @@ func NewCLISkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Co
 		}
 
 		toolDefs = append(toolDefs, tools.NewToolDef(
-			tools.SkillName(cfg.Name),
+			cfg.Name,
 			t.Name,
 			t.Description,
 			tools.BuildParams(buildParamProps(t.Parameters), params),

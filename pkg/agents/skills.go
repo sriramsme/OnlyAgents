@@ -10,8 +10,8 @@ func (a *Agent) GetSkillBindings() []config.SkillBinding {
 	return a.skillsBindings
 }
 
-func (a *Agent) GetSkillNames() []tools.SkillName {
-	names := make([]tools.SkillName, 0, len(a.skills))
+func (a *Agent) GetSkillNames() []string {
+	names := make([]string, 0, len(a.skills))
 	for _, s := range a.skills {
 		names = append(names, s.Name())
 	}

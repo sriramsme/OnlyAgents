@@ -38,43 +38,43 @@ type NotesPinInput struct {
 func GetNotesTools() []ToolDef {
 	return []ToolDef{
 		NewToolDef(
-			SkillNotes,
+			"notes",
 			"notes_create",
 			"Create one or more notes with a title and optional Markdown content. Always use this tool even for single-note creation.",
 			SchemaFromStruct(NotesCreateInput{}),
 		),
 		NewToolDef(
-			SkillNotes,
+			"notes",
 			"notes_update",
 			"Update the title, content, or tags of an existing note",
 			SchemaFromStruct(NotesUpdateInput{}),
 		),
 		NewToolDef(
-			SkillNotes,
+			"notes",
 			"notes_get",
 			"Get the full content of a specific note by ID",
 			SchemaFromStruct(NotesGetInput{}),
 		),
 		NewToolDef(
-			SkillNotes,
+			"notes",
 			"notes_delete",
 			"Delete a note by ID",
 			SchemaFromStruct(NotesDeleteInput{}),
 		),
 		NewToolDef(
-			SkillNotes,
+			"notes",
 			"notes_list",
 			"List all notes, pinned notes appear first",
 			SchemaFromStruct(struct{}{}),
 		),
 		NewToolDef(
-			SkillNotes,
+			"notes",
 			"notes_search",
 			"Search notes by title and content using full-text search",
 			SchemaFromStruct(NotesSearchInput{}),
 		),
 		NewToolDef(
-			SkillNotes,
+			"notes",
 			"notes_pin",
 			"Pin or unpin a note",
 			SchemaFromStruct(NotesPinInput{}),

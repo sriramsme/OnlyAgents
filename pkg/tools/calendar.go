@@ -57,43 +57,43 @@ func ParseEventTime(s string) (time.Time, error) {
 func GetCalendarTools() []ToolDef {
 	return []ToolDef{
 		NewToolDef(
-			SkillCalendar,
+			"calendar",
 			"calendar_create_events",
 			"Create one ore more calendar events. Always use this tool even for single-event creation.",
 			SchemaFromStruct(CalendarCreateEventInput{}),
 		),
 		NewToolDef(
-			SkillCalendar,
+			"calendar",
 			"calendar_update_event",
 			"Update an existing calendar event by ID",
 			SchemaFromStruct(CalendarUpdateEventInput{}),
 		),
 		NewToolDef(
-			SkillCalendar,
+			"calendar",
 			"calendar_get_event",
 			"Get full details of a specific calendar event by ID",
 			SchemaFromStruct(CalendarGetEventInput{}),
 		),
 		NewToolDef(
-			SkillCalendar,
+			"calendar",
 			"calendar_delete_event",
 			"Delete a calendar event by ID",
 			SchemaFromStruct(CalendarDeleteEventInput{}),
 		),
 		NewToolDef(
-			SkillCalendar,
+			"calendar",
 			"calendar_list_events",
 			"List calendar events within a date/time range",
 			SchemaFromStruct(CalendarListEventsInput{}),
 		),
 		NewToolDef(
-			SkillCalendar,
+			"calendar",
 			"calendar_get_upcoming",
 			"Get the next N upcoming calendar events from now",
 			SchemaFromStruct(CalendarGetUpcomingInput{}),
 		),
 		NewToolDef(
-			SkillCalendar,
+			"calendar",
 			"calendar_find_slots",
 			"Find available free time slots in the calendar within a given window",
 			SchemaFromStruct(CalendarFindSlotsInput{}),

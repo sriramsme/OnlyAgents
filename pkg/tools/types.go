@@ -1,25 +1,10 @@
 package tools
 
-// SkillName identifies which skill a tool belongs to.
-// Used internally for routing tool calls from agents to the correct skill.
-// Never sent to the LLM.
-type SkillName string
-
-const (
-	SkillEmail     SkillName = "email"
-	SkillWebSearch SkillName = "websearch"
-	SkillCalendar  SkillName = "calendar"
-	SkillNotes     SkillName = "notes"
-	SkillReminders SkillName = "reminders"
-	SkillTasks     SkillName = "tasks"
-	SkillMetaTools SkillName = "meta_tools"
-)
-
 // ToolDef defines a tool/function that can be called by the LLM.
 // This is the schema that gets sent to the LLM in function calling.
 type ToolDef struct {
 	// Skill is the name of the skill that defines this tool
-	Skill SkillName `json:"-"` // internal only, never sent to LLM
+	Skill string `json:"-"` // internal only, never sent to LLM
 
 	// Name of the tool (e.g., "email_send", "calendar_create_event")
 	Name string `json:"name"`
