@@ -307,41 +307,64 @@ func truncateToolContent(toolName, content string) string {
 func sanitizeToolCallSequence(msgs []llm.Message) []llm.Message {
 	out := make([]llm.Message, 0, len(msgs))
 
-	for i, msg := range msgs {
-		switch msg.Role {
-		case llm.RoleTool:
-			// Only keep if previous message in out is assistant+tool_calls
-			if len(out) == 0 {
-				continue // orphaned tool result — drop
-			}
-			prev := out[len(out)-1]
-			if prev.Role != llm.RoleAssistant || len(prev.ToolCalls) == 0 {
-				continue // tool result without tool_calls — drop
-			}
-			out = append(out, msg)
+	i := 0
+	for i < len(msgs) {
+		msg := msgs[i]
 
-		case llm.RoleAssistant:
-			if len(msg.ToolCalls) > 0 {
-				// Peek ahead — if no tool messages follow before next user/assistant, drop
-				hasToolResults := false
-				for j := i + 1; j < len(msgs); j++ {
-					if msgs[j].Role == llm.RoleTool {
-						hasToolResults = true
-						break
-					}
-					if msgs[j].Role == llm.RoleUser || msgs[j].Role == llm.RoleAssistant {
-						break // hit next turn before finding tool results
-					}
-				}
-				if !hasToolResults {
-					continue // dangling tool_calls with no results — drop
+		if msg.Role != llm.RoleAssistant || len(msg.ToolCalls) == 0 {
+			// Non-tool-call messages pass through
+			// But skip orphaned tool messages
+			if msg.Role == llm.RoleTool {
+				if len(out) == 0 || out[len(out)-1].Role != llm.RoleAssistant || len(out[len(out)-1].ToolCalls) == 0 {
+					i++
+					continue // orphaned tool result — drop
 				}
 			}
 			out = append(out, msg)
-
-		default:
-			out = append(out, msg)
+			i++
+			continue
 		}
+
+		// Assistant message with tool calls — collect all following tool results
+		expectedIDs := make(map[string]struct{}, len(msg.ToolCalls))
+		for _, tc := range msg.ToolCalls {
+			expectedIDs[tc.ID] = struct{}{}
+		}
+
+		// Look ahead for tool results
+		j := i + 1
+		var toolResults []llm.Message
+		foundIDs := make(map[string]struct{})
+		for j < len(msgs) && msgs[j].Role == llm.RoleTool {
+			toolResults = append(toolResults, msgs[j])
+			if msgs[j].ToolCallID != "" {
+				foundIDs[msgs[j].ToolCallID] = struct{}{}
+			}
+			j++
+		}
+
+		// Check all expected IDs are covered
+		allFound := true
+		for id := range expectedIDs {
+			if _, ok := foundIDs[id]; !ok {
+				allFound = false
+				break
+			}
+		}
+
+		if !allFound {
+			// Drop entire assistant+tool_results block — it's incomplete
+			logger.Log.Warn("dropping incomplete tool call sequence from history",
+				"assistant_tool_calls", len(msg.ToolCalls),
+				"tool_results_found", len(toolResults))
+			i = j // skip past the incomplete block
+			continue
+		}
+
+		// Valid sequence — append assistant + all tool results
+		out = append(out, msg)
+		out = append(out, toolResults...)
+		i = j
 	}
 
 	return out

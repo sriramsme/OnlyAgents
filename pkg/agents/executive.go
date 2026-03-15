@@ -327,18 +327,28 @@ func (a *Agent) sendOutboundMessage(payload core.AgentExecutePayload, correlatio
 	a.safeSend(evt, "outbound message")
 }
 
-func (a *Agent) sendError(replyCh chan<- core.Event, correlationID string, err error) {
-	if replyCh == nil {
-		return
-	}
+func (a *Agent) sendError(channel *core.ChannelMetadata, replyCh chan<- core.Event, correlationID string, err error) {
+	if replyCh != nil {
 
-	evt := core.Event{
-		Type:          core.DelegationResult,
-		CorrelationID: correlationID,
-		Payload: core.DelegationResultPayload{
-			Error: err.Error(),
-		},
+		evt := core.Event{
+			Type:          core.DelegationResult,
+			CorrelationID: correlationID,
+			Payload: core.DelegationResultPayload{
+				Error: err.Error(),
+			},
+		}
+		a.safeReply(replyCh, evt, "error response")
 	}
-
-	a.safeReply(replyCh, evt, "error response")
+	// Don't leave user hanging
+	if channel != nil {
+		a.safeSend(core.Event{
+			Type:          core.OutboundMessage,
+			CorrelationID: correlationID,
+			AgentID:       a.ID(),
+			Payload: core.OutboundMessagePayload{
+				Channel: channel,
+				Content: "Sorry, I ran into an issue processing your request. Please try again.",
+			},
+		}, "execute error fallback")
+	}
 }

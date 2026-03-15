@@ -78,7 +78,9 @@ func loadComponents(
 
 	// Register ClawHub marketplace
 	clawHub := cfg.Marketplace("clawhub")
-	if clawHub.Enabled {
+	if clawHub == nil {
+		logger.Log.Info("loading ClawHub marketplacei failed: marketplace not configured")
+	} else if clawHub.Enabled {
 		key, err := v.GetSecret(ctx, clawHub.VaultPaths["api_key"].Path)
 		if err == nil {
 			clawHub := marketplace.NewClawHubMarketplace(

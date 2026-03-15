@@ -350,9 +350,7 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 			"error", err,
 			"correlation_id", evt.CorrelationID)
 
-		if evt.ReplyTo != nil {
-			a.sendError(evt.ReplyTo, evt.CorrelationID, err)
-		}
+		a.sendError(payload.Channel, evt.ReplyTo, evt.CorrelationID, err)
 		return
 	}
 
@@ -368,13 +366,11 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 			sendDirectlyToUser = payload.Delegation.SendDirectlyToUser
 		}
 		if sendDirectlyToUser {
-			a.logger.Info("sending directly to user, delegation result received (via event bus)",
+			a.logger.Debug("sending directly to user, delegation result received (via event bus)",
 				"agent_id", a.id,
 				"from_agent_id", payload.Delegation.FromAgentID,
-				"delegated_at", payload.Delegation.DelegatedAt,
 				"send_directly_to_user", sendDirectlyToUser,
-				"channel", payload.Channel,
-				"response", response)
+				"channel", payload.Channel)
 			// Task was delegated to this agent - send result back
 			a.sendOutboundMessage(payload, evt.CorrelationID, response)
 
@@ -394,7 +390,7 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 				}
 			}
 		} else {
-			a.logger.Info("delegation result received (via event bus)",
+			a.logger.Debug("delegation result received (via event bus)",
 				"agent_id", a.id,
 				"from_agent_id", payload.Delegation.FromAgentID,
 				"delegated_at", payload.Delegation.DelegatedAt,
@@ -599,43 +595,21 @@ func (a *Agent) executeStream(
 			},
 		})
 
-		var (
-			fullContent  strings.Builder
-			toolCalls    []tools.ToolCall
-			inputTokens  int
-			outputTokens int
-			streamErr    error
-		)
-
-		for chunk := range streamCh {
-			if chunk.Error != nil {
-				streamErr = chunk.Error
-				break
-			}
-			if chunk.Done {
-				inputTokens = chunk.Usage.InputTokens
-				outputTokens = chunk.Usage.OutputTokens
-				break
-			}
-			if chunk.Content != "" {
-				fullContent.WriteString(chunk.Content)
-				// Emit token to UI — only on the final turn (no tool calls expected yet).
-				// Tool-call turns emit nothing; intermediate reasoning stays internal.
+		fullContent, toolCalls, inputTokens, outputTokens, streamErr := collectToolCalls(
+			streamCh,
+			func(token, accumulated string) {
 				a.safeSend(core.Event{
 					Type:          core.OutboundToken,
 					CorrelationID: correlationID,
 					AgentID:       a.id,
 					Payload: core.OutboundTokenPayload{
 						Channel:            payload.Channel,
-						Token:              chunk.Content,
-						AccumulatedContent: fullContent.String(),
+						Token:              token,
+						AccumulatedContent: accumulated,
 					},
 				}, "agent token")
-			}
-			if len(chunk.ToolCalls) > 0 {
-				toolCalls = append(toolCalls, chunk.ToolCalls...)
-			}
-		}
+			},
+		)
 
 		if streamErr != nil {
 			logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{"error": "stream failed"})
@@ -648,7 +622,7 @@ func (a *Agent) executeStream(
 			stopReason = "tool_use"
 		}
 		resp := &llm.Response{
-			Content:    fullContent.String(),
+			Content:    fullContent,
 			ToolCalls:  toolCalls,
 			StopReason: stopReason,
 			Usage: llm.Usage{
@@ -670,12 +644,24 @@ func (a *Agent) executeStream(
 
 		if !resp.HasToolCalls() {
 			a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
+			if resp.Content == "" {
+				// LLM returned empty content — send a fallback so user isn't left waiting
+				a.safeSend(core.Event{
+					Type:          core.OutboundMessage,
+					CorrelationID: correlationID,
+					AgentID:       a.id,
+					Payload: core.OutboundMessagePayload{
+						Channel: payload.Channel,
+						Content: "I completed the task but had nothing to add.",
+					},
+				}, "empty response fallback")
+			}
 			return resp.Content, nil
 		}
 		var processErr error
 		messages, halt, processErr = a.processToolCalls(ctx, sessionID, correlationID, payload, messages, resp)
 		if processErr != nil {
-			return "", err
+			return "", processErr
 		}
 		if halt {
 			return "", nil
@@ -772,7 +758,10 @@ func (a *Agent) processToolCalls(
 			},
 		})
 
-		if exec.Err != nil {
+		// ── Always append a tool result message — OpenAI requires every
+		// tool_call_id to have a response before the next assistant turn. ─────────
+		switch {
+		case exec.Err != nil:
 			a.logger.Warn("tool call failed",
 				"tool", tc.Function.Name,
 				"error", exec.Err,
@@ -782,27 +771,23 @@ func (a *Agent) processToolCalls(
 				a.logger.Warn("failed to save tool error result", "err", err)
 			}
 			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, errContent))
-		} else if exec.Control != tools.ExecHalt {
-			resultJSON, err := json.Marshal(exec.Result)
-			if err != nil {
-				return nil, false, fmt.Errorf("marshal tool result: %w", err)
-			}
-			resultStr := string(resultJSON)
-			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
-				a.logger.Warn("failed to save tool result", "err", err)
-			}
-			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, resultStr))
-		}
 
-		if exec.Control == tools.ExecHalt {
+		case exec.Control == tools.ExecHalt:
+			// Must still add a tool result before halting — satisfies protocol
+			haltMsg := exec.DirectMessage
+			if haltMsg == "" {
+				haltMsg = fmt.Sprintf(`{"status": "halted", "tool": "%s"}`, tc.Function.Name)
+			}
+			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, haltMsg, false); err != nil {
+				a.logger.Warn("failed to save tool result (halt)", "err", err)
+			}
+			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, haltMsg))
+
 			a.logger.Info("halting execution loop",
 				"tool", tc.Function.Name,
 				"correlation_id", correlationID)
 
 			if exec.DirectMessage != "" {
-				if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, exec.DirectMessage, false); err != nil {
-					a.logger.Warn("failed to save tool result (direct message)", "err", err)
-				}
 				a.safeSend(core.Event{
 					Type:          core.OutboundMessage,
 					CorrelationID: correlationID,
@@ -814,10 +799,67 @@ func (a *Agent) processToolCalls(
 				}, "delegation ack")
 			}
 			return messages, true, nil
+
+		default:
+			resultJSON, err := json.Marshal(exec.Result)
+			if err != nil {
+				return nil, false, fmt.Errorf("marshal tool result: %w", err)
+			}
+			resultStr := string(resultJSON)
+			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
+				a.logger.Warn("failed to save tool result", "err", err)
+			}
+			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, resultStr))
 		}
 	}
 
 	return messages, false, nil
+}
+
+func collectToolCalls(
+	streamCh <-chan llm.StreamChunk,
+	onToken func(token, accumulated string), // nil = no-op
+) (content string, toolCalls []tools.ToolCall, inputTokens, outputTokens int, err error) {
+	var fullContent strings.Builder
+	builders := map[string]*toolCallBuilder{}
+	var order []string
+
+	for chunk := range streamCh {
+		if chunk.Error != nil {
+			err = chunk.Error
+			return
+		}
+		if chunk.Content != "" {
+			fullContent.WriteString(chunk.Content)
+			if onToken != nil {
+				onToken(chunk.Content, fullContent.String())
+			}
+		}
+		for _, tc := range chunk.ToolCalls {
+			b, ok := builders[tc.ID]
+			if !ok {
+				b = &toolCallBuilder{ID: tc.ID, Name: tc.Function.Name}
+				builders[tc.ID] = b
+				order = append(order, tc.ID)
+			}
+			b.Args.WriteString(tc.Function.Arguments)
+		}
+		if chunk.Done {
+			inputTokens = chunk.Usage.InputTokens
+			outputTokens = chunk.Usage.OutputTokens
+			break
+		}
+	}
+
+	content = fullContent.String()
+	for _, id := range order {
+		b := builders[id]
+		toolCalls = append(toolCalls, tools.ToolCall{
+			ID:       b.ID,
+			Function: tools.FunctionCall{Name: b.Name, Arguments: b.Args.String()},
+		})
+	}
+	return
 }
 
 // finaliseTurn persists the final assistant response and fires workflow

@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -117,7 +118,11 @@ type Purpose struct {
 	WhatIValue []string // Core priorities
 	Philosophy string   // Guiding worldview
 }
-
+type toolCallBuilder struct {
+	ID   string
+	Name string
+	Args strings.Builder
+}
 type (
 	handleFindSkillFunc func(ctx context.Context, a *Agent, skillName string) (any, error)
 	AgentNameResolver   func(agentID string) string

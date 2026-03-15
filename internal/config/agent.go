@@ -95,7 +95,7 @@ func LoadAllAgentsConfig(v vault.Vault) ([]*AgentConfig, error) {
 func setAgentDefaults(v *viper.Viper) {
 	v.SetDefault("agent.max_concurrency", 10)
 	v.SetDefault("agent.buffer_size", 100)
-	v.SetDefault("agent.streaming_enabled", false)
+	v.SetDefault("agent.streaming_enabled", true)
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.format", "text")
 	v.SetDefault("llm.provider", "anthropic")

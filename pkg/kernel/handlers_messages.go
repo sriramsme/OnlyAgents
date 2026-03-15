@@ -120,6 +120,12 @@ func (k *Kernel) handleOutboundToken(evt core.Event) {
 		return
 	}
 
+	k.logger.Debug("sending token to channel",
+		"channel", payload.Channel.Name,
+		"token", payload.Token,
+		"message", payload.AccumulatedContent,
+		"correlation_id", evt.CorrelationID)
+
 	ch, err := k.channels.Get(payload.Channel.Name)
 	if err != nil {
 		k.logger.Error("channel not found for token",
@@ -132,6 +138,11 @@ func (k *Kernel) handleOutboundToken(evt core.Event) {
 	if !ok {
 		// Channel doesn't support streaming — silently skip,
 		// final response still arrives via Send()
+		k.logger.Debug("channel doesn't support streaming",
+			"channel", payload.Channel.Name,
+			"token", payload.Token,
+			"message", payload.AccumulatedContent,
+			"correlation_id", evt.CorrelationID)
 		return
 	}
 
@@ -143,4 +154,9 @@ func (k *Kernel) handleOutboundToken(evt core.Event) {
 			"channel", payload.Channel.Name,
 			"error", err)
 	}
+	k.logger.Debug("sent token",
+		"channel", payload.Channel.Name,
+		"token", payload.Token,
+		"message", payload.AccumulatedContent,
+		"correlation_id", evt.CorrelationID)
 }
