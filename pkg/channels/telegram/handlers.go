@@ -159,6 +159,7 @@ func (c *TelegramChannel) handleNewSession(ctx *th.Context, message *telego.Mess
 
 // Send is called by kernel when the agent has a response ready.
 // It updates the placeholder message created in handleMessage.
+
 func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage) error {
 	if strings.TrimSpace(msg.Content) == "" {
 		c.logger.Warn("empty message, skipping send")
@@ -171,32 +172,14 @@ func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage
 
 	htmlContent := markdownToTelegramHTML(msg.Content)
 
-	// Try to update the placeholder we created when the message came in
-	if msgID, ok := c.placeholders.LoadAndDelete(msg.Channel.ChatID); ok {
-		editMsg := tu.EditMessageText(
-			tu.ID(chatID),
-			msgID.(int),
-			htmlContent,
-		).WithParseMode(telego.ModeHTML)
-
-		_, err := c.bot.EditMessageText(ctx, editMsg)
-		if err == nil {
-			return nil
-		}
-		// Placeholder edit failed, fall through to sending a new message
-		c.logger.Debug("failed to edit placeholder, sending new message", "error", err)
+	switch {
+	case len(htmlContent) <= 4096:
+		return c.sendSingle(ctx, chatID, msg.Channel.ChatID, htmlContent)
+	case len(msg.Content) > telegramFileThreshold:
+		return c.sendAsFile(ctx, chatID, msg.Channel.ChatID, msg.Content)
+	default:
+		return c.sendChunked(ctx, chatID, msg.Channel.ChatID, msg.Content)
 	}
-
-	// No placeholder or edit failed — send fresh message
-	outMsg := tu.Message(tu.ID(chatID), htmlContent).WithParseMode(telego.ModeHTML)
-	_, err = c.bot.SendMessage(ctx, outMsg)
-	if err != nil {
-		// HTML parse failed, retry as plain text
-		c.logger.Debug("HTML send failed, falling back to plain text", "error", err)
-		outMsg.ParseMode = ""
-		_, err = c.bot.SendMessage(ctx, outMsg)
-	}
-	return err
 }
 
 // SendToken implements channels.TokenStreamer.
@@ -219,6 +202,7 @@ func (c *TelegramChannel) SendToken(ctx context.Context, chatID, token, accumula
 func (c *TelegramChannel) editPlaceholder(ctx context.Context, chatID, content string) {
 	msgID, ok := c.placeholders.Load(chatID)
 	if !ok {
+		c.logger.Error("telegram: editPlaceholder: placeholder not found", "chat_id", chatID)
 		return
 	}
 	id, err := parseChatID(chatID)
