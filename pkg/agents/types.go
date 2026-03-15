@@ -2,77 +2,45 @@ package agents
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/llm"
-	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-// Agent is a pure execution unit.
-// It knows about: LLM, Soul, tools (as definitions only), and two channels.
-// It knows nothing about skills, connectors, or other agents directly.
-// Kernel injects tool definitions at construction; all tool calls go back through kernel.
-type Agent struct {
-	id               string
-	name             string
-	description      string
-	isExecutive      bool
-	isGeneral        bool
-	maxConcurrency   int
-	streamingEnabled bool
+// public agent interface
+type RuntimeAgent interface {
+	ID() string
+	Name() string
+	Description() string
 
-	// Core capabilities
-	llmClient      llm.Client
-	soul           *Soul
-	skillsBindings []config.SkillBinding
-	skills         map[tools.SkillName]skills.Skill // owns lifecycle
-	// Tool definitions given to LLM (schema only, no implementation)
-	// Kernel populates this based on which skills are assigned to this agent.
-	tools        []tools.ToolDef
-	toolSkillMap map[string]tools.SkillName
+	Start() error
+	Stop() error
 
-	// Kernel bus — agent fires events here (tool calls, outbound messages)
-	outbox chan<- core.Event
+	Inbox() chan<- core.Event
+	Status() core.AgentStatus
 
-	// Inbox — kernel sends events here (execute requests, tool results)
-	inbox chan core.Event
+	IsExecutive() bool
+	IsGeneral() bool
 
-	cm *memory.ConversationManager // shared across all agents, injected by kernel
-	mm *memory.MemoryManager       // shared across all agents, injected by kernel
+	SetTools(tools []tools.ToolDef)
+	AddTools(tools []tools.ToolDef)
+	AddSkill(skill skills.Skill)
+	GetSkillNames() []tools.SkillName
+	ListToolNames() []string
+	GetSkillBindings() []config.SkillBinding
 
-	systemPrompt     string
-	handleFindSkill  handleFindSkillFunc // injected by kernel only for general agents
-	resolveAgentName AgentNameResolver
-
-	// Lifecycle
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	logger *slog.Logger
-
-	// UI observability — nil in headless mode, zero overhead when unset.
-	uiBus       chan<- core.UIEvent
-	activeSince time.Time // when the current task started; used for idle duration
-
-	executeMu sync.Map // map[sessionID]*sync.Mutex — serializes turns per session
-
-	// Runtime state — owned by the agent, read by KernelReader.Agents()
-	stateMu     sync.RWMutex
-	state       core.AgentState
-	currentTask string
-	lastActive  time.Time
+	SetHandleFindSkill(fn handleFindSkillFunc)
+	SetResolveAgentName(fn AgentNameResolver)
+	SetSystemPrompt(userSection, extra string)
 }
 
 // AgentRegistry holds all running agents. Lives in kernel.
 type Registry struct {
-	agents    map[string]*Agent
+	agents    map[string]RuntimeAgent
 	executive *Agent
 	general   *Agent
 	mu        sync.RWMutex
@@ -124,6 +92,6 @@ type toolCallBuilder struct {
 	Args strings.Builder
 }
 type (
-	handleFindSkillFunc func(ctx context.Context, a *Agent, skillName string) (any, error)
+	handleFindSkillFunc func(ctx context.Context, a RuntimeAgent, skillName string) (any, error)
 	AgentNameResolver   func(agentID string) string
 )

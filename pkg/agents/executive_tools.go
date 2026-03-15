@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +15,34 @@ import (
 
 // These methods are used by executive agents to delegate and create workflows
 // They're called from the agent's execute() loop when LLM calls meta-tools
+
+// isMetaTool checks if a tool name is a meta-tool
+func isExecutiveMetaTool(toolName string) bool {
+	metaTools := map[string]bool{
+		"delegate_to_agent": true,
+		"create_workflow":   true,
+		"find_best_agent":   true,
+	}
+	return metaTools[toolName]
+}
+
+// handleMetaTool routes meta-tool calls to appropriate handlers
+func (a *Agent) handleExecutiveMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channelMetadata *core.ChannelMetadata) tools.ToolExecution {
+	a.logger.Debug("handling meta-tool",
+		"tool", tc.Function.Name,
+		"correlation_id", correlationID)
+
+	switch tc.Function.Name {
+	case "delegate_to_agent":
+		return a.requestDelegation(ctx, correlationID, tc, channelMetadata)
+
+	case "create_workflow":
+		return a.requestWorkflow(ctx, correlationID, tc, originalMessage, channelMetadata)
+
+	default:
+		return tools.ExecErr(fmt.Errorf("unknown meta-tool: %s", tc.Function.Name))
+	}
+}
 
 // requestDelegation delegates a task to another agent and waits for result
 func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
@@ -117,6 +144,22 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 	}
 }
 
+// requestWorkflow - pass original message and channel
+func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channel *core.ChannelMetadata) tools.ToolExecution {
+	logger.Timing.StartPhase(correlationID, "workflow_creation")
+	wf, err := a.parseWorkflow(correlationID, tc, originalMessage, channel)
+	if err != nil {
+		return tools.ExecErr(err)
+	}
+	logger.Timing.EndPhase(correlationID, "workflow_creation")
+
+	if err := a.submitWorkflow(ctx, correlationID, wf); err != nil {
+		return tools.ExecErr(err)
+	}
+
+	return tools.ExecDone(workflowAck(wf))
+}
+
 // submitWorkflow sends workflow to kernel (non-blocking)
 func (a *Agent) submitWorkflow(ctx context.Context, correlationID string, wf *workflow.WorkflowDefinition) error {
 	event := core.Event{
@@ -205,150 +248,7 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 	}, nil
 }
 
-// requestWorkflow - pass original message and channel
-func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channel *core.ChannelMetadata) tools.ToolExecution {
-	logger.Timing.StartPhase(correlationID, "workflow_creation")
-	wf, err := a.parseWorkflow(correlationID, tc, originalMessage, channel)
-	if err != nil {
-		return tools.ExecErr(err)
-	}
-	logger.Timing.EndPhase(correlationID, "workflow_creation")
-
-	if err := a.submitWorkflow(ctx, correlationID, wf); err != nil {
-		return tools.ExecErr(err)
-	}
-
-	return tools.ExecDone(a.workflowAck(wf))
-}
-
-func (a *Agent) workflowAck(wf *workflow.WorkflowDefinition) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "On it — kicking off a %d-step workflow:\n", len(wf.Tasks))
-	for i, s := range wf.Tasks {
-		fmt.Fprintf(&b, "%d. %s\n", i+1, s.Description)
-	}
-	b.WriteString("\nI'll report back once it's done.")
-	return b.String()
-}
-
-// handleMetaTool routes meta-tool calls to appropriate handlers
-func (a *Agent) handleExecutiveMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channelMetadata *core.ChannelMetadata) tools.ToolExecution {
-	a.logger.Debug("handling meta-tool",
-		"tool", tc.Function.Name,
-		"correlation_id", correlationID)
-
-	switch tc.Function.Name {
-	case "delegate_to_agent":
-		return a.requestDelegation(ctx, correlationID, tc, channelMetadata)
-
-	case "create_workflow":
-		return a.requestWorkflow(ctx, correlationID, tc, originalMessage, channelMetadata)
-
-	default:
-		return tools.ExecErr(fmt.Errorf("unknown meta-tool: %s", tc.Function.Name))
-	}
-}
-
-// isMetaTool checks if a tool name is a meta-tool
-func isExecutiveMetaTool(toolName string) bool {
-	metaTools := map[string]bool{
-		"delegate_to_agent": true,
-		"create_workflow":   true,
-		"find_best_agent":   true,
-	}
-	return metaTools[toolName]
-}
-
-// Helper methods for sending different types of responses
-
-func (a *Agent) sendDelegationResult(replyCh chan<- core.Event, correlationID string, result any) {
-	if replyCh == nil {
-		return
-	}
-
-	evt := core.Event{
-		Type:          core.DelegationResult,
-		CorrelationID: correlationID,
-		Payload: core.DelegationResultPayload{
-			Result: result,
-		},
-	}
-
-	a.safeReply(replyCh, evt, "delegation result")
-}
-
-func (a *Agent) sendTaskResult(replyCh chan<- core.Event, correlationID string, result any) {
-	if replyCh == nil {
-		return
-	}
-
-	// Task result goes back to workflow engine
-	// For now, use same structure as delegation result
-	evt := core.Event{
-		Type:          core.DelegationResult, // Workflow engine expects this
-		CorrelationID: correlationID,
-		Payload: core.DelegationResultPayload{
-			Result: result,
-		},
-	}
-
-	a.safeReply(replyCh, evt, "task result")
-}
-
-func (a *Agent) sendSyncResponse(replyCh chan<- core.Event, correlationID string, response string) {
-	if replyCh == nil {
-		return
-	}
-
-	evt := core.Event{
-		Type:          core.AgentExecute,
-		CorrelationID: correlationID,
-		Payload:       response,
-	}
-
-	a.safeReply(replyCh, evt, "sync response")
-}
-
-func (a *Agent) sendOutboundMessage(payload core.AgentExecutePayload, correlationID string, response string) {
-	if payload.Channel == nil {
-		a.logger.Error("no channel metadata available for outbound message",
-			"correlation_id", correlationID)
-		return
-	}
-	evt := core.Event{
-		Type:          core.OutboundMessage,
-		CorrelationID: correlationID,
-		Payload: core.OutboundMessagePayload{
-			Channel: payload.Channel,
-			Content: response,
-		},
-	}
-
-	a.safeSend(evt, "outbound message")
-}
-
-func (a *Agent) sendError(channel *core.ChannelMetadata, replyCh chan<- core.Event, correlationID string, err error) {
-	if replyCh != nil {
-
-		evt := core.Event{
-			Type:          core.DelegationResult,
-			CorrelationID: correlationID,
-			Payload: core.DelegationResultPayload{
-				Error: err.Error(),
-			},
-		}
-		a.safeReply(replyCh, evt, "error response")
-	}
-	// Don't leave user hanging
-	if channel != nil {
-		a.safeSend(core.Event{
-			Type:          core.OutboundMessage,
-			CorrelationID: correlationID,
-			AgentID:       a.ID(),
-			Payload: core.OutboundMessagePayload{
-				Channel: channel,
-				Content: "Sorry, I ran into an issue processing your request. Please try again.",
-			},
-		}, "execute error fallback")
-	}
+// Executive uses this to resolve agent names
+func (a *Agent) SetResolveAgentName(fn AgentNameResolver) {
+	a.resolveAgentName = fn
 }

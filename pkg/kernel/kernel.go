@@ -113,7 +113,7 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus)
 
 // --- Registration (called during app bootstrap) ---
 
-func (k *Kernel) RegisterAgent(a *agents.Agent) {
+func (k *Kernel) RegisterAgent(a agents.RuntimeAgent) {
 	k.agents.Register(a)
 }
 

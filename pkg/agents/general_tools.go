@@ -8,6 +8,13 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
+func (a *Agent) isGeneralMetaTool(toolName string) bool {
+	metaTools := map[string]bool{
+		"find_skill": true,
+	}
+	return metaTools[toolName]
+}
+
 func (a *Agent) handleGeneralMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall) tools.ToolExecution {
 	a.logger.Debug("handling meta-tool",
 		"tool", tc.Function.Name,
@@ -30,9 +37,6 @@ func (a *Agent) handleGeneralMetaTool(ctx context.Context, correlationID string,
 	}
 }
 
-func (a *Agent) isGeneralMetaTool(toolName string) bool {
-	metaTools := map[string]bool{
-		"find_skill": true,
-	}
-	return metaTools[toolName]
+func (a *Agent) SetHandleFindSkill(fn handleFindSkillFunc) {
+	a.handleFindSkill = fn
 }

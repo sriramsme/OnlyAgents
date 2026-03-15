@@ -30,7 +30,7 @@ func NewRegistry(
 	}
 
 	r := &Registry{
-		agents: make(map[string]*Agent),
+		agents: make(map[string]RuntimeAgent),
 	}
 
 	// Create all agents (but don't start them yet - let caller control that)
@@ -79,13 +79,13 @@ func NewRegistry(
 	return r, nil
 }
 
-func (r *Registry) Register(a *Agent) {
+func (r *Registry) Register(a RuntimeAgent) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.agents[a.id] = a
+	r.agents[a.ID()] = a
 }
 
-func (r *Registry) Get(id string) (*Agent, error) {
+func (r *Registry) Get(id string) (RuntimeAgent, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -96,15 +96,15 @@ func (r *Registry) Get(id string) (*Agent, error) {
 	return agent, nil
 }
 
-func (r *Registry) GetExecutive() *Agent { return r.executive }
+func (r *Registry) GetExecutive() RuntimeAgent { return r.executive }
 
-func (r *Registry) GetGeneral() *Agent { return r.general }
+func (r *Registry) GetGeneral() RuntimeAgent { return r.general }
 
-func (r *Registry) All() []*Agent {
+func (r *Registry) All() []RuntimeAgent {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	out := make([]*Agent, 0, len(r.agents))
+	out := make([]RuntimeAgent, 0, len(r.agents))
 	for _, a := range r.agents {
 		out = append(out, a)
 	}
@@ -117,7 +117,7 @@ func (r *Registry) ListAll() []string {
 
 	var agents []string
 	for _, agent := range r.agents {
-		agents = append(agents, agent.id)
+		agents = append(agents, agent.ID())
 	}
 	return agents
 }
@@ -126,7 +126,7 @@ func (r *Registry) ListAll() []string {
 func (r *Registry) StartAll() error {
 	// Get snapshot without holding lock during I/O
 	r.mu.RLock()
-	agents := make([]*Agent, 0, len(r.agents))
+	agents := make([]RuntimeAgent, 0, len(r.agents))
 	for _, agent := range r.agents {
 		agents = append(agents, agent)
 	}
@@ -143,7 +143,7 @@ func (r *Registry) StartAll() error {
 
 	for _, agent := range agents {
 		wg.Add(1)
-		go func(a *Agent) {
+		go func(a RuntimeAgent) {
 			defer wg.Done()
 			if err := a.Start(); err != nil {
 				resultCh <- result{agentID: a.ID(), err: err}
@@ -167,7 +167,7 @@ func (r *Registry) StartAll() error {
 func (r *Registry) StopAll(ctx context.Context) error {
 	// Get snapshot without holding lock during I/O
 	r.mu.RLock()
-	agents := make([]*Agent, 0, len(r.agents))
+	agents := make([]RuntimeAgent, 0, len(r.agents))
 	for _, agent := range r.agents {
 		agents = append(agents, agent)
 	}
