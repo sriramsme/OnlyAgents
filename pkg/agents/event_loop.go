@@ -70,8 +70,9 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 
 	a.updateUI(payload.Message, 60)
 
-	agentPhase := fmt.Sprintf("%s_execution", a.id)
-	logger.Timing.StartPhase(evt.CorrelationID, agentPhase)
+	phase := fmt.Sprintf("%s_execution", a.id)
+	logger.Timing.StartPhase(evt.CorrelationID, phase)
+	defer logger.Timing.EndPhase(evt.CorrelationID, phase)
 
 	requestCtx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
 	defer cancel()
@@ -81,7 +82,6 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 		"message_type", payload.MessageType,
 		"message_length", len(payload.Message))
 
-	// Choose execute path based on whether this response goes to user directly
 	var response string
 	var err error
 	if a.shouldStream(payload) {
@@ -89,77 +89,55 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 	} else {
 		response, err = a.execute(requestCtx, payload, evt.CorrelationID)
 	}
-
-	logger.Timing.EndPhase(evt.CorrelationID, agentPhase)
-
 	if err != nil {
-		a.logger.Error("execute failed",
-			"error", err,
-			"correlation_id", evt.CorrelationID)
-
+		a.logger.Error("execute failed", "error", err, "correlation_id", evt.CorrelationID)
 		a.sendError(payload.Channel, evt.ReplyTo, evt.CorrelationID, err)
 		return
 	}
 
-	// Determine how to respond based on message type
-	messageType := payload.MessageType
+	a.routeResponse(evt, payload, response)
+}
 
-	switch messageType {
+// HELPER METHODS
 
+// routeResponse dispatches the agent's response based on how the message arrived.
+func (a *Agent) routeResponse(evt core.Event, payload core.AgentExecutePayload, response string) {
+	switch payload.MessageType {
 	case core.MessageTypeDelegation:
-		// Check if this is a delegation with direct user response
-		sendDirectlyToUser := false
-		if payload.Delegation != nil {
-			sendDirectlyToUser = payload.Delegation.SendDirectlyToUser
-		}
-		if sendDirectlyToUser {
-			a.logger.Debug("sending directly to user, delegation result received (via event bus)",
-				"agent_id", a.id,
-				"from_agent_id", payload.Delegation.FromAgentID,
-				"send_directly_to_user", sendDirectlyToUser,
-				"channel", payload.Channel)
-			// Task was delegated to this agent - send result back
-			a.sendOutboundMessage(payload, evt.CorrelationID, response)
-
-			// Inject into executive's history immediately after the ack
-			if payload.Delegation.FromAgentID != "" {
-				attribution := fmt.Sprintf("[%s responded directly to user]\n\n%s", a.name, response)
-				if err := a.cm.SaveAssistantMessageAt(
-					a.ctx,
-					payload.Channel.SessionID,
-					payload.Delegation.FromAgentID, // saves under executive's agent_id
-					attribution,
-					"",
-					nil,
-					payload.Delegation.DelegatedAt,
-				); err != nil {
-					a.logger.Warn("failed to inject response into executive history", "err", err)
-				}
-			}
+		if payload.Delegation != nil && payload.Delegation.SendDirectlyToUser {
+			a.handleDirectDelegationResponse(payload, evt.CorrelationID, response)
 		} else {
-			a.logger.Debug("delegation result received (via event bus)",
-				"agent_id", a.id,
-				"from_agent_id", payload.Delegation.FromAgentID,
-				"delegated_at", payload.Delegation.DelegatedAt,
-				"send_directly_to_user", sendDirectlyToUser,
-				"channel", payload.Channel)
-			// Task was delegated to this agent - send result back
 			a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response)
 		}
-
 	case core.MessageTypeWorkflowTask:
-		// Task from workflow engine - send result back
 		a.sendTaskResult(evt.ReplyTo, evt.CorrelationID, response)
-
 	default:
-
-		// Regular user message - send to channel
 		if evt.ReplyTo != nil {
-			// Sync response (HTTP)
 			a.sendSyncResponse(evt.ReplyTo, evt.CorrelationID, response)
 		} else {
-			// Async response (channel)
 			a.sendOutboundMessage(payload, evt.CorrelationID, response)
 		}
+	}
+}
+
+// handleDirectDelegationResponse sends the sub-agent's response directly to the
+// user and injects it into the executive's history for continuity.
+func (a *Agent) handleDirectDelegationResponse(payload core.AgentExecutePayload, correlationID, response string) {
+	a.sendOutboundMessage(payload, correlationID, response)
+
+	if payload.Delegation.FromAgentID == "" {
+		return
+	}
+	attribution := fmt.Sprintf("[%s responded directly to user]\n\n%s", a.name, response)
+	if err := a.cm.SaveAssistantMessageAt(
+		a.ctx,
+		payload.Channel.SessionID,
+		payload.Delegation.FromAgentID,
+		attribution,
+		"",
+		nil,
+		payload.Delegation.DelegatedAt,
+	); err != nil {
+		a.logger.Warn("failed to inject response into executive history", "err", err)
 	}
 }

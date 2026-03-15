@@ -10,21 +10,42 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
 )
 
-// nolint:gocyclo
-// execute is the non-streaming internal LLM loop, shared by both sync and async paths.
+// llmCaller is the function signature shared by callLLM and callLLMStream.
+// callCount is the 1-based iteration index within the current execution loop,
+// used for phase timing labels.
+type llmCaller func(
+	ctx context.Context,
+	msgs []llm.Message,
+	correlationID string,
+	callCount int,
+	payload core.AgentExecutePayload,
+) (*llm.Response, error)
+
+// execute runs the agent using a standard blocking LLM call.
 func (a *Agent) execute(
 	ctx context.Context,
 	payload core.AgentExecutePayload,
 	correlationID string,
 ) (string, error) {
+	return a.runExecutionLoop(ctx, payload, correlationID, a.callLLM)
+}
+
+// runExecutionLoop is the shared execution engine for both streaming and
+// non-streaming paths. It prepares the turn, then calls the provided llmCaller
+// in a loop until the LLM stops requesting tool calls or a halt is triggered.
+func (a *Agent) runExecutionLoop(
+	ctx context.Context,
+	payload core.AgentExecutePayload,
+	correlationID string,
+	caller llmCaller,
+) (string, error) {
 	if payload.Channel == nil {
 		return "", fmt.Errorf("execute: nil channel in payload (correlation_id: %s)", correlationID)
 	}
-	sessionID := payload.Channel.SessionID
 
 	// Serialize turns for this agent+session — prevents turn 2 reading
-	// history before turn 1 has finished writing all its tool results
-	lock := a.turnLockFor(sessionID)
+	// history before turn 1 has finished writing all its tool results.
+	lock := a.turnLockFor(payload.Channel.SessionID)
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -33,8 +54,7 @@ func (a *Agent) execute(
 		return "", err
 	}
 
-	llmCallCount := 0
-	var halt bool
+	callCount := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -42,47 +62,75 @@ func (a *Agent) execute(
 		default:
 		}
 
-		llmCallCount++
-		phase := fmt.Sprintf("%s_llm_%d. Msg: %s", a.id, llmCallCount, truncate(payload.Message, 100))
-		logger.Timing.StartPhase(correlationID, phase)
-
-		resp, err := a.llmClient.Chat(ctx, &llm.Request{
-			Messages: messages,
-			Tools:    a.tools,
-			Metadata: map[string]string{
-				"agent_id":       a.id,
-				"correlation_id": correlationID,
-			},
-		})
+		callCount++
+		resp, err := caller(ctx, messages, correlationID, callCount, payload)
 		if err != nil {
-			logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{"error": "failed"})
-			return "", fmt.Errorf("llm request failed: %w", err)
+			return "", err
 		}
-
-		logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{
-			"model":            a.llmClient.Model(),
-			"agent":            a.name,
-			"input_tokens":     resp.Usage.InputTokens,
-			"output_tokens":    resp.Usage.OutputTokens,
-			"cached_tokens":    resp.Usage.CachedTokens,
-			"total_tokens":     resp.Usage.TotalTokens,
-			"stop_reason":      resp.StopReason,
-			"tool_calls_count": len(resp.ToolCalls),
-		})
 
 		if !resp.HasToolCalls() {
 			a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
+			if resp.Content == "" {
+				// LLM returned empty content — send a fallback so the user isn't left waiting.
+				a.safeSend(core.Event{
+					Type:          core.OutboundMessage,
+					CorrelationID: correlationID,
+					AgentID:       a.id,
+					Payload: core.OutboundMessagePayload{
+						Channel: payload.Channel,
+						Content: "I completed the task but had nothing to add.",
+					},
+				}, "empty response fallback")
+			}
 			return resp.Content, nil
 		}
-		var processErr error
-		messages, halt, processErr = a.processToolCalls(ctx, sessionID, correlationID, payload, messages, resp)
-		if processErr != nil {
-			return "", processErr
+
+		var halt bool
+		messages, halt, err = a.processToolCalls(ctx, sessionID, correlationID, payload, messages, resp)
+		if err != nil {
+			return "", err
 		}
 		if halt {
 			return "", nil
 		}
 	}
+}
+
+// callLLM performs a single blocking LLM call and returns a unified Response.
+func (a *Agent) callLLM(
+	ctx context.Context,
+	msgs []llm.Message,
+	correlationID string,
+	callCount int,
+	payload core.AgentExecutePayload,
+) (*llm.Response, error) {
+	phase := fmt.Sprintf("%s_llm_%d. Msg: %s", a.id, callCount, truncate(payload.Message, 100))
+	logger.Timing.StartPhase(correlationID, phase)
+
+	resp, err := a.llmClient.Chat(ctx, &llm.Request{
+		Messages: msgs,
+		Tools:    a.tools,
+		Metadata: map[string]string{
+			"agent_id":       a.id,
+			"correlation_id": correlationID,
+		},
+	})
+	if err != nil {
+		logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{"error": "llm call failed"})
+		return nil, fmt.Errorf("llm call failed: %w", err)
+	}
+
+	logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{
+		"model":            a.llmClient.Model(),
+		"agent":            a.name,
+		"input_tokens":     resp.Usage.InputTokens,
+		"output_tokens":    resp.Usage.OutputTokens,
+		"total_tokens":     resp.Usage.TotalTokens,
+		"stop_reason":      resp.StopReason,
+		"tool_calls_count": len(resp.ToolCalls),
+	})
+
+	return resp, nil
 }
 
 // prepareExecution loads history and builds the initial messages slice.

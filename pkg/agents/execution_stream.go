@@ -11,122 +11,83 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
+// executeStream runs the agent using a streaming LLM call, emitting tokens
+// as they arrive via OutboundToken events.
 func (a *Agent) executeStream(
 	ctx context.Context,
 	payload core.AgentExecutePayload,
 	correlationID string,
 ) (string, error) {
-	if payload.Channel == nil {
-		return "", fmt.Errorf("execute: nil channel in payload (correlation_id: %s)", correlationID)
-	}
-	sessionID := payload.Channel.SessionID
+	return a.runExecutionLoop(ctx, payload, correlationID, a.callLLMStream)
+}
 
-	// Serialize turns for this agent+session — prevents turn 2 reading
-	// history before turn 1 has finished writing all its tool results
-	lock := a.turnLockFor(sessionID)
-	lock.Lock()
-	defer lock.Unlock()
+// callLLMStream performs a single streaming LLM call, emitting OutboundToken
+// events for each token received, and returns a unified Response on completion.
+func (a *Agent) callLLMStream(
+	ctx context.Context,
+	msgs []llm.Message,
+	correlationID string,
+	callCount int,
+	payload core.AgentExecutePayload,
+) (*llm.Response, error) {
+	phase := fmt.Sprintf("%s_llm_stream_%d. Msg: %s", a.id, callCount, truncate(payload.Message, 100))
+	logger.Timing.StartPhase(correlationID, phase)
 
-	sessionID, messages, err := a.prepareExecution(ctx, payload, correlationID)
+	streamCh := a.llmClient.ChatStream(ctx, &llm.Request{
+		Messages: msgs,
+		Tools:    a.tools,
+		Metadata: map[string]string{
+			"agent_id":       a.id,
+			"correlation_id": correlationID,
+		},
+	})
+
+	fullContent, toolCalls, inputTokens, outputTokens, err := collectToolCalls(
+		streamCh,
+		func(token, accumulated string) {
+			a.safeSend(core.Event{
+				Type:          core.OutboundToken,
+				CorrelationID: correlationID,
+				AgentID:       a.id,
+				Payload: core.OutboundTokenPayload{
+					Channel:            payload.Channel,
+					Token:              token,
+					AccumulatedContent: accumulated,
+				},
+			}, "agent token")
+		},
+	)
 	if err != nil {
-		return "", err
+		logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{"error": "stream failed"})
+		return nil, fmt.Errorf("llm stream failed: %w", err)
 	}
 
-	llmCallCount := 0
-	var halt bool
-	for {
-		select {
-		case <-ctx.Done():
-			return "", fmt.Errorf("request cancelled: %w", ctx.Err())
-		default:
-		}
-
-		llmCallCount++
-		phase := fmt.Sprintf("%s_llm_stream_%d. Msg: %s", a.id, llmCallCount, truncate(payload.Message, 100))
-		logger.Timing.StartPhase(correlationID, phase)
-
-		// ── Consume the stream ────────────────────────────────────────────────
-		streamCh := a.llmClient.ChatStream(ctx, &llm.Request{
-			Messages: messages,
-			Tools:    a.tools,
-			Metadata: map[string]string{
-				"agent_id":       a.id,
-				"correlation_id": correlationID,
-			},
-		})
-
-		fullContent, toolCalls, inputTokens, outputTokens, streamErr := collectToolCalls(
-			streamCh,
-			func(token, accumulated string) {
-				a.safeSend(core.Event{
-					Type:          core.OutboundToken,
-					CorrelationID: correlationID,
-					AgentID:       a.id,
-					Payload: core.OutboundTokenPayload{
-						Channel:            payload.Channel,
-						Token:              token,
-						AccumulatedContent: accumulated,
-					},
-				}, "agent token")
-			},
-		)
-
-		if streamErr != nil {
-			logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{"error": "stream failed"})
-			return "", fmt.Errorf("llm stream failed: %w", streamErr)
-		}
-
-		// Reconstruct a *Response so the rest of the loop is identical to execute.
-		stopReason := "end_turn"
-		if len(toolCalls) > 0 {
-			stopReason = "tool_use"
-		}
-		resp := &llm.Response{
-			Content:    fullContent,
-			ToolCalls:  toolCalls,
-			StopReason: stopReason,
-			Usage: llm.Usage{
-				InputTokens:  inputTokens,
-				OutputTokens: outputTokens,
-				TotalTokens:  inputTokens + outputTokens,
-			},
-		}
-
-		logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{
-			"model":            a.llmClient.Model(),
-			"agent":            a.name,
-			"input_tokens":     resp.Usage.InputTokens,
-			"output_tokens":    resp.Usage.OutputTokens,
-			"total_tokens":     resp.Usage.TotalTokens,
-			"stop_reason":      resp.StopReason,
-			"tool_calls_count": len(resp.ToolCalls),
-		})
-
-		if !resp.HasToolCalls() {
-			a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
-			if resp.Content == "" {
-				// LLM returned empty content — send a fallback so user isn't left waiting
-				a.safeSend(core.Event{
-					Type:          core.OutboundMessage,
-					CorrelationID: correlationID,
-					AgentID:       a.id,
-					Payload: core.OutboundMessagePayload{
-						Channel: payload.Channel,
-						Content: "I completed the task but had nothing to add.",
-					},
-				}, "empty response fallback")
-			}
-			return resp.Content, nil
-		}
-		var processErr error
-		messages, halt, processErr = a.processToolCalls(ctx, sessionID, correlationID, payload, messages, resp)
-		if processErr != nil {
-			return "", processErr
-		}
-		if halt {
-			return "", nil
-		}
+	stopReason := "end_turn"
+	if len(toolCalls) > 0 {
+		stopReason = "tool_use"
 	}
+	resp := &llm.Response{
+		Content:    fullContent,
+		ToolCalls:  toolCalls,
+		StopReason: stopReason,
+		Usage: llm.Usage{
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
+			TotalTokens:  inputTokens + outputTokens,
+		},
+	}
+
+	logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{
+		"model":            a.llmClient.Model(),
+		"agent":            a.name,
+		"input_tokens":     resp.Usage.InputTokens,
+		"output_tokens":    resp.Usage.OutputTokens,
+		"total_tokens":     resp.Usage.TotalTokens,
+		"stop_reason":      resp.StopReason,
+		"tool_calls_count": len(resp.ToolCalls),
+	})
+
+	return resp, nil
 }
 
 func (a *Agent) shouldStream(payload core.AgentExecutePayload) bool {
