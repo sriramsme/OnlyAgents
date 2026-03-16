@@ -1,6 +1,6 @@
 module github.com/sriramsme/OnlyAgents
 
-go 1.25.5
+go 1.25.7
 
 require (
 	cloud.google.com/go/secretmanager v1.16.0
@@ -17,7 +17,7 @@ require (
 	github.com/hashicorp/vault/api v1.22.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/mymmrac/telego v1.6.0
+	github.com/mymmrac/telego v1.7.0
 	github.com/openai/openai-go/v3 v3.24.0
 	github.com/pdfcpu/pdfcpu v0.11.1
 	github.com/robfig/cron/v3 v3.0.1
@@ -123,7 +123,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.69.0 // indirect
-	github.com/valyala/fastjson v1.6.7 // indirect
+	github.com/valyala/fastjson v1.6.10 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0 // indirect
