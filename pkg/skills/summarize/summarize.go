@@ -12,13 +12,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-// maxChunkChars is the max content size sent to the LLM in a single call.
-// Content larger than this is chunked, summarized in parts, then merged.
 const maxChunkChars = 24000
-
-func init() {
-	skills.Register("summarize", NewSummarizeSkill)
-}
 
 type SummarizeSkill struct {
 	ctx    context.Context
@@ -27,31 +21,58 @@ type SummarizeSkill struct {
 	llmClient llm.Client
 }
 
-func NewSummarizeSkill(ctx context.Context, cfg config.Skill,
-	conn connectors.Connector, security config.SecurityConfig,
-) (skills.Skill, error) {
-	if conn != nil {
-		return nil, fmt.Errorf("summarize: connector should be nil")
-	}
-
-	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
-
-	if cfg.LLM == nil {
-		return nil, fmt.Errorf("summarize: llm config required")
-	}
-
-	client, err := llm.NewFromConfig(*cfg.LLM)
-	if err != nil {
-		return nil, fmt.Errorf("summarize: llm init: %w", err)
+// external path — defaults baked in
+func New(ctx context.Context, client llm.Client) (*SummarizeSkill, error) {
+	if client == nil {
+		return nil, fmt.Errorf("summarize: llm client required")
 	}
 
 	skillCtx, cancel := context.WithCancel(ctx)
+
 	return &SummarizeSkill{
-		BaseSkill: base,
+		BaseSkill: skills.NewBaseSkill(skills.BaseSkillInfo{
+			Name:        "summarize",
+			Description: "Summarizes text using an LLM",
+			Version:     "1.0.0",
+			Enabled:     true,
+			AccessLevel: "read",
+		}, skills.SkillTypeNative),
 		llmClient: client,
 		ctx:       skillCtx,
 		cancel:    cancel,
 	}, nil
+}
+
+// internal path — config drives everything, never touches New()
+func init() {
+	skills.Register("summarize", func(
+		ctx context.Context,
+		cfg config.Skill,
+		conn connectors.Connector,
+		security config.SecurityConfig,
+	) (skills.Skill, error) {
+		if conn != nil {
+			return nil, fmt.Errorf("summarize: connector should be nil")
+		}
+
+		if cfg.LLM == nil {
+			return nil, fmt.Errorf("summarize: llm config required")
+		}
+
+		client, err := llm.NewFromConfig(*cfg.LLM)
+		if err != nil {
+			return nil, fmt.Errorf("summarize: llm init: %w", err)
+		}
+
+		skillCtx, cancel := context.WithCancel(ctx)
+
+		return &SummarizeSkill{
+			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
+			llmClient: client,
+			ctx:       skillCtx,
+			cancel:    cancel,
+		}, nil
+	})
 }
 
 func (s *SummarizeSkill) Initialize() error {

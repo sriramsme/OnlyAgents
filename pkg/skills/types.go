@@ -3,7 +3,6 @@ package skills
 import (
 	"context"
 
-	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -42,16 +41,4 @@ type Skill interface {
 
 	// Shutdown is called when kernel shuts down
 	Shutdown() error
-}
-
-// BaseSkill provides common functionality for all skills
-type BaseSkill struct {
-	name        string
-	description string
-	enabled     bool
-	accessLevel string
-	version     string
-	skillType   SkillType
-
-	outbox chan<- core.Event
 }

@@ -12,10 +12,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-func init() {
-	skills.Register("calendar", NewCalendarSkill)
-}
-
 type CalendarSkill struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -23,22 +19,50 @@ type CalendarSkill struct {
 	conn connectors.CalendarConnector
 }
 
-func NewCalendarSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
-	security config.SecurityConfig,
-) (skills.Skill, error) {
-	calendarConn, ok := conn.(connectors.CalendarConnector)
-	if !ok {
-		fmt.Printf("calendar skill: connector is not a CalendarConnector %T\n", conn)
-		return nil, fmt.Errorf("calendar skill: connector is not a CalendarConnector")
+// external path — defaults baked in
+func New(ctx context.Context, conn connectors.CalendarConnector) (*CalendarSkill, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("calendar: connector required")
 	}
-	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
+
 	skillCtx, cancel := context.WithCancel(ctx)
+
 	return &CalendarSkill{
-		BaseSkill: base,
-		conn:      calendarConn,
-		ctx:       skillCtx,
-		cancel:    cancel,
+		BaseSkill: skills.NewBaseSkill(skills.BaseSkillInfo{
+			Name:        "calendar",
+			Description: "Create, view, and manage calendar events",
+			Version:     "1.0.0",
+			Enabled:     true,
+		}, skills.SkillTypeNative),
+		conn:   conn,
+		ctx:    skillCtx,
+		cancel: cancel,
 	}, nil
+}
+
+// internal path — config drives everything, never touches New()
+func init() {
+	skills.Register("calendar", func(
+		ctx context.Context,
+		cfg config.Skill,
+		conn connectors.Connector,
+		security config.SecurityConfig,
+	) (skills.Skill, error) {
+		calendarConn, ok := conn.(connectors.CalendarConnector)
+		if !ok {
+			fmt.Printf("calendar: connector is not a CalendarConnector %T\n", conn)
+			return nil, fmt.Errorf("calendar: connector is not a CalendarConnector")
+		}
+
+		skillCtx, cancel := context.WithCancel(ctx)
+
+		return &CalendarSkill{
+			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
+			conn:      calendarConn,
+			ctx:       skillCtx,
+			cancel:    cancel,
+		}, nil
+	})
 }
 
 func (s *CalendarSkill) Initialize() error {

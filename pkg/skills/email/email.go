@@ -11,10 +11,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-func init() {
-	skills.Register("email", NewEmailSkill)
-}
-
 // EmailSkill provides email management capabilities
 type EmailSkill struct {
 	ctx    context.Context
@@ -27,23 +23,50 @@ type EmailSkill struct {
 }
 
 // NewEmailSkill creates a new email skill
-func NewEmailSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
-	security config.SecurityConfig,
-) (skills.Skill, error) {
-	emailConn, ok := conn.(connectors.EmailConnector)
-	if !ok {
-		return nil, fmt.Errorf("email skill: connector is not a EmailConnector")
+// external path — defaults baked in
+func New(ctx context.Context, conn connectors.EmailConnector) (*EmailSkill, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("email: connector required")
 	}
-	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
 
-	skillCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is called in Stop()
+	skillCtx, cancel := context.WithCancel(ctx)
 
 	return &EmailSkill{
-		BaseSkill: base,
-		conn:      emailConn,
-		ctx:       skillCtx,
-		cancel:    cancel,
+		BaseSkill: skills.NewBaseSkill(skills.BaseSkillInfo{
+			Name:        "email",
+			Description: "Send, search, and manage emails",
+			Version:     "1.0.0",
+			Enabled:     true,
+			AccessLevel: "read",
+		}, skills.SkillTypeNative),
+		conn:   conn,
+		ctx:    skillCtx,
+		cancel: cancel,
 	}, nil
+}
+
+// internal path — config drives everything, never touches New()
+func init() {
+	skills.Register("email", func(
+		ctx context.Context,
+		cfg config.Skill,
+		conn connectors.Connector,
+		security config.SecurityConfig,
+	) (skills.Skill, error) {
+		emailConn, ok := conn.(connectors.EmailConnector)
+		if !ok {
+			return nil, fmt.Errorf("email: connector is not an EmailConnector")
+		}
+
+		skillCtx, cancel := context.WithCancel(ctx)
+
+		return &EmailSkill{
+			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
+			conn:      emailConn,
+			ctx:       skillCtx,
+			cancel:    cancel,
+		}, nil
+	})
 }
 
 // Initialize sets up the email skill with injected connectors

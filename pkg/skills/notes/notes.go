@@ -11,10 +11,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-func init() {
-	skills.Register("notes", NewNotesSkill)
-}
-
 type NotesSkill struct {
 	*skills.BaseSkill
 	conn connectors.NotesConnector
@@ -23,21 +19,48 @@ type NotesSkill struct {
 	cancel context.CancelFunc
 }
 
-func NewNotesSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
-	security config.SecurityConfig,
-) (skills.Skill, error) {
-	notesConn, ok := conn.(connectors.NotesConnector)
-	if !ok {
-		return nil, fmt.Errorf("notes skill: connector is not a NotesConnector")
+// external path — defaults baked in
+func New(ctx context.Context, conn connectors.NotesConnector) (*NotesSkill, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("notes: connector required")
 	}
-	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
-	notesCtx, cancel := context.WithCancel(ctx)
+
+	skillCtx, cancel := context.WithCancel(ctx)
+
 	return &NotesSkill{
-		BaseSkill: base,
-		conn:      notesConn,
-		ctx:       notesCtx,
-		cancel:    cancel,
+		BaseSkill: skills.NewBaseSkill(skills.BaseSkillInfo{
+			Name:        "notes",
+			Description: "Create, read, update, and manage notes",
+			Version:     "1.0.0",
+		}, skills.SkillTypeNative),
+		conn:   conn,
+		ctx:    skillCtx,
+		cancel: cancel,
 	}, nil
+}
+
+// internal path — config drives everything, never touches New()
+func init() {
+	skills.Register("notes", func(
+		ctx context.Context,
+		cfg config.Skill,
+		conn connectors.Connector,
+		security config.SecurityConfig,
+	) (skills.Skill, error) {
+		notesConn, ok := conn.(connectors.NotesConnector)
+		if !ok {
+			return nil, fmt.Errorf("notes: connector is not a NotesConnector")
+		}
+
+		skillCtx, cancel := context.WithCancel(ctx)
+
+		return &NotesSkill{
+			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
+			conn:      notesConn,
+			ctx:       skillCtx,
+			cancel:    cancel,
+		}, nil
+	})
 }
 
 func (s *NotesSkill) Initialize() error {

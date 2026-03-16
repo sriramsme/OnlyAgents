@@ -12,10 +12,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-func init() {
-	skills.Register("tasks", NewTasksSkill)
-}
-
 type TasksSkill struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -23,21 +19,48 @@ type TasksSkill struct {
 	conn connectors.TasksConnector
 }
 
-func NewTasksSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
-	security config.SecurityConfig,
-) (skills.Skill, error) {
-	tasksConn, ok := conn.(connectors.TasksConnector)
-	if !ok {
-		return nil, fmt.Errorf("tasks skill: connector is not a TasksConnector")
+// external path — defaults baked in
+func New(ctx context.Context, conn connectors.TasksConnector) (*TasksSkill, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("tasks: connector required")
 	}
-	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
+
 	skillCtx, cancel := context.WithCancel(ctx)
+
 	return &TasksSkill{
-		BaseSkill: base,
-		conn:      tasksConn,
-		ctx:       skillCtx,
-		cancel:    cancel,
+		BaseSkill: skills.NewBaseSkill(skills.BaseSkillInfo{
+			Name:        "tasks",
+			Description: "Create, list, and manage tasks",
+			Version:     "1.0.0",
+		}, skills.SkillTypeNative),
+		conn:   conn,
+		ctx:    skillCtx,
+		cancel: cancel,
 	}, nil
+}
+
+// internal path — config drives everything, never touches New()
+func init() {
+	skills.Register("tasks", func(
+		ctx context.Context,
+		cfg config.Skill,
+		conn connectors.Connector,
+		security config.SecurityConfig,
+	) (skills.Skill, error) {
+		tasksConn, ok := conn.(connectors.TasksConnector)
+		if !ok {
+			return nil, fmt.Errorf("tasks: connector is not a TasksConnector")
+		}
+
+		skillCtx, cancel := context.WithCancel(ctx)
+
+		return &TasksSkill{
+			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
+			conn:      tasksConn,
+			ctx:       skillCtx,
+			cancel:    cancel,
+		}, nil
+	})
 }
 
 func (s *TasksSkill) Initialize() error {

@@ -17,10 +17,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-func init() {
-	skills.Register("websearch", NewWebSearchSkill)
-}
-
 // WebSearchSkill provides web search capabilities
 type WebSearchSkill struct {
 	ctx    context.Context
@@ -31,24 +27,52 @@ type WebSearchSkill struct {
 	conn connectors.WebSearchConnector
 }
 
-// NewWebSearchSkill creates a new web search skill
-func NewWebSearchSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
-	security config.SecurityConfig,
-) (skills.Skill, error) {
-	webSearchConn, ok := conn.(connectors.WebSearchConnector)
-	if !ok {
-		return nil, fmt.Errorf("websearch skill: connector is not a WebSearchConnector")
+// New creates a new web search skill
+// external path — defaults baked in
+func New(ctx context.Context, conn connectors.WebSearchConnector) (*WebSearchSkill, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("websearch: connector required")
 	}
-	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
 
 	skillCtx, cancel := context.WithCancel(ctx)
 
 	return &WebSearchSkill{
-		BaseSkill: base,
-		conn:      webSearchConn,
-		ctx:       skillCtx,
-		cancel:    cancel,
+		BaseSkill: skills.NewBaseSkill(skills.BaseSkillInfo{
+			Name:        "websearch",
+			Description: "Search the web using available search connectors",
+			Version:     "1.0.0",
+			Enabled:     true,
+			AccessLevel: "read",
+		}, skills.SkillTypeNative),
+
+		conn:   conn,
+		ctx:    skillCtx,
+		cancel: cancel,
 	}, nil
+}
+
+// internal path — config drives everything, never touches New()
+func init() {
+	skills.Register("websearch", func(
+		ctx context.Context,
+		cfg config.Skill,
+		conn connectors.Connector,
+		security config.SecurityConfig,
+	) (skills.Skill, error) {
+		webSearchConn, ok := conn.(connectors.WebSearchConnector)
+		if !ok {
+			return nil, fmt.Errorf("websearch: connector is not a WebSearchConnector")
+		}
+
+		skillCtx, cancel := context.WithCancel(ctx)
+
+		return &WebSearchSkill{
+			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
+			conn:      webSearchConn,
+			ctx:       skillCtx,
+			cancel:    cancel,
+		}, nil
+	})
 }
 
 // Initialize sets up the web search skill with injected connectors

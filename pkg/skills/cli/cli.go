@@ -43,7 +43,7 @@ func NewCLISkill(ctx context.Context, cfg config.Skill, conn connectors.Connecto
 	if conn != nil {
 		return nil, fmt.Errorf("cli skill: connector is not empty")
 	}
-	base := skills.NewBaseSkill(cfg, skills.SkillTypeCLI)
+	base := skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeCLI)
 	executor := NewCLIExecutor(ctx, &cfg.Executor, security, cfg.Requires.Env)
 
 	toolDefs := make([]tools.ToolDef, 0, len(cfg.Tools))

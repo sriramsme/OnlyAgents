@@ -12,10 +12,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-func init() {
-	skills.Register("reminders", NewRemindersSkill)
-}
-
 type RemindersSkill struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -23,21 +19,41 @@ type RemindersSkill struct {
 	conn connectors.RemindersConnector
 }
 
-func NewRemindersSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
-	security config.SecurityConfig,
-) (skills.Skill, error) {
-	remindersConn, ok := conn.(connectors.RemindersConnector)
-	if !ok {
-		return nil, fmt.Errorf("reminders skill: connector is not a RemindersConnector")
+// external path — defaults baked in
+func New(ctx context.Context, conn connectors.RemindersConnector) (*RemindersSkill, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("reminders: connector required")
 	}
-	base := skills.NewBaseSkill(cfg, skills.SkillTypeNative)
 	skillCtx, cancel := context.WithCancel(ctx)
 	return &RemindersSkill{
-		BaseSkill: base,
-		conn:      remindersConn,
-		ctx:       skillCtx,
-		cancel:    cancel,
+		BaseSkill: skills.NewBaseSkill(skills.BaseSkillInfo{
+			Name:        "reminders",
+			Description: "Create, list, and manage reminders",
+			Version:     "1.0.0",
+		}, skills.SkillTypeNative),
+		conn:   conn,
+		ctx:    skillCtx,
+		cancel: cancel,
 	}, nil
+}
+
+// internal path — config drives everything, never touches New()
+func init() {
+	skills.Register("reminders", func(ctx context.Context, cfg config.Skill,
+		conn connectors.Connector, security config.SecurityConfig,
+	) (skills.Skill, error) {
+		remindersConn, ok := conn.(connectors.RemindersConnector)
+		if !ok {
+			return nil, fmt.Errorf("reminders: connector is not a RemindersConnector")
+		}
+		skillCtx, cancel := context.WithCancel(ctx)
+		return &RemindersSkill{
+			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
+			conn:      remindersConn,
+			ctx:       skillCtx,
+			cancel:    cancel,
+		}, nil
+	})
 }
 
 func (s *RemindersSkill) Initialize() error {
