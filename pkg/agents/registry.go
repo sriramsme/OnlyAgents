@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 
@@ -18,13 +17,12 @@ import (
 // Accept parent context to pass to agents
 func NewRegistry(
 	ctx context.Context,
-	v vault.Vault,
 	outbox chan<- core.Event,
 	uiBus core.UIBus,
 	cm *memory.ConversationManager,
 	mm *memory.MemoryManager,
 ) (*Registry, error) {
-	configs, err := config.LoadAllAgentsConfig(v)
+	configs, err := config.LoadAllAgentsConfig()
 	if err != nil {
 		return nil, fmt.Errorf("load agent configs: %w", err)
 	}

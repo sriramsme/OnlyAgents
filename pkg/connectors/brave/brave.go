@@ -23,7 +23,7 @@ func init() {
 
 // Config holds Brave-specific configuration
 type Config struct {
-	config.ConnectorConfig
+	config.Connector
 	MaxResults int `yaml:"max_results"` // Default max results
 }
 
@@ -42,12 +42,12 @@ type BraveConnector struct {
 // NewConnector creates a new Brave connector
 func NewConnector(
 	ctx context.Context,
-	cfg config.ConnectorConfig,
+	cfg config.Connector,
 	v vault.Vault,
 	bus chan<- core.Event,
 ) (connectors.WebSearchConnector, error) {
 	braveCfg := &Config{
-		ConnectorConfig: cfg,
+		Connector: cfg,
 	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{

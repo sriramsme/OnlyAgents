@@ -27,7 +27,7 @@ type SummarizeSkill struct {
 	llmClient llm.Client
 }
 
-func NewSummarizeSkill(ctx context.Context, cfg config.SkillConfig,
+func NewSummarizeSkill(ctx context.Context, cfg config.Skill,
 	conn connectors.Connector, security config.SecurityConfig,
 ) (skills.Skill, error) {
 	if conn != nil {

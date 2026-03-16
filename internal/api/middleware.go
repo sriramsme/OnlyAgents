@@ -19,13 +19,13 @@ type (
 
 // Middleware holds the server config needed to build middleware chains
 type Middleware struct {
-	cfg    config.ServerConfig
+	cfg    config.Server
 	auth   *auth.Auth
 	apiKey string
 	logger *slog.Logger
 }
 
-func NewMiddleware(cfg config.ServerConfig, a *auth.Auth, apiKey string, logger *slog.Logger) *Middleware {
+func NewMiddleware(cfg config.Server, a *auth.Auth, apiKey string, logger *slog.Logger) *Middleware {
 	return &Middleware{cfg: cfg, auth: a, apiKey: apiKey, logger: logger}
 }
 

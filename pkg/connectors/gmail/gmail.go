@@ -29,7 +29,7 @@ func init() {
 
 // Config holds Gmail-specific configuration
 type Config struct {
-	config.ConnectorConfig
+	config.Connector
 	// OAuth
 	OAuthConfig *oauth2.Config `yaml:"-"` // Built from credentials
 }
@@ -47,12 +47,12 @@ type GmailConnector struct {
 // NewConnector creates a new Gmail connector
 func NewConnector(
 	ctx context.Context,
-	cfg config.ConnectorConfig,
+	cfg config.Connector,
 	v vault.Vault,
 	eventBus chan<- core.Event,
 ) (connectors.Connector, error) {
 	gmailCfg := &Config{
-		ConnectorConfig: cfg,
+		Connector: cfg,
 	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{

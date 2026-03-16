@@ -23,7 +23,7 @@ type RemindersSkill struct {
 	conn connectors.RemindersConnector
 }
 
-func NewRemindersSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+func NewRemindersSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
 	security config.SecurityConfig,
 ) (skills.Skill, error) {
 	remindersConn, ok := conn.(connectors.RemindersConnector)

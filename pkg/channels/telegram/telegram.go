@@ -57,14 +57,14 @@ type TelegramChannel struct {
 // NewChannel creates a new Telegram channel
 func NewChannel(
 	ctx context.Context,
-	cfg config.ChannelConfig,
+	cfg config.Channel,
 	vault vault.Vault,
 	eventBus chan<- core.Event,
 ) (channels.Channel, error) {
 	// Decode RawConfig into telegram-specific fields only
 	// Start with base fields already decoded — VaultPaths, Enabled, etc. all present
 	telegramCfg := &Config{
-		ChannelConfig: cfg,
+		Channel: cfg,
 	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{

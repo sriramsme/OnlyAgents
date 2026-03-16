@@ -23,7 +23,7 @@ type ConvertResult struct {
 	// Content is the fully-formatted YAML ready to be written to disk.
 	Content string
 	// Parsed is the validated in-memory representation of Content.
-	Parsed *config.SkillConfig
+	Parsed *config.Skill
 }
 
 // ConvertSKILL takes arbitrary skill content and uses the LLM to rewrite
@@ -69,8 +69,8 @@ func ConvertSKILL(ctx context.Context, client llm.Client, raw string, opts Conve
 	}, nil
 }
 
-// ParseSkillFile converts a loaded SkillFile into a config.SkillConfig.
-func ParseSkillFile(sf *config.SkillConfig) (*config.SkillConfig, error) {
+// ParseSkillFile converts a loaded SkillFile into a config.Skill.
+func ParseSkillFile(sf *config.Skill) (*config.Skill, error) {
 	if len(sf.Tools) == 0 {
 		return nil, fmt.Errorf("skill %q has no tools defined", sf.Name)
 	}
@@ -92,7 +92,7 @@ func ParseSkillFile(sf *config.SkillConfig) (*config.SkillConfig, error) {
 }
 
 // validateYAMLOutput parses and validates the LLM's YAML output.
-func validateYAMLOutput(content string) (*config.SkillConfig, error) {
+func validateYAMLOutput(content string) (*config.Skill, error) {
 	sf, err := parseYAMLString(content)
 	if err != nil {
 		return nil, err
@@ -117,10 +117,10 @@ func validateYAMLOutput(content string) (*config.SkillConfig, error) {
 	return sf, nil
 }
 
-func parseYAMLString(content string) (*config.SkillConfig, error) {
+func parseYAMLString(content string) (*config.Skill, error) {
 	// Strip yaml fences if model wrapped output
 	content = stripYAMLFence(content)
-	var sf config.SkillConfig
+	var sf config.Skill
 	if err := yaml.Unmarshal([]byte(content), &sf); err != nil {
 		return nil, fmt.Errorf("invalid YAML: %w", err)
 	}

@@ -12,7 +12,7 @@ import (
 // Factory creates a skill from a config.
 type Factory func(
 	ctx context.Context,
-	cfg config.SkillConfig,
+	cfg config.Skill,
 	conn connectors.Connector,
 	security config.SecurityConfig,
 ) (Skill, error)
@@ -37,7 +37,7 @@ func Register(key string, factory Factory) {
 	factories[key] = factory
 }
 
-func getFactory(cfg config.SkillConfig) (Factory, error) {
+func getFactory(cfg config.Skill) (Factory, error) {
 	factoryMu.RLock()
 	defer factoryMu.RUnlock()
 	switch cfg.Type {

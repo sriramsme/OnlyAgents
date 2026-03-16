@@ -5,15 +5,33 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/sriramsme/OnlyAgents/internal/config"
 )
 
-var providers = map[ProviderType]func(Config) (Vault, error){}
+var providers = map[ProviderType]func(config.Vault) (Vault, error){}
 
-func registerProvider(t ProviderType, fn func(Config) (Vault, error)) {
+func registerProvider(t ProviderType, fn func(config.Vault) (Vault, error)) {
 	providers[t] = fn
 }
 
-func NewVault(cfg Config) (Vault, error) {
+// LoadVault reads configs/vault.yaml, initialises the vault, and returns it.
+// The caller (entry point) owns the vault and must call v.Close() on shutdown.
+func LoadVault() (Vault, error) {
+	configPath := config.VaultPath()
+	vc, err := config.LoadVaultConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	v, err := NewVault(*vc)
+	if err != nil {
+		return nil, fmt.Errorf("init vault: %w", err)
+	}
+	return v, nil
+}
+
+func NewVault(cfg config.Vault) (Vault, error) {
 	// Default to env if not specified
 	if cfg.Type == "" {
 		cfg.Type = string(ProviderEnv)

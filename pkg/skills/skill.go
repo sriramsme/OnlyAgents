@@ -6,7 +6,7 @@ import (
 )
 
 // NewBaseSkill creates a new base skill
-func NewBaseSkill(cfg config.SkillConfig, t SkillType) *BaseSkill {
+func NewBaseSkill(cfg config.Skill, t SkillType) *BaseSkill {
 	return &BaseSkill{
 		name:        cfg.Name,
 		description: cfg.Description,

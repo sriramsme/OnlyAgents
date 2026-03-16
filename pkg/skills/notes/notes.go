@@ -23,7 +23,7 @@ type NotesSkill struct {
 	cancel context.CancelFunc
 }
 
-func NewNotesSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+func NewNotesSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
 	security config.SecurityConfig,
 ) (skills.Skill, error) {
 	notesConn, ok := conn.(connectors.NotesConnector)

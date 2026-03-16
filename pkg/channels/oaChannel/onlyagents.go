@@ -60,12 +60,12 @@ type OAChannel struct {
 // NewChannel satisfies the channels.ChannelConstructor signature.
 func NewChannel(
 	ctx context.Context,
-	cfg config.ChannelConfig,
+	cfg config.Channel,
 	v vault.Vault,
 	eventBus chan<- core.Event,
 ) (channels.Channel, error) {
 	oaCfg := &Config{
-		ChannelConfig: cfg,
+		Channel: cfg,
 	}
 
 	// Decode RawConfig on top for telegram-specific fields only

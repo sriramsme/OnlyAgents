@@ -11,8 +11,8 @@ import (
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 // ConnectorRegistry loads all connector configs from the connectors dir.
-func ConnectorRegistry(connectorsDir string) ([]config.ConnectorConfig, error) {
-	connectors, err := LoadDir[config.ConnectorConfig](connectorsDir)
+func ConnectorRegistry(connectorsDir string) ([]config.Connector, error) {
+	connectors, err := LoadDir[config.Connector](connectorsDir)
 	if err != nil {
 		return nil, fmt.Errorf("connector registry: %w", err)
 	}
@@ -22,8 +22,8 @@ func ConnectorRegistry(connectorsDir string) ([]config.ConnectorConfig, error) {
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // EnabledConnectors returns only connectors with Enabled = true.
-func EnabledConnectors(connectors []config.ConnectorConfig) []config.ConnectorConfig {
-	var out []config.ConnectorConfig
+func EnabledConnectors(connectors []config.Connector) []config.Connector {
+	var out []config.Connector
 	for _, c := range connectors {
 		if c.Enabled {
 			out = append(out, c)
@@ -33,16 +33,16 @@ func EnabledConnectors(connectors []config.ConnectorConfig) []config.ConnectorCo
 }
 
 // FindConnector returns the first connector matching name.
-func FindConnector(connectors []config.ConnectorConfig, name string) (config.ConnectorConfig, error) {
+func FindConnector(connectors []config.Connector, name string) (config.Connector, error) {
 	for _, c := range connectors {
 		if c.Name == name {
 			return c, nil
 		}
 	}
-	return config.ConnectorConfig{}, fmt.Errorf("connector %q not found", name)
+	return config.Connector{}, fmt.Errorf("connector %q not found", name)
 }
 
-func SetupConnector(cfg config.ConnectorConfig, envPath, connectorsDir string) error {
+func SetupConnector(cfg config.Connector, envPath, connectorsDir string) error {
 	if cfg.Instructions != "" {
 		Hint(cfg.Instructions)
 	}
@@ -77,7 +77,7 @@ func ConnectorSetEnabled(connectorsDir, name string, enabled bool) error {
 // ── Validation ────────────────────────────────────────────────────────────────
 
 // ValidateConnectors checks for common connector config problems.
-func ValidateConnectors(connectors []config.ConnectorConfig) []string {
+func ValidateConnectors(connectors []config.Connector) []string {
 	var issues []string
 	seenNames := map[string]int{}
 
@@ -101,7 +101,7 @@ func ValidateConnectors(connectors []config.ConnectorConfig) []string {
 // ── Display ───────────────────────────────────────────────────────────────────
 
 // ConnectorSummaryLine returns a single-line summary for table output.
-func ConnectorSummaryLine(c config.ConnectorConfig) string {
+func ConnectorSummaryLine(c config.Connector) string {
 	return fmt.Sprintf("%-20s %-12s %s",
 		c.Name,
 		c.Type,

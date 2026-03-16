@@ -11,8 +11,8 @@ import (
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 // ChannelRegistry loads all channel configs from the channels dir.
-func ChannelRegistry(channelsDir string) ([]config.ChannelConfig, error) {
-	channels, err := LoadDir[config.ChannelConfig](channelsDir)
+func ChannelRegistry(channelsDir string) ([]config.Channel, error) {
+	channels, err := LoadDir[config.Channel](channelsDir)
 	if err != nil {
 		return nil, fmt.Errorf("channel registry: %w", err)
 	}
@@ -22,8 +22,8 @@ func ChannelRegistry(channelsDir string) ([]config.ChannelConfig, error) {
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // EnabledChannels returns only channels with Enabled = true.
-func EnabledChannels(channels []config.ChannelConfig) []config.ChannelConfig {
-	var out []config.ChannelConfig
+func EnabledChannels(channels []config.Channel) []config.Channel {
+	var out []config.Channel
 	for _, c := range channels {
 		if c.Enabled {
 			out = append(out, c)
@@ -32,16 +32,16 @@ func EnabledChannels(channels []config.ChannelConfig) []config.ChannelConfig {
 	return out
 }
 
-func FindChannelByPlatform(channels []config.ChannelConfig, platform string) (config.ChannelConfig, error) {
+func FindChannelByPlatform(channels []config.Channel, platform string) (config.Channel, error) {
 	for _, c := range channels {
 		if c.Platform == platform {
 			return c, nil
 		}
 	}
-	return config.ChannelConfig{}, fmt.Errorf("channel with platform %q not found", platform)
+	return config.Channel{}, fmt.Errorf("channel with platform %q not found", platform)
 }
 
-func SetupChannel(cfg config.ChannelConfig, envPath, channelsDir string) error {
+func SetupChannel(cfg config.Channel, envPath, channelsDir string) error {
 	if cfg.Instructions != "" {
 		Hint(cfg.Instructions)
 	}
@@ -89,7 +89,7 @@ func ChannelSetVaultKey(channelsDir, name, keyField, vaultPath string) error {
 	return nil
 }
 
-func ChannelEnable(channelsDir string, cfg config.ChannelConfig, enabled bool) error {
+func ChannelEnable(channelsDir string, cfg config.Channel, enabled bool) error {
 	path := ChannelConfigPath(channelsDir, cfg.Platform)
 	var raw map[string]any
 	if err := ReadYAML(path, &raw); err != nil {
@@ -102,7 +102,7 @@ func ChannelEnable(channelsDir string, cfg config.ChannelConfig, enabled bool) e
 // ── Validation ────────────────────────────────────────────────────────────────
 
 // ValidateChannels checks for common channel config problems.
-func ValidateChannels(channels []config.ChannelConfig) []string {
+func ValidateChannels(channels []config.Channel) []string {
 	var issues []string
 	seenNames := map[string]int{}
 
@@ -132,7 +132,7 @@ func ValidateChannels(channels []config.ChannelConfig) []string {
 // ── Display ───────────────────────────────────────────────────────────────────
 
 // ChannelSummaryLine returns a single-line summary for table output.
-func ChannelSummaryLine(c config.ChannelConfig) string {
+func ChannelSummaryLine(c config.Channel) string {
 	return fmt.Sprintf("%-16s %-12s %s",
 		c.Name,
 		c.Platform,

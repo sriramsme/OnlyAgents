@@ -59,14 +59,17 @@ func NewGeminiClient(cfg llm.ProviderConfig) (llm.Client, error) {
 		return nil, fmt.Errorf("gemini: %w", err)
 	}
 
-	maxTokens := cfg.Options.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = caps.DefaultMaxTokens
-	}
+	maxTokens := caps.DefaultMaxTokens
+	temperature := caps.DefaultTemperature
 
-	temperature := cfg.Options.Temperature
-	if temperature == 0 {
-		temperature = caps.DefaultTemperature
+	if cfg.Options != nil {
+		if cfg.Options.MaxTokens > 0 {
+			maxTokens = cfg.Options.MaxTokens
+		}
+
+		if cfg.Options.Temperature > 0 {
+			temperature = cfg.Options.Temperature
+		}
 	}
 
 	// Validate the final configuration

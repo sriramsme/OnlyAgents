@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
 	"github.com/sriramsme/OnlyAgents/internal/config"
-
+	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	skillcli "github.com/sriramsme/OnlyAgents/pkg/skills/cli"
@@ -62,7 +62,7 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	}
 
 	// ── 2. Load vault ─────────────────────────────────────────────────────────
-	v, err := config.LoadVault()
+	v, err := vault.LoadVault()
 	if err != nil {
 		return fmt.Errorf("load vault: %w", err)
 	}

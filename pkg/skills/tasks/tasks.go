@@ -23,7 +23,7 @@ type TasksSkill struct {
 	conn connectors.TasksConnector
 }
 
-func NewTasksSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+func NewTasksSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
 	security config.SecurityConfig,
 ) (skills.Skill, error) {
 	tasksConn, ok := conn.(connectors.TasksConnector)

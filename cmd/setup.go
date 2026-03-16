@@ -94,7 +94,7 @@ func (s *userIdentityStep) IsDone(ctx *cmdutil.SetupContext) bool {
 	if err != nil {
 		return false
 	}
-	var u config.UserConfig
+	var u config.User
 	if err := yaml.Unmarshal(data, &u); err != nil {
 		return false
 	}
@@ -141,8 +141,8 @@ func (s *userIdentityStep) Run(ctx *cmdutil.SetupContext) error {
 	ctx.UserRole = role
 	ctx.UserTimezone = tz
 
-	// Load existing or build fresh UserConfig
-	cfg := config.UserConfig{}
+	// Load existing or build fresh User
+	cfg := config.User{}
 	if data, err := os.ReadFile(ctx.Paths.UserPath); err == nil {
 		_ = yaml.Unmarshal(data, &cfg) // nolint:errcheck
 	}
@@ -372,7 +372,7 @@ func (s *channelStep) Run(ctx *cmdutil.SetupContext) error {
 	}
 
 	// Exclude oachannel from the list — it needs no setup
-	var setupable []config.ChannelConfig
+	var setupable []config.Channel
 	for _, c := range configs {
 		if c.Platform != "oachannel" {
 			setupable = append(setupable, c)

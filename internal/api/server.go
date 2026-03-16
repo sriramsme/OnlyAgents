@@ -14,14 +14,14 @@ import (
 // Server is the OnlyAgents HTTP server.
 type Server struct {
 	httpServer *http.Server
-	config     config.ServerConfig
+	config     config.Server
 	logger     *slog.Logger
 }
 
 // NewServer creates a new API server.
 // deps holds all the dependencies handlers need.
 func NewServer(
-	cfg config.ServerConfig,
+	cfg config.Server,
 	deps handlers.Deps,
 	a *auth.Auth,
 	apiKey string,

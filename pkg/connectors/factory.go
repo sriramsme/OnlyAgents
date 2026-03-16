@@ -13,7 +13,7 @@ import (
 // Factory creates a connector from raw config
 type Factory func(
 	ctx context.Context,
-	cfg config.ConnectorConfig,
+	cfg config.Connector,
 	v vault.Vault,
 	bus chan<- core.Event,
 ) (Connector, error)
@@ -25,14 +25,14 @@ var (
 
 // Register registers a connector factory for a platform
 // Register wraps typed factory into non-generic Factory
-func Register[T Connector](connName string, factory func(context.Context, config.ConnectorConfig, vault.Vault, chan<- core.Event) (T, error)) {
+func Register[T Connector](connName string, factory func(context.Context, config.Connector, vault.Vault, chan<- core.Event) (T, error)) {
 	factoryMu.Lock()
 	defer factoryMu.Unlock()
 	if _, exists := factories[connName]; exists {
 		panic("connectors: Register called twice for platform " + connName)
 	}
 	// Wrap typed factory — T is lost here but type check happens in skill constructor
-	factories[connName] = Factory(func(ctx context.Context, cfg config.ConnectorConfig, v vault.Vault, bus chan<- core.Event) (Connector, error) {
+	factories[connName] = Factory(func(ctx context.Context, cfg config.Connector, v vault.Vault, bus chan<- core.Event) (Connector, error) {
 		return factory(ctx, cfg, v, bus)
 	})
 }

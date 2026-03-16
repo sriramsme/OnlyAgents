@@ -34,7 +34,7 @@ type kernelComponents struct {
 	connectors              *connectors.Registry
 	channels                *channels.Registry
 	skills                  *skills.Registry
-	user                    *config.UserConfig
+	user                    *config.User
 	skillMarketplaceManager *marketplace.Manager
 	cliExecutor             *cli.CLIExecutor
 	cm                      *memory.ConversationManager
@@ -94,7 +94,7 @@ func loadComponents(
 		}
 	}
 
-	c.agents, err = loadAgents(ctx, v, kernelBus, uiBus, c.cm, c.mm)
+	c.agents, err = loadAgents(ctx, kernelBus, uiBus, c.cm, c.mm)
 	if err != nil {
 		return c, fmt.Errorf("load agents: %w", err)
 	}
@@ -152,7 +152,7 @@ func loadConversationManager(ctx context.Context, store storage.Storage) (*memor
 
 // mustLoadVault loads vault config or exits
 func loadVault(path string) (vault.Vault, error) {
-	v, err := config.LoadVault()
+	v, err := vault.LoadVault()
 	if err != nil {
 		return nil, fmt.Errorf("load vault: %w", err)
 	}
@@ -161,12 +161,12 @@ func loadVault(path string) (vault.Vault, error) {
 
 // bootstrap.go
 func loadAgents(
-	ctx context.Context, v vault.Vault,
+	ctx context.Context,
 	kernelBus chan<- core.Event, uiBus core.UIBus,
 	cm *memory.ConversationManager,
 	mm *memory.MemoryManager,
 ) (*agents.Registry, error) {
-	registry, err := agents.NewRegistry(ctx, v, kernelBus, uiBus, cm, mm)
+	registry, err := agents.NewRegistry(ctx, kernelBus, uiBus, cm, mm)
 	if err != nil {
 		return nil, fmt.Errorf("create agents registry: %w", err)
 	}

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,13 +8,94 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
-
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 )
+
+// Config represents the complete agent configuration.
+type Agent struct {
+	ID               string         `mapstructure:"id"`
+	Name             string         `mapstructure:"name"`
+	Description      string         `mapstructure:"description"`
+	IsExecutive      bool           `mapstructure:"is_executive"`
+	IsGeneral        bool           `mapstructure:"is_general"`
+	Enabled          bool           `mapstructure:"enabled"`
+	Role             string         `mapstructure:"role"`
+	StreamingEnabled bool           `mapstructure:"streaming_enabled"`
+	MaxConcurrency   int            `mapstructure:"max_concurrency"`
+	BufferSize       int            `mapstructure:"buffer_size"`
+	LLM              LLM            `mapstructure:"llm"`
+	Skills           []SkillBinding `mapstructure:"skills"`
+	Channels         []string       `mapstructure:"channels"`
+	Soul             Soul           `mapstructure:"soul"`
+	User             User           `mapstructure:"user"`
+
+	// ============================================
+	// EXECUTION LIMITS (Guard Rails)
+	// ============================================
+	// These fields control agent execution to prevent runaway loops,
+	// excessive costs, and performance issues.
+
+	// MaxIterations is the maximum number of LLM request/response cycles
+	// Default: 10 (if not set or 0)
+	// Typical values:
+	//   - Simple agents (email, calculator): 5
+	//   - Standard agents (researcher): 10
+	//   - Complex agents (multi-step workflows): 15
+	MaxIterations int `mapstructure:"max_iterations"`
+
+	// MaxToolCallsPerIteration limits tool calls in a single LLM response
+	// Default: 3 (if not set or 0)
+	// Typical values:
+	//   - Conservative (prevent spam): 1-2
+	//   - Balanced: 3
+	//   - Batch operations: 5-6
+	MaxToolCallsPerIteration int `mapstructure:"max_tool_calls_per_iteration"`
+
+	// MaxCumulativeToolCalls is the total tool calls across all iterations
+	// Default: 15 (if not set or 0)
+	// Prevents infinite loops and controls costs
+	// Typical values:
+	//   - Simple agents: 5-8
+	//   - Standard agents: 15
+	//   - Complex agents: 25-30
+	MaxCumulativeToolCalls int `mapstructure:"max_cumulative_tool_calls"`
+
+	// MaxToolResultTokens truncates individual tool results to this size
+	// Default: 2000 (if not set or 0)
+	// Prevents context explosion from large tool outputs
+	// Typical values:
+	//   - Summary-focused: 1000
+	//   - Balanced: 2000
+	//   - Document processing: 4000
+	MaxToolResultTokens int `mapstructure:"max_tool_result_tokens"`
+
+	// MaxExecutionTime is the overall timeout for agent execution
+	// Default: 3m (if not set or 0)
+	// Format: "30s", "2m", "5m", etc.
+	// Typical values:
+	//   - Real-time responses: 30s-1m
+	//   - Standard queries: 2m-3m
+	//   - Batch processing: 5m-10m
+	MaxExecutionTime time.Duration `mapstructure:"max_execution_time"`
+
+	// EnableEarlyStopping detects and stops repeated tool calls
+	// Default: true (if not explicitly set to false)
+	// CRITICAL for search-heavy agents (prevents search spam)
+	// Set to false only for legitimate repeated operations
+	EnableEarlyStopping *bool `mapstructure:"enable_early_stopping"`
+
+	// SimilarCallThreshold is how many similar calls before early stopping
+	// Default: 3 (if not set or 0)
+	// Only applies if EnableEarlyStopping is true
+	// Typical values:
+	//   - Aggressive (prevent loops): 2
+	//   - Balanced: 3
+	//   - Forgiving (allow exploration): 4-5
+	SimilarCallThreshold int `mapstructure:"similar_call_threshold"`
+}
 
 // load reads an agent config file into a Config struct.
 // It does not validate or attach a vault — callers do that.
-func load(configPath string) (*AgentConfig, error) {
+func load(configPath string) (*Agent, error) {
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
 	}
@@ -33,7 +113,7 @@ func load(configPath string) (*AgentConfig, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg AgentConfig
+	var cfg Agent
 	if err := v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
 		dc.TagName = "mapstructure"
 		dc.WeaklyTypedInput = true
@@ -50,7 +130,7 @@ func load(configPath string) (*AgentConfig, error) {
 // LoadAllAgentsConfig loads every *.yaml under dir, sharing a single vault
 // instance across all of them. Returns the configs and the vault so the
 // caller owns its lifecycle.
-func LoadAllAgentsConfig(v vault.Vault) ([]*AgentConfig, error) {
+func LoadAllAgentsConfig() ([]*Agent, error) {
 	dir := AgentsDir()
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -59,7 +139,7 @@ func LoadAllAgentsConfig(v vault.Vault) ([]*AgentConfig, error) {
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no agents found in %s", dir)
 	}
-	var configs []*AgentConfig
+	var configs []*Agent
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
 			continue
@@ -68,15 +148,6 @@ func LoadAllAgentsConfig(v vault.Vault) ([]*AgentConfig, error) {
 		cfg, err := load(filepath.Join(dir, f.Name()))
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", f.Name(), err)
-		}
-
-		cfg.setVault(v)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		err = validateVaultPaths(ctx, cfg, v)
-		cancel()
-		if err != nil {
-			return nil, fmt.Errorf("vault validation %s: %w", f.Name(), err)
 		}
 
 		if err := cfg.Validate(); err != nil {

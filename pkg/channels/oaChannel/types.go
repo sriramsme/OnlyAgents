@@ -8,8 +8,8 @@ import (
 
 // Config holds OAChannel configuration.
 type Config struct {
-	ChannelConfig config.ChannelConfig
-	AllowOrigins  []string `yaml:"allow_origins,omitempty"` // lock down in production
+	Channel      config.Channel
+	AllowOrigins []string `yaml:"allow_origins,omitempty"` // lock down in production
 }
 
 // WSMessageType identifies inbound and outbound WebSocket message types.

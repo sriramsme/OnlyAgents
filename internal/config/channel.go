@@ -10,7 +10,7 @@ import (
 )
 
 // LoadConnectorConfig loads a single connector config file
-func loadChannelConfig(configPath string) (*ChannelConfig, error) {
+func loadChannelConfig(configPath string) (*Channel, error) {
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
 	}
@@ -24,7 +24,7 @@ func loadChannelConfig(configPath string) (*ChannelConfig, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg ChannelConfig
+	var cfg Channel
 	if err := v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
 		dc.TagName = "mapstructure"
 		dc.WeaklyTypedInput = true
@@ -44,14 +44,14 @@ func loadChannelConfig(configPath string) (*ChannelConfig, error) {
 }
 
 // LoadAllConnectorConfigs loads all connector configs from a directory
-func LoadAllChannelConfigs() (map[string]*ChannelConfig, error) {
+func LoadAllChannelConfigs() (map[string]*Channel, error) {
 	dir := ChannelsDir()
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read connectors dir: %w", err)
 	}
 
-	configs := make(map[string]*ChannelConfig)
+	configs := make(map[string]*Channel)
 
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {

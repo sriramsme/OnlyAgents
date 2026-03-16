@@ -26,7 +26,7 @@ type Config struct {
 	// optional runtime settings
 	BaseURL string
 
-	Options config.LLMOptions
+	Options *config.LLMOptions
 }
 
 // New creates an LLM client for the given provider configuration.
@@ -108,11 +108,11 @@ func New(cfg Config) (Client, error) {
 	return reg.Constructor(providerCfg)
 }
 
-func NewFromConfig(c config.LLMConfig) (Client, error) {
+func NewFromConfig(c config.LLM) (Client, error) {
 	return New(toRuntimeConfig(c))
 }
 
-func toRuntimeConfig(c config.LLMConfig) Config {
+func toRuntimeConfig(c config.LLM) Config {
 	cfg := Config{
 		Provider: c.Provider,
 		Model:    c.Model,

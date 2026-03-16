@@ -4,8 +4,8 @@ import "github.com/sriramsme/OnlyAgents/internal/config"
 
 // Config holds Telegram-specific configuration
 type Config struct {
-	config.ChannelConfig `mapstructure:",squash"`
-	Mode                 string `mapstructure:"mode"` // "polling" or "webhook"
+	config.Channel `mapstructure:",squash"`
+	Mode           string `mapstructure:"mode"` // "polling" or "webhook"
 
 	// Routing
 	DefaultAgent string `mapstructure:"default_agent"` // Usually "executive"

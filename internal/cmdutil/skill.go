@@ -16,12 +16,12 @@ import (
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 // SkillRegistry loads all skill configs from the skills dir.
-func SkillRegistry(skillsDir string) ([]config.SkillConfig, error) {
+func SkillRegistry(skillsDir string) ([]config.Skill, error) {
 	entries, err := filepath.Glob(filepath.Join(skillsDir, "*.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("glob %s: %w", skillsDir, err)
 	}
-	var skills []config.SkillConfig
+	var skills []config.Skill
 	for _, path := range entries {
 		s, err := config.LoadSkillConfig(path)
 		if err != nil {
@@ -36,8 +36,8 @@ func SkillRegistry(skillsDir string) ([]config.SkillConfig, error) {
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // EnabledSkills returns only skills with Enabled = true.
-func EnabledSkills(skills []config.SkillConfig) []config.SkillConfig {
-	var out []config.SkillConfig
+func EnabledSkills(skills []config.Skill) []config.Skill {
+	var out []config.Skill
 	for _, s := range skills {
 		if s.Enabled {
 			out = append(out, s)
@@ -47,13 +47,13 @@ func EnabledSkills(skills []config.SkillConfig) []config.SkillConfig {
 }
 
 // FindSkill returns the first skill matching name.
-func FindSkill(skills []config.SkillConfig, name string) (config.SkillConfig, error) {
+func FindSkill(skills []config.Skill, name string) (config.Skill, error) {
 	for _, s := range skills {
 		if s.Name == name {
 			return s, nil
 		}
 	}
-	return config.SkillConfig{}, fmt.Errorf("skill %q not found", name)
+	return config.Skill{}, fmt.Errorf("skill %q not found", name)
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ func SkillSetEnabled(skillsDir, name string, enabled bool) error {
 // ── Validation ────────────────────────────────────────────────────────────────
 
 // ValidateSkills checks for common skill config problems.
-func ValidateSkills(skills []config.SkillConfig) []string {
+func ValidateSkills(skills []config.Skill) []string {
 	var issues []string
 	seenNames := map[string]int{}
 
@@ -118,7 +118,7 @@ func SkillSetAccessLevel(skillsDir, name, level string) error {
 }
 
 // nolint:gocyclo
-func SkillInstallRequirements(s config.SkillConfig, envPath string) error {
+func SkillInstallRequirements(s config.Skill, envPath string) error {
 	if len(s.Requires.Bins) == 0 && len(s.Requires.Env) == 0 {
 		fmt.Printf("  %s %s — no requirements\n",
 			StyleDim.Render("—"),
@@ -246,7 +246,7 @@ func SkillInstallRequirements(s config.SkillConfig, envPath string) error {
 // ── Display ───────────────────────────────────────────────────────────────────
 
 // SkillSummaryLine returns a single-line summary for table output.
-func SkillSummaryLine(s config.SkillConfig) string {
+func SkillSummaryLine(s config.Skill) string {
 	return fmt.Sprintf("%-20s %s", s.Name, EnabledLabel(s.Enabled))
 }
 
@@ -256,11 +256,11 @@ func SkillConfigPath(skillsDir, name string) string {
 
 // SkillWithTools holds frontmatter metadata plus parsed commands.
 type SkillWithTools struct {
-	config.SkillConfig
+	config.Skill
 	Commands []*config.SkillToolEntry
 }
 
-func PrintSkillValidation(s config.SkillConfig) (failed bool, noRequirements bool) {
+func PrintSkillValidation(s config.Skill) (failed bool, noRequirements bool) {
 	// Check bins
 	if len(s.Requires.Bins) == 0 && len(s.Requires.Env) == 0 {
 		return false, true

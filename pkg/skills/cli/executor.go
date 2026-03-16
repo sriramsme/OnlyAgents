@@ -19,7 +19,7 @@ import (
 // CLIExecutor executes shell commands securely
 // This is NOT a connector - it's a command execution engine
 type CLIExecutor struct {
-	config      *config.ExecutorConfig
+	config      *config.Executor
 	ctx         context.Context
 	requiredEnv []string
 	cancel      context.CancelFunc
@@ -35,7 +35,7 @@ type ExecutionResult struct {
 }
 
 // NewCLIExecutor creates a CLI executor
-func NewCLIExecutor(ctx context.Context, cfg *config.ExecutorConfig,
+func NewCLIExecutor(ctx context.Context, cfg *config.Executor,
 	security config.SecurityConfig, requiredEnv []string,
 ) *CLIExecutor {
 	execCtx, cancel := context.WithCancel(ctx)

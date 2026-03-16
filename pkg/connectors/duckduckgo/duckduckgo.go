@@ -27,7 +27,7 @@ func init() {
 
 // Config holds DuckDuckGo-specific configuration
 type Config struct {
-	config.ConnectorConfig
+	config.Connector
 	MaxResults int `mapstructure:"max_results"` // Default max results
 }
 
@@ -41,12 +41,12 @@ type DuckDuckGoConnector struct {
 // NewConnector creates a new DuckDuckGo connector
 func NewConnector(
 	ctx context.Context,
-	cfg config.ConnectorConfig,
+	cfg config.Connector,
 	v vault.Vault,
 	bus chan<- core.Event,
 ) (connectors.Connector, error) {
 	ddgoCfg := &Config{
-		ConnectorConfig: cfg,
+		Connector: cfg,
 	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{

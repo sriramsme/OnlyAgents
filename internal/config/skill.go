@@ -10,14 +10,14 @@ import (
 )
 
 // LoadAllSkillConfigs loads all *.yaml files from the skills config dir.
-func LoadAllSkillConfigs() (map[string]*SkillConfig, error) {
+func LoadAllSkillConfigs() (map[string]*Skill, error) {
 	dir := SkillsDir()
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read skill dir: %w", err)
 	}
 
-	configs := make(map[string]*SkillConfig)
+	configs := make(map[string]*Skill)
 
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
@@ -35,7 +35,7 @@ func LoadAllSkillConfigs() (map[string]*SkillConfig, error) {
 	return configs, nil
 }
 
-func LoadSkillConfig(configPath string) (*SkillConfig, error) {
+func LoadSkillConfig(configPath string) (*Skill, error) {
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
 	}
@@ -51,7 +51,7 @@ func LoadSkillConfig(configPath string) (*SkillConfig, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg SkillConfig
+	var cfg Skill
 	if err := v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
 		dc.TagName = "mapstructure"
 		dc.WeaklyTypedInput = true

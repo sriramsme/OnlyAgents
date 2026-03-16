@@ -39,38 +39,6 @@ type Vault interface {
 	Name() string
 }
 
-// Config holds vault configuration
-type Config struct {
-	Type string `mapstructure:"type"` // env, hashicorp, aws, gcp
-
-	// EnvVault config
-	Prefix     string `mapstructure:"prefix"`      // Environment variable prefix
-	DotEnvPath string `mapstructure:"dotenv_path"` // optional, defaults to ".env"
-
-	// HashiCorp Vault config
-	Address   string `mapstructure:"address"`
-	Token     string `mapstructure:"token"`
-	Namespace string `mapstructure:"namespace"`
-	MountPath string `mapstructure:"mount_path"` // Default: "secret"
-
-	// AWS Secrets Manager config
-	AWSRegion    string `mapstructure:"aws_region"`
-	AWSAccessKey string `mapstructure:"aws_access_key"`
-	AWSSecretKey string `mapstructure:"aws_secret_key"`
-
-	// GCP Secret Manager config
-	GCPProjectID   string `mapstructure:"gcp_project_id"`
-	GCPCredentials string `mapstructure:"gcp_credentials"` // Path to credentials file
-
-	// Caching
-	EnableCache  bool          `mapstructure:"enable_cache"`
-	CacheTTL     time.Duration `mapstructure:"cache_ttl"`      // Default: 5 minutes
-	CacheMaxSize int           `mapstructure:"cache_max_size"` // Default: 1000
-
-	// Security
-	AuditLog bool `mapstructure:"audit_log"` // Log all secret access
-}
-
 // Secret represents a secret with metadata
 type Secret struct {
 	Key       string

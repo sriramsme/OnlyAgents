@@ -106,7 +106,7 @@ type ProviderConfig struct {
 	Model   string
 	APIKey  string
 	BaseURL string
-	Options config.LLMOptions
+	Options *config.LLMOptions
 }
 
 // ProviderConstructor creates a new provider client

@@ -80,7 +80,7 @@ type Agent struct {
 // NewAgent creates an agent. Kernel calls this and injects the shared bus + tool definitions.
 func NewAgent(
 	ctx context.Context, // ← Parent context (kernel's context)
-	cfg config.AgentConfig,
+	cfg config.Agent,
 	llmClient llm.Client,
 	outbox chan<- core.Event,
 	uiBus core.UIBus,

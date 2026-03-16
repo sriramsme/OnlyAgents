@@ -23,7 +23,7 @@ type CalendarSkill struct {
 	conn connectors.CalendarConnector
 }
 
-func NewCalendarSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+func NewCalendarSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
 	security config.SecurityConfig,
 ) (skills.Skill, error) {
 	calendarConn, ok := conn.(connectors.CalendarConnector)

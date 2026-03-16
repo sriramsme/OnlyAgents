@@ -13,7 +13,7 @@ import (
 // Factory creates a connector from raw config
 type Factory func(
 	ctx context.Context,
-	config config.ChannelConfig,
+	config config.Channel,
 	vault vault.Vault,
 	bus chan<- core.Event,
 ) (Channel, error)

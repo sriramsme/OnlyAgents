@@ -36,7 +36,7 @@ type CLISkill struct {
 // ──────────────────────────────────────────────────────────────
 
 // NewCLISkill creates a CLISkill from a ParsedSkill definition.
-func NewCLISkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+func NewCLISkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
 	security config.SecurityConfig,
 ) (skills.Skill, error) {
 	// cli doesnt need a connector, check if its empty

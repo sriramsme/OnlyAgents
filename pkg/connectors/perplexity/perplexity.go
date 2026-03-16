@@ -27,7 +27,7 @@ func init() {
 
 // Config holds Perplexity-specific configuration
 type Config struct {
-	config.ConnectorConfig
+	config.Connector
 	MaxResults int `mapstructure:"max_results"` // Default max results
 
 	Model string `mapstructure:"model"` // Default: "sonar"
@@ -44,12 +44,12 @@ type PerplexityConnector struct {
 // NewConnector creates a new Perplexity connector
 func NewConnector(
 	ctx context.Context,
-	cfg config.ConnectorConfig,
+	cfg config.Connector,
 	v vault.Vault,
 	bus chan<- core.Event,
 ) (connectors.Connector, error) {
 	ppCfg := &Config{
-		ConnectorConfig: cfg,
+		Connector: cfg,
 	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{

@@ -32,7 +32,7 @@ type WebSearchSkill struct {
 }
 
 // NewWebSearchSkill creates a new web search skill
-func NewWebSearchSkill(ctx context.Context, cfg config.SkillConfig, conn connectors.Connector,
+func NewWebSearchSkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
 	security config.SecurityConfig,
 ) (skills.Skill, error) {
 	webSearchConn, ok := conn.(connectors.WebSearchConnector)

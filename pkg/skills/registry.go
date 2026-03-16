@@ -11,7 +11,7 @@ import (
 )
 
 type Registry struct {
-	templates map[string]config.SkillConfig // name → config, NOT live instances
+	templates map[string]config.Skill // name → config, NOT live instances
 	mu        sync.RWMutex
 }
 
@@ -21,7 +21,7 @@ func NewRegistry() (*Registry, error) {
 		return nil, fmt.Errorf("load skill configs: %w", err)
 	}
 	reg := &Registry{
-		templates: make(map[string]config.SkillConfig),
+		templates: make(map[string]config.Skill),
 	}
 	for name, cfg := range configs {
 		if !cfg.Enabled {
@@ -32,7 +32,7 @@ func NewRegistry() (*Registry, error) {
 	return reg, nil
 }
 
-func (r *Registry) Register(cfg config.SkillConfig) {
+func (r *Registry) Register(cfg config.Skill) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.templates[cfg.Name] = cfg
@@ -57,7 +57,7 @@ func (r *Registry) Instantiate(
 }
 
 // Get retrieves a skill by name
-func (r *Registry) Get(name string) (config.SkillConfig, bool) {
+func (r *Registry) Get(name string) (config.Skill, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.templates[name]
@@ -65,10 +65,10 @@ func (r *Registry) Get(name string) (config.SkillConfig, bool) {
 }
 
 // GetAll returns all registered skills
-func (r *Registry) GetAll() []config.SkillConfig {
+func (r *Registry) GetAll() []config.Skill {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]config.SkillConfig, 0, len(r.templates))
+	out := make([]config.Skill, 0, len(r.templates))
 	for _, s := range r.templates {
 		out = append(out, s)
 	}

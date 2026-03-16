@@ -321,7 +321,7 @@ var skillValidateCmd = &cobra.Command{
 		}
 
 		// Determine which skills to validate
-		var toValidate []config.SkillConfig
+		var toValidate []config.Skill
 		if all || len(args) == 0 {
 			toValidate = skills
 		} else {
@@ -329,7 +329,7 @@ var skillValidateCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			toValidate = []config.SkillConfig{s}
+			toValidate = []config.Skill{s}
 		}
 
 		noRequirementSkills := []string{}
@@ -379,7 +379,7 @@ var skillInstallCmd = &cobra.Command{
 			return err
 		}
 
-		var toInstall []config.SkillConfig
+		var toInstall []config.Skill
 		if all {
 			toInstall = skills
 		} else {
@@ -390,7 +390,7 @@ var skillInstallCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			toInstall = []config.SkillConfig{s}
+			toInstall = []config.Skill{s}
 		}
 
 		anyFailed := false

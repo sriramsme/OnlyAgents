@@ -44,7 +44,7 @@ type Kernel struct {
 	connectors *connectors.Registry
 	channels   *channels.Registry
 	workflow   *workflow.Engine
-	user       *config.UserConfig
+	user       *config.User
 
 	skillMarketplaceManager *marketplace.Manager
 	cliExecutor             *cli.CLIExecutor
@@ -117,7 +117,7 @@ func (k *Kernel) RegisterAgent(a agents.RuntimeAgent) {
 	k.agents.Register(a)
 }
 
-func (k *Kernel) RegisterSkill(s config.SkillConfig) {
+func (k *Kernel) RegisterSkill(s config.Skill) {
 	k.skills.Register(s)
 }
 
