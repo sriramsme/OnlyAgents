@@ -333,7 +333,7 @@ buffer_size: 20
 llm:
   provider: "anthropic"
   model: "claude-haiku-4-5-20251001"
-  api_key_vault: "anthropic/api_key"
+  api_key_path: "anthropic/api_key"
 ```
 
 Each agent specifies its own provider, model, and vault key independently. Full reference: [docs/agents.md](docs/agents.md).

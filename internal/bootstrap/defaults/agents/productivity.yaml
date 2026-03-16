@@ -9,7 +9,7 @@ enabled: true
 llm:
   provider: "openai"
   model: "gpt-5-nano"
-  api_key_vault: "openai/api_key"
+  api_key_path: "openai/api_key"
 
 skills:
   - name: calendar

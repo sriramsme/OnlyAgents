@@ -216,7 +216,7 @@ vault:
 llm:
   provider: "openai"
   model: "gpt-4"
-  api_key_vault: "llm/openai/api_key"
+  api_key_path: "llm/openai/api_key"
 ```
 ```bash
 # .env
@@ -237,7 +237,7 @@ vault:
 llm:
   provider: "openai"
   model: "gpt-4"
-  api_key_vault: "llm/openai/api_key"
+  api_key_path: "llm/openai/api_key"
 ```
 
 ### Example 3: AWS Deployment
@@ -251,7 +251,7 @@ vault:
 llm:
   provider: "anthropic"
   model: "claude-sonnet-4-20250514"
-  api_key_vault: "onlyagents/llm/anthropic/api_key"
+  api_key_path: "onlyagents/llm/anthropic/api_key"
 ```
 
 ## Best Practices

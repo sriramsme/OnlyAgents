@@ -10,7 +10,7 @@ llm:
   provider: "openai"  # anthropic, openai, gemini
   model: "gpt-5-nano"  # model name
   # Vault key path - will lookup from vault
-  api_key_vault: "openai/api_key"  # or "${vault:openai/api_key}"
+  api_key_path: "openai/api_key"  # or "${vault:openai/api_key}"
 
 skills:
   - name: websearch
