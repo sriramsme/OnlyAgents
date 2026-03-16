@@ -66,9 +66,9 @@ func AgentSetLLM(agentsDir, id, provider, model, vaultPath string) error {
 		return fmt.Errorf("read agent %s: %w", id, err)
 	}
 	raw["llm"] = map[string]any{
-		"provider":      provider,
-		"model":         model,
-		"api_key_vault": vaultPath,
+		"provider":     provider,
+		"model":        model,
+		"api_key_path": vaultPath,
 	}
 	if err := WriteYAML(path, raw); err != nil {
 		return fmt.Errorf("write agent %s: %w", id, err)
@@ -103,8 +103,8 @@ func ValidateAgents(agents []config.AgentConfig) []string {
 		if a.LLM.Model == "" {
 			issues = append(issues, prefix+": llm.model is empty")
 		}
-		if a.LLM.APIKeyVault == "" {
-			issues = append(issues, prefix+": llm.api_key_vault is empty")
+		if a.LLM.APIKeyPath == "" {
+			issues = append(issues, prefix+": llm.api_key_path is empty")
 		}
 		if a.IsExecutive {
 			executiveCount++

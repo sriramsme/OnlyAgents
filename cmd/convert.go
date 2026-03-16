@@ -12,7 +12,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 
-	"github.com/sriramsme/OnlyAgents/pkg/llm/client"
+	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	skillcli "github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 )
@@ -119,14 +119,14 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		vaultKey = cmdutil.ProviderVaultPath(provider)
 	}
 
-	cfg := client.Config{
+	cfg := llm.Config{
 		Provider: provider,
 		Model:    model,
 		Vault:    v,
 		KeyPath:  vaultKey,
 	}
 	// ── 4. Build client ───────────────────────────────────────────────────────
-	client, err := client.New(cfg)
+	client, err := llm.New(cfg)
 	if err != nil {
 		return fmt.Errorf("build LLM client: %w", err)
 	}

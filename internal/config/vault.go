@@ -88,8 +88,8 @@ func LoadVaultAndValidate(agentConfigPath string) (vault.Vault, error) {
 // validateVaultPaths probes vault to confirm required secrets are reachable.
 // It does not return the secret values — that happens on-demand at runtime.
 func validateVaultPaths(ctx context.Context, cfg *AgentConfig, v vault.Vault) error {
-	if _, err := v.GetSecret(ctx, cfg.LLM.APIKeyVault); err != nil {
-		return fmt.Errorf("llm api key not found in vault at %q: %w", cfg.LLM.APIKeyVault, err)
+	if _, err := v.GetSecret(ctx, cfg.LLM.APIKeyPath); err != nil {
+		return fmt.Errorf("llm api key not found in vault at %q: %w", cfg.LLM.APIKeyPath, err)
 	}
 	return nil
 }

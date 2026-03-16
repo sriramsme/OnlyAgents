@@ -1,109 +1,169 @@
-// Package llm provides LLM client abstractions for OnlyAgents
 package llm
 
 import (
 	"context"
 	"fmt"
-	"strconv"
+	"os"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
-// Factory creates LLM clients from configuration
-type Factory struct {
-	config *config.LLMConfig
-	vault  vault.Vault
+type Config struct {
+	Provider string
+	Model    string
+
+	// authentication sources (choose one)
+	APIKey string // direct key value
+
+	APIKeyName string // e.g. "OPENAI_API_KEY"
+
+	Vault   vault.Vault
+	KeyPath string
+
+	EnvPath string // optional .env path
+	// optional runtime settings
+	BaseURL string
+
+	Options config.LLMOptions
 }
 
-// NewFactory creates a new LLM client factory
-func NewFactory(cfg *config.LLMConfig, vault vault.Vault) *Factory {
-	return &Factory{config: cfg, vault: vault}
-}
-
-// Create creates an LLM client using the default provider from config
-func (f *Factory) Create() (Client, error) {
-	return f.CreateForProvider(Provider(f.config.Provider), f.config.Model)
-}
-
-// CreateForProvider creates an LLM client for a specific provider and model
-// This is useful for multi-agent scenarios where different agents use different LLMs
-func (f *Factory) CreateForProvider(provider Provider, model string) (Client, error) {
+// New creates an LLM client for the given provider configuration.
+//
+// Authentication is resolved using the following precedence:
+//
+//  1. APIKey
+//     If cfg.APIKey is provided, it is used directly.
+//
+//  2. Vault + KeyPath
+//     If cfg.Vault and cfg.KeyPath are set, the key is fetched from the
+//     provided vault implementation.
+//
+//  3. APIKeyEnvName
+//     If cfg.APIKeyEnvName is set, the value of that environment variable
+//     will be used as the API key.
+//
+//  4. Provider default environment variable
+//     If none of the above are provided, the SDK falls back to the
+//     provider's default environment variable (e.g. OPENAI_API_KEY).
+//
+// If no API key can be resolved, New returns an error.
+//
+// Example usage:
+//
+//	// Direct API key
+//	client, err := llm.New(llm.RuntimeLLMConfig{
+//	    Provider: llm.ProviderOpenAI,
+//	    Model:    "gpt-4o",
+//	    APIKey:   "sk-...",
+//	})
+//
+//	// Using environment variable
+//	client, err := llm.New(llm.RuntimeLLMConfig{
+//	    Provider: llm.ProviderOpenAI,
+//	    Model:    "gpt-4o",
+//	})
+//
+//	// Using custom env variable
+//	client, err := llm.New(llm.RuntimeLLMConfig{
+//	    Provider:      llm.ProviderOpenAI,
+//	    Model:         "gpt-4o",
+//	    APIKeyEnvName: "MY_OPENAI_KEY",
+//	})
+//
+//	// Using a vault provider
+//	client, err := llm.New(llm.RuntimeLLMConfig{
+//	    Provider: llm.ProviderOpenAI,
+//	    Model:    "gpt-4o",
+//	    Vault:    vault,
+//	    KeyPath:  "openai/api_key",
+//	})
+func New(cfg Config) (Client, error) {
+	provider := Provider(cfg.Provider)
 	reg, ok := registry[provider]
 	if !ok {
-		return nil, fmt.Errorf("unsupported provider: %s", provider)
+		return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 	}
 
-	// Validate model
-	if err := ValidateProviderModel(provider, model); err != nil {
+	apiKey, err := resolveAPIKey(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ValidateProviderModel(provider, cfg.Model); err != nil {
 		logger.Log.Warn("model validation failed",
-			"provider", provider,
-			"model", model,
+			"provider", cfg.Provider,
+			"model", cfg.Model,
 			"error", err)
 	}
 
-	apiKey, err := f.vault.GetSecret(context.Background(), f.config.APIKeyVault)
-	if err != nil {
-		logger.Log.Error("failed to get API key from vault",
-			"provider", provider,
-			"model", model,
-			"error", err)
-		return nil, fmt.Errorf("failed to get API key from vault: %w", err)
-	}
-	// Build provider config
 	providerCfg := ProviderConfig{
-		Model:       model,
-		APIKey:      apiKey,
-		BaseURL:     f.config.BaseURL,
-		MaxTokens:   f.getMaxTokens(),
-		Temperature: f.getTemperature(),
-		Metadata:    f.config.Options,
+		Model:   cfg.Model,
+		APIKey:  apiKey,
+		BaseURL: cfg.BaseURL,
+		Options: cfg.Options,
 	}
 
-	// Create client
-	client, err := reg.Constructor(providerCfg)
-	if err != nil {
-		logger.Log.Error("failed to create LLM client",
-			"provider", provider,
-			"model", model,
-			"error", err)
-		return nil, fmt.Errorf("failed to create client: %w", err)
-	}
-
-	logger.Log.Info("created LLM client",
-		"provider", provider,
-		"model", model)
-
-	return client, nil
+	return reg.Constructor(providerCfg)
 }
 
-// getMaxTokens gets max tokens from config options
-func (f *Factory) getMaxTokens() int {
-	if f.config.Options == nil {
-		return 4096 // default
+func NewFromConfig(c config.LLMConfig) (Client, error) {
+	return New(toRuntimeConfig(c))
+}
+
+func toRuntimeConfig(c config.LLMConfig) Config {
+	cfg := Config{
+		Provider: c.Provider,
+		Model:    c.Model,
+		KeyPath:  c.APIKeyPath,
+		BaseURL:  c.BaseURL,
+		Options:  c.Options,
 	}
 
-	if val, ok := f.config.Options["max_tokens"]; ok {
-		if tokens, err := strconv.Atoi(val); err == nil {
-			return tokens
+	return cfg
+}
+
+func resolveAPIKey(cfg Config) (string, error) {
+	// 1️⃣ direct key
+	if cfg.APIKey != "" {
+		return cfg.APIKey, nil
+	}
+
+	// 2️⃣ vault lookup
+	if cfg.Vault != nil && cfg.KeyPath != "" {
+		return cfg.Vault.GetSecret(context.Background(), cfg.KeyPath)
+	}
+
+	// load .env if requested
+	if cfg.EnvPath != "" {
+		err := vault.LoadDotEnv(cfg.EnvPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to load .env: %w", err)
 		}
 	}
 
-	return 4096 // default
-}
-
-// getTemperature gets temperature from config options
-func (f *Factory) getTemperature() float64 {
-	if f.config.Options == nil {
-		return 1.0 // default
-	}
-
-	if val, ok := f.config.Options["temperature"]; ok {
-		if temp, err := strconv.ParseFloat(val, 64); err == nil {
-			return temp
+	// 3️⃣ explicit env variable name
+	if cfg.APIKeyName != "" {
+		if val := os.Getenv(cfg.APIKeyName); val != "" {
+			return val, nil
 		}
 	}
 
-	return 1.0 // default
+	// 4️⃣ provider default env key
+	envKey := providerEnvKey(Provider(cfg.Provider))
+	if envKey != "" {
+		if val := os.Getenv(envKey); val != "" {
+			return val, nil
+		}
+	}
+
+	return "", fmt.Errorf("no API key found for provider %s", cfg.Provider)
+}
+
+func providerEnvKey(provider Provider) string {
+	if key, ok := GetProviderEnvKey(provider); ok {
+		return key
+	}
+	return ""
 }

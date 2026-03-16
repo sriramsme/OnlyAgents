@@ -101,11 +101,18 @@ type SkillBinding struct {
 
 // LLMConfig holds model settings. The actual API key lives in vault.
 type LLMConfig struct {
-	Provider    string            `mapstructure:"provider"`
-	Model       string            `mapstructure:"model"`
-	APIKeyVault string            `mapstructure:"api_key_vault"` // vault path, not the key itself
-	BaseURL     string            `mapstructure:"base_url"`
-	Options     map[string]string `mapstructure:"options"`
+	Provider   string     `mapstructure:"provider"`
+	Model      string     `mapstructure:"model"`
+	APIKeyPath string     `mapstructure:"api_key_path"` // vault path, not the key itself
+	BaseURL    string     `mapstructure:"base_url"`
+	Options    LLMOptions `mapstructure:"options,omitempty"`
+}
+
+type LLMOptions struct {
+	MaxTokens    int     `mapstructure:"max_tokens,omitempty"`
+	Temperature  float64 `mapstructure:"temperature,omitempty"`
+	CacheEnabled bool    `mapstructure:"cache_enabled,omitempty"`
+	// CacheKey      string   `mapstructure:"cache_key,omitempty"`
 }
 
 type SkillConfig struct {
@@ -343,8 +350,8 @@ func (c *AgentConfig) Validate() error {
 	if c.LLM.Provider == "" {
 		return fmt.Errorf("llm.provider is required")
 	}
-	if c.LLM.APIKeyVault == "" {
-		return fmt.Errorf("llm.api_key_vault is required (vault path to API key)")
+	if c.LLM.APIKeyPath == "" {
+		return fmt.Errorf("llm.api_key_path is required (vault path to API key)")
 	}
 	if c.Name == "" {
 		return fmt.Errorf("agent name is required")

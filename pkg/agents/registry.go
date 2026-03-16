@@ -11,7 +11,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
-	_ "github.com/sriramsme/OnlyAgents/pkg/llm/bootstrap"
+
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
 )
 
@@ -35,7 +35,7 @@ func NewRegistry(
 
 	// Create all agents (but don't start them yet - let caller control that)
 	for _, cfg := range configs {
-		llmClient, err := llm.NewFactory(&cfg.LLM, v).Create()
+		llmClient, err := llm.NewFromConfig(cfg.LLM)
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: llm init: %w", cfg.ID, err)
 		}

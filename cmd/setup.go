@@ -280,10 +280,10 @@ func (s *llmStep) Run(ctx *cmdutil.SetupContext) error {
 		}
 
 		ctx.LLMChoices[slot.ID] = cmdutil.LLMChoice{
-			Provider:    provider,
-			Model:       model,
-			APIKeyVault: llmVaultPath,
-			EnvVarName:  llmEnvVar,
+			Provider:   provider,
+			Model:      model,
+			APIKeyPath: llmVaultPath,
+			EnvVarName: llmEnvVar,
 		}
 	}
 
@@ -330,9 +330,9 @@ func updateAgentLLM(path string, choice cmdutil.LLMChoice) error {
 	}
 
 	raw["llm"] = map[string]any{
-		"provider":      choice.Provider,
-		"model":         choice.Model,
-		"api_key_vault": choice.APIKeyVault,
+		"provider":     choice.Provider,
+		"model":        choice.Model,
+		"api_key_path": choice.APIKeyPath,
 	}
 
 	return cmdutil.WriteYAML(path, raw)

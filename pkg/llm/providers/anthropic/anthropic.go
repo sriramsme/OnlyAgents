@@ -25,11 +25,9 @@ func init() {
 	modelNames := llm.GetSupportedModels(ModelRegistry)
 
 	llm.RegisterProvider(llm.ProviderAnthropic, llm.ProviderRegistration{
-		Models: modelNames,
-		EnvKey: "ANTHROPIC_API_KEY",
-		Constructor: func(cfg llm.ProviderConfig) (llm.Client, error) {
-			return NewAnthropicClient(cfg)
-		},
+		Models:      modelNames,
+		EnvKey:      "ANTHROPIC_API_KEY",
+		Constructor: NewAnthropicClient,
 	})
 }
 
@@ -47,7 +45,7 @@ type AnthropicClient struct {
 }
 
 // NewAnthropicClient creates a new Anthropic client
-func NewAnthropicClient(cfg llm.ProviderConfig) (*AnthropicClient, error) {
+func NewAnthropicClient(cfg llm.ProviderConfig) (llm.Client, error) {
 	if cfg.Model == "" {
 		return nil, fmt.Errorf("anthropic: model is required")
 	}
@@ -69,12 +67,12 @@ func NewAnthropicClient(cfg llm.ProviderConfig) (*AnthropicClient, error) {
 	}
 	opts = append(opts, option.WithBaseURL(baseURL))
 
-	maxTokens := cfg.MaxTokens
+	maxTokens := cfg.Options.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = caps.DefaultMaxTokens
 	}
 
-	temperature := cfg.Temperature
+	temperature := cfg.Options.Temperature
 	if temperature == 0 {
 		temperature = caps.DefaultTemperature
 	}

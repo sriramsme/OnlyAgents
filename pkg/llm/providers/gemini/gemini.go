@@ -22,11 +22,9 @@ func init() {
 	modelNames := llm.GetSupportedModels(ModelRegistry)
 
 	llm.RegisterProvider(llm.ProviderGemini, llm.ProviderRegistration{
-		Models: modelNames,
-		EnvKey: "GEMINI_API_KEY",
-		Constructor: func(cfg llm.ProviderConfig) (llm.Client, error) {
-			return NewGeminiClient(cfg)
-		},
+		Models:      modelNames,
+		EnvKey:      "GEMINI_API_KEY",
+		Constructor: NewGeminiClient,
 	})
 }
 
@@ -50,7 +48,7 @@ type GeminiClient struct {
 }
 
 // NewGeminiClient creates a new Gemini client
-func NewGeminiClient(cfg llm.ProviderConfig) (*GeminiClient, error) {
+func NewGeminiClient(cfg llm.ProviderConfig) (llm.Client, error) {
 	if cfg.Model == "" {
 		return nil, fmt.Errorf("gemini: model is required")
 	}
@@ -61,12 +59,12 @@ func NewGeminiClient(cfg llm.ProviderConfig) (*GeminiClient, error) {
 		return nil, fmt.Errorf("gemini: %w", err)
 	}
 
-	maxTokens := cfg.MaxTokens
+	maxTokens := cfg.Options.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = caps.DefaultMaxTokens
 	}
 
-	temperature := cfg.Temperature
+	temperature := cfg.Options.Temperature
 	if temperature == 0 {
 		temperature = caps.DefaultTemperature
 	}

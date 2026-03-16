@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 
+	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -102,12 +103,10 @@ type Usage struct {
 
 // ProviderConfig is the configuration passed to provider constructors
 type ProviderConfig struct {
-	Model       string
-	APIKey      string
-	BaseURL     string
-	MaxTokens   int
-	Temperature float64
-	Metadata    map[string]string
+	Model   string
+	APIKey  string
+	BaseURL string
+	Options config.LLMOptions
 }
 
 // ProviderConstructor creates a new provider client

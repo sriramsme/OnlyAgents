@@ -59,10 +59,10 @@ type SetupContext struct {
 
 // LLMChoice holds what the user picked for a single agent's LLM config.
 type LLMChoice struct {
-	Provider    string
-	Model       string
-	APIKeyVault string // vault path, e.g. "anthropic/api_key"
-	EnvVarName  string // e.g. "ANTHROPIC_API_KEY"
+	Provider   string
+	Model      string
+	APIKeyPath string // vault path, e.g. "anthropic/api_key"
+	EnvVarName string // e.g. "ANTHROPIC_API_KEY"
 }
 
 // Paths mirrors bootstrap.Paths — defined here to avoid circular imports.

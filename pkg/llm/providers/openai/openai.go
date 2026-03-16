@@ -18,11 +18,9 @@ func init() {
 	modelNames := llm.GetSupportedModels(ModelRegistry)
 
 	llm.RegisterProvider(llm.ProviderOpenAI, llm.ProviderRegistration{
-		Models: modelNames,
-		EnvKey: "OPENAI_API_KEY",
-		Constructor: func(cfg llm.ProviderConfig) (llm.Client, error) {
-			return NewOpenAIClient(cfg)
-		},
+		Models:      modelNames,
+		EnvKey:      "OPENAI_API_KEY",
+		Constructor: NewOpenAIClient,
 	})
 }
 
@@ -40,7 +38,7 @@ type OpenAIClient struct {
 }
 
 // NewOpenAIClient creates a new OpenAI client
-func NewOpenAIClient(cfg llm.ProviderConfig) (*OpenAIClient, error) {
+func NewOpenAIClient(cfg llm.ProviderConfig) (llm.Client, error) {
 	if cfg.Model == "" {
 		return nil, fmt.Errorf("model is required")
 	}
@@ -59,12 +57,12 @@ func NewOpenAIClient(cfg llm.ProviderConfig) (*OpenAIClient, error) {
 		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
 	}
 
-	maxTokens := cfg.MaxTokens
+	maxTokens := cfg.Options.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = caps.DefaultMaxTokens
 	}
 
-	temperature := cfg.Temperature
+	temperature := cfg.Options.Temperature
 	if temperature == 0 {
 		temperature = caps.DefaultTemperature
 	}
