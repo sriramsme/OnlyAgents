@@ -62,10 +62,15 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	}
 
 	// ── 2. Load vault ─────────────────────────────────────────────────────────
-	v, err := vault.LoadVault()
+	v, err := vault.Load()
 	if err != nil {
 		return fmt.Errorf("load vault: %w", err)
 	}
+	defer func() {
+		if err := v.Close(); err != nil {
+			fmt.Printf("close vault: %s", err)
+		}
+	}()
 
 	// ── 3. Resolve provider — interactive if not passed via flags ─────────────
 	provider := convertProvider

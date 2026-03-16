@@ -17,21 +17,21 @@ func registerProvider(t ProviderType, fn func(config.Vault) (Vault, error)) {
 
 // LoadVault reads configs/vault.yaml, initialises the vault, and returns it.
 // The caller (entry point) owns the vault and must call v.Close() on shutdown.
-func LoadVault() (Vault, error) {
+func Load() (Vault, error) {
 	configPath := config.VaultPath()
 	vc, err := config.LoadVaultConfig(configPath)
 	if err != nil {
 		return nil, err
 	}
 
-	v, err := NewVault(*vc)
+	v, err := New(*vc)
 	if err != nil {
 		return nil, fmt.Errorf("init vault: %w", err)
 	}
 	return v, nil
 }
 
-func NewVault(cfg config.Vault) (Vault, error) {
+func New(cfg config.Vault) (Vault, error) {
 	// Default to env if not specified
 	if cfg.Type == "" {
 		cfg.Type = string(ProviderEnv)

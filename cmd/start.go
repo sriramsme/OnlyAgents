@@ -152,10 +152,16 @@ func runStart(cmd *cobra.Command, args []string) error {
 		wsHandler = oaCh.WSHandler
 	}
 
-	v, err := vault.LoadVault()
+	v, err := vault.Load()
 	if err != nil {
 		return fmt.Errorf("load vault: %w", err)
 	}
+	defer func() {
+		if err := v.Close(); err != nil {
+			fmt.Printf("close vault: %s", err)
+		}
+	}()
+
 	apiKey, err := v.GetSecret(ctx, serverConfig.VaultPaths["api_key"].Path)
 	if err != nil {
 		return fmt.Errorf("load server api key: %w", err)

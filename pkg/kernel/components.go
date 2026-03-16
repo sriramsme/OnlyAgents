@@ -68,7 +68,7 @@ func loadComponents(
 		return c, fmt.Errorf("load memory manager: %w", err)
 	}
 
-	v, err := loadVault(paths.VaultPath)
+	v, err := vault.Load()
 	if err != nil {
 		return c, fmt.Errorf("load vault: %w", err)
 	}
@@ -98,7 +98,7 @@ func loadComponents(
 	if err != nil {
 		return c, fmt.Errorf("load agents: %w", err)
 	}
-	c.connectors, err = loadConnectors(ctx, v, kernelBus)
+	c.connectors, err = loadConnectors(ctx)
 	if err != nil {
 		return c, fmt.Errorf("load connectors: %w", err)
 	}
@@ -150,15 +150,6 @@ func loadConversationManager(ctx context.Context, store storage.Storage) (*memor
 	return cm, nil
 }
 
-// mustLoadVault loads vault config or exits
-func loadVault(path string) (vault.Vault, error) {
-	v, err := vault.LoadVault()
-	if err != nil {
-		return nil, fmt.Errorf("load vault: %w", err)
-	}
-	return v, nil
-}
-
 // bootstrap.go
 func loadAgents(
 	ctx context.Context,
@@ -173,8 +164,8 @@ func loadAgents(
 	return registry, nil
 }
 
-func loadConnectors(ctx context.Context, v vault.Vault, kernelBus chan<- core.Event) (*connectors.Registry, error) {
-	registry, err := connectors.NewRegistry(ctx, v, kernelBus)
+func loadConnectors(ctx context.Context) (*connectors.Registry, error) {
+	registry, err := connectors.NewRegistry(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create connector registry: %w", err)
 	}
