@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
 )
@@ -20,6 +19,22 @@ type DB struct {
 // New opens (or creates) the SQLite database at path, applies pending
 // migrations, and returns a ready-to-use DB.
 func New(path string) (storage.Storage, error) {
+	sqlxDB, err := openDB(path)
+	if err != nil {
+		return nil, fmt.Errorf("storage: open %s: %w", path, err)
+	}
+
+	store := &DB{db: sqlxDB}
+
+	if err := RunMigrations(sqlxDB); err != nil {
+		closeErr := sqlxDB.Close()
+		return nil, fmt.Errorf("storage: migrations: %w", errors.Join(err, closeErr))
+	}
+
+	return store, nil
+}
+
+func openDB(path string) (*sqlx.DB, error) {
 	// _loc=auto: driver parses stored time strings respecting timezone info.
 	// _busy_timeout=5000: wait up to 5 s before returning SQLITE_BUSY.
 	dsn := fmt.Sprintf("file:%s?_loc=auto&_busy_timeout=5000", path)
@@ -33,28 +48,20 @@ func New(path string) (storage.Storage, error) {
 	// "database is locked" errors under concurrent reads + occasional writes.
 	sqlxDB.SetMaxOpenConns(1)
 
-	store := &DB{db: sqlxDB}
-
-	if err := store.applyPragmas(); err != nil {
+	if err := applyPragmas(sqlxDB); err != nil {
 		closeErr := sqlxDB.Close()
 		return nil, fmt.Errorf("storage: pragmas: %w", errors.Join(err, closeErr))
 	}
-
-	if err := RunMigrations(sqlxDB); err != nil {
-		closeErr := sqlxDB.Close()
-		return nil, fmt.Errorf("storage: migrations: %w", errors.Join(err, closeErr))
-	}
-
-	logger.Log.Info("storage: SQLite ready", "path", path)
-	return store, nil
+	return sqlxDB, nil
 }
 
-func (d *DB) applyPragmas() error {
+func applyPragmas(db *sqlx.DB) error {
 	for _, p := range []string{
 		"PRAGMA journal_mode=WAL", // WAL gives better concurrent read perf
 		"PRAGMA foreign_keys=ON",  // enforce FK constraints
+		"PRAGMA synchronous=NORMAL",
 	} {
-		if _, err := d.db.Exec(p); err != nil {
+		if _, err := db.Exec(p); err != nil {
 			return fmt.Errorf("storage: pragma %q: %w", p, err)
 		}
 	}

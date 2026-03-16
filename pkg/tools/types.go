@@ -68,3 +68,8 @@ type Property struct {
 	Required    []string            `json:"required,omitempty"`
 	Default     any                 `json:"default,omitempty"`
 }
+
+type ToolEntry struct {
+	Def   ToolDef
+	Input any // zero-value input struct for CLI flag generation
+}

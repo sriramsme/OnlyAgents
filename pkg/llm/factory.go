@@ -53,27 +53,27 @@ type Config struct {
 // Example usage:
 //
 //	// Direct API key
-//	client, err := llm.New(llm.RuntimeLLMConfig{
+//	client, err := llm.New(llm.Config{
 //	    Provider: llm.ProviderOpenAI,
 //	    Model:    "gpt-4o",
 //	    APIKey:   "sk-...",
 //	})
 //
 //	// Using environment variable
-//	client, err := llm.New(llm.RuntimeLLMConfig{
+//	client, err := llm.New(llm.Config{
 //	    Provider: llm.ProviderOpenAI,
 //	    Model:    "gpt-4o",
 //	})
 //
 //	// Using custom env variable
-//	client, err := llm.New(llm.RuntimeLLMConfig{
+//	client, err := llm.New(llm.Config{
 //	    Provider:      llm.ProviderOpenAI,
 //	    Model:         "gpt-4o",
 //	    APIKeyEnvName: "MY_OPENAI_KEY",
 //	})
 //
 //	// Using a vault provider
-//	client, err := llm.New(llm.RuntimeLLMConfig{
+//	client, err := llm.New(llm.Config{
 //	    Provider: llm.ProviderOpenAI,
 //	    Model:    "gpt-4o",
 //	    Vault:    vault,
