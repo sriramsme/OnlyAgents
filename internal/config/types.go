@@ -101,11 +101,11 @@ type SkillBinding struct {
 
 // LLMConfig holds model settings. The actual API key lives in vault.
 type LLMConfig struct {
-	Provider   string     `mapstructure:"provider"`
-	Model      string     `mapstructure:"model"`
-	APIKeyPath string     `mapstructure:"api_key_path"` // vault path, not the key itself
-	BaseURL    string     `mapstructure:"base_url"`
-	Options    LLMOptions `mapstructure:"options,omitempty"`
+	Provider   string      `mapstructure:"provider"`
+	Model      string      `mapstructure:"model"`
+	APIKeyPath string      `mapstructure:"api_key_path"` // vault path, not the key itself
+	BaseURL    string      `mapstructure:"base_url"`
+	Options    *LLMOptions `mapstructure:"options,omitempty"`
 }
 
 type LLMOptions struct {
@@ -138,9 +138,13 @@ type SkillConfig struct {
 	// Executor config
 	Executor ExecutorConfig `mapstructure:"executor,omitempty"`
 
-	// Native skill — arbitrary per-skill config
-	RawConfig map[string]any `mapstructure:"config,omitempty"`
+	// Optional LLM configuration
+	LLM *LLMConfig `mapstructure:"llm,omitempty"`
+
+	// For skill-specific extensions
+	Config map[string]any `mapstructure:"config,omitempty"`
 }
+
 type SkillConnectorSpec struct {
 	Required  bool     `mapstructure:"required"`
 	Default   string   `mapstructure:"default"`

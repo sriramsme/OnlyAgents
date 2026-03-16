@@ -63,7 +63,7 @@ func LoadSkillConfig(configPath string) (*SkillConfig, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	cfg.RawConfig = v.AllSettings()
+	cfg.Config = v.AllSettings()
 	return &cfg, nil
 }
 
