@@ -2,6 +2,7 @@
 package llm
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -12,18 +13,18 @@ import (
 
 // Factory creates LLM clients from configuration
 type Factory struct {
-	config *config.AgentConfig
+	config *config.LLMConfig
 	vault  vault.Vault
 }
 
 // NewFactory creates a new LLM client factory
-func NewFactory(cfg *config.AgentConfig, vault vault.Vault) *Factory {
+func NewFactory(cfg *config.LLMConfig, vault vault.Vault) *Factory {
 	return &Factory{config: cfg, vault: vault}
 }
 
 // Create creates an LLM client using the default provider from config
 func (f *Factory) Create() (Client, error) {
-	return f.CreateForProvider(Provider(f.config.LLM.Provider), f.config.LLM.Model)
+	return f.CreateForProvider(Provider(f.config.Provider), f.config.Model)
 }
 
 // CreateForProvider creates an LLM client for a specific provider and model
@@ -42,15 +43,22 @@ func (f *Factory) CreateForProvider(provider Provider, model string) (Client, er
 			"error", err)
 	}
 
+	apiKey, err := f.vault.GetSecret(context.Background(), f.config.APIKeyVault)
+	if err != nil {
+		logger.Log.Error("failed to get API key from vault",
+			"provider", provider,
+			"model", model,
+			"error", err)
+		return nil, fmt.Errorf("failed to get API key from vault: %w", err)
+	}
 	// Build provider config
 	providerCfg := ProviderConfig{
 		Model:       model,
-		Vault:       f.vault,
-		KeyPath:     f.config.LLM.APIKeyVault,
-		BaseURL:     f.config.LLM.BaseURL,
+		APIKey:      apiKey,
+		BaseURL:     f.config.BaseURL,
 		MaxTokens:   f.getMaxTokens(),
 		Temperature: f.getTemperature(),
-		Metadata:    f.config.LLM.Options,
+		Metadata:    f.config.Options,
 	}
 
 	// Create client
@@ -72,11 +80,11 @@ func (f *Factory) CreateForProvider(provider Provider, model string) (Client, er
 
 // getMaxTokens gets max tokens from config options
 func (f *Factory) getMaxTokens() int {
-	if f.config.LLM.Options == nil {
+	if f.config.Options == nil {
 		return 4096 // default
 	}
 
-	if val, ok := f.config.LLM.Options["max_tokens"]; ok {
+	if val, ok := f.config.Options["max_tokens"]; ok {
 		if tokens, err := strconv.Atoi(val); err == nil {
 			return tokens
 		}
@@ -87,11 +95,11 @@ func (f *Factory) getMaxTokens() int {
 
 // getTemperature gets temperature from config options
 func (f *Factory) getTemperature() float64 {
-	if f.config.LLM.Options == nil {
+	if f.config.Options == nil {
 		return 1.0 // default
 	}
 
-	if val, ok := f.config.LLM.Options["temperature"]; ok {
+	if val, ok := f.config.Options["temperature"]; ok {
 		if temp, err := strconv.ParseFloat(val, 64); err == nil {
 			return temp
 		}

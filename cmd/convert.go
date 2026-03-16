@@ -11,11 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
 	"github.com/sriramsme/OnlyAgents/internal/config"
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
-	"github.com/sriramsme/OnlyAgents/pkg/llm"
-	"github.com/sriramsme/OnlyAgents/pkg/llm/providers/anthropic"
-	"github.com/sriramsme/OnlyAgents/pkg/llm/providers/gemini"
-	"github.com/sriramsme/OnlyAgents/pkg/llm/providers/openai"
+
+	"github.com/sriramsme/OnlyAgents/pkg/llm/client"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	skillcli "github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 )
@@ -122,8 +119,14 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		vaultKey = cmdutil.ProviderVaultPath(provider)
 	}
 
+	cfg := client.Config{
+		Provider: provider,
+		Model:    model,
+		Vault:    v,
+		KeyPath:  vaultKey,
+	}
 	// ── 4. Build client ───────────────────────────────────────────────────────
-	client, err := buildConvertClient(v, provider, model, vaultKey)
+	client, err := client.New(cfg)
 	if err != nil {
 		return fmt.Errorf("build LLM client: %w", err)
 	}
@@ -157,25 +160,4 @@ func runConvert(cmd *cobra.Command, args []string) error {
 
 	cmdutil.Success("saved to %s (%d tool(s))", outPath, len(result.Parsed.Tools))
 	return nil
-}
-
-func buildConvertClient(v vault.Vault, provider, model, vaultKey string) (llm.Client, error) {
-	if model == "" {
-		model = cmdutil.ProviderDefaultModel(provider)
-	}
-	cfg := llm.ProviderConfig{
-		Model:   model,
-		Vault:   v,
-		KeyPath: vaultKey,
-	}
-	switch provider {
-	case "anthropic":
-		return anthropic.NewAnthropicClient(cfg)
-	case "openai":
-		return openai.NewOpenAIClient(cfg)
-	case "gemini":
-		return gemini.NewGeminiClient(cfg)
-	default:
-		return nil, fmt.Errorf("unsupported provider %q", provider)
-	}
 }

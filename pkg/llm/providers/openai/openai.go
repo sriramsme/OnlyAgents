@@ -51,13 +51,8 @@ func NewOpenAIClient(cfg llm.ProviderConfig) (*OpenAIClient, error) {
 		return nil, fmt.Errorf("openai: %w", err)
 	}
 
-	apiKey, err := llm.GetAPIKeyFromVault(cfg.Vault, cfg.KeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("openai: %w", err)
-	}
-
 	opts := []option.RequestOption{
-		option.WithAPIKey(apiKey),
+		option.WithAPIKey(cfg.APIKey),
 	}
 
 	if cfg.BaseURL != "" {

@@ -61,11 +61,6 @@ func NewGeminiClient(cfg llm.ProviderConfig) (*GeminiClient, error) {
 		return nil, fmt.Errorf("gemini: %w", err)
 	}
 
-	apiKey, err := llm.GetAPIKeyFromVault(cfg.Vault, cfg.KeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("gemini: %w", err)
-	}
-
 	maxTokens := cfg.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = caps.DefaultMaxTokens
@@ -90,7 +85,7 @@ func NewGeminiClient(cfg llm.ProviderConfig) (*GeminiClient, error) {
 
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  apiKey,
+		APIKey:  cfg.APIKey,
 		Backend: genai.BackendGeminiAPI,
 	})
 	if err != nil {

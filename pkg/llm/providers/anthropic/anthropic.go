@@ -58,13 +58,8 @@ func NewAnthropicClient(cfg llm.ProviderConfig) (*AnthropicClient, error) {
 		return nil, fmt.Errorf("anthropic: %w", err)
 	}
 
-	apiKey, err := llm.GetAPIKeyFromVault(cfg.Vault, cfg.KeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: %w", err)
-	}
-
 	opts := []option.RequestOption{
-		option.WithAPIKey(apiKey),
+		option.WithAPIKey(cfg.APIKey),
 		option.WithMaxRetries(anthropicMaxRetries),
 	}
 

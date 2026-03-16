@@ -25,7 +25,7 @@ func NewEnvVault(cfg Config) (*EnvVault, error) {
 	// .env loading is optional — only for local dev convenience.
 	// In production, env vars are set by the runtime directly.
 	if cfg.DotEnvPath != "" {
-		if err := loadDotEnv(cfg.DotEnvPath); err != nil {
+		if err := LoadDotEnv(cfg.DotEnvPath); err != nil {
 			return nil, fmt.Errorf("dotenv: %w", err)
 		}
 	}
@@ -151,7 +151,7 @@ func (e *EnvVault) fromEnvKey(envKey string) string {
 
 // LoadDotEnv loads environment variables from a .env file
 // This should be called before initializing EnvVault
-func loadDotEnv(filePath string) error {
+func LoadDotEnv(filePath string) error {
 	// If no path specified, try default .env
 	if filePath == "" {
 		filePath = ".env"

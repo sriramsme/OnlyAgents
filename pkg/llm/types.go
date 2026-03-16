@@ -3,12 +3,27 @@ package llm
 import (
 	"context"
 
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // Provider represents different LLM providers
 type Provider string
+
+// Role represents the message sender
+type Role string
+
+const (
+	ProviderAnthropic Provider = "anthropic"
+	ProviderOpenAI    Provider = "openai"
+	ProviderGemini    Provider = "gemini"
+)
+
+const (
+	RoleUser      Role = "user"
+	RoleAssistant Role = "assistant"
+	RoleSystem    Role = "system"
+	RoleTool      Role = "tool"
+)
 
 // Client is the interface for LLM interactions
 type Client interface {
@@ -66,9 +81,6 @@ type StreamChunk struct {
 	Usage     Usage
 }
 
-// Role represents the message sender
-type Role string
-
 // Response represents the LLM's response
 type Response struct {
 	Content          string           // Final text response
@@ -91,8 +103,7 @@ type Usage struct {
 // ProviderConfig is the configuration passed to provider constructors
 type ProviderConfig struct {
 	Model       string
-	Vault       vault.Vault
-	KeyPath     string // Path to the API key
+	APIKey      string
 	BaseURL     string
 	MaxTokens   int
 	Temperature float64
