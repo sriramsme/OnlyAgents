@@ -9,11 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-viper/mapstructure/v2"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 const (
@@ -21,86 +19,101 @@ const (
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 )
 
-func init() {
-	connectors.Register("perplexity", NewConnector)
-}
-
 // Config holds Perplexity-specific configuration
 type Config struct {
-	config.Connector
-	MaxResults int `mapstructure:"max_results"` // Default max results
+	maxResults  int
+	model       string
+	credentials Credentials
+}
 
-	Model string `mapstructure:"model"` // Default: "sonar"
+type Credentials struct {
+	APIKey string
 }
 
 // PerplexityConnector implements WebSearchConnector interface
 type PerplexityConnector struct {
 	config *Config
-	vault  vault.Vault
+
+	*connectors.BaseConnector
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
 // NewConnector creates a new Perplexity connector
-func NewConnector(
-	ctx context.Context,
-	cfg config.Connector,
-	v vault.Vault,
-	bus chan<- core.Event,
-) (connectors.Connector, error) {
-	ppCfg := &Config{
-		Connector: cfg,
+func New(ctx context.Context, cfg Config) (*PerplexityConnector, error) {
+	if cfg.maxResults == 0 {
+		cfg.maxResults = 5
 	}
 
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &ppCfg,
-		WeaklyTypedInput: true,
-		TagName:          "mapstructure",
-		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			mapstructure.StringToTimeDurationHookFunc(),
-			mapstructure.StringToSliceHookFunc(","),
-		),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create decoder: %w", err)
-	}
-	if err := decoder.Decode(cfg.RawConfig); err != nil {
-		return nil, fmt.Errorf("decode telegram config: %w", err)
-	}
-
-	if ppCfg.MaxResults == 0 {
-		ppCfg.MaxResults = 5
-	}
-
-	if ppCfg.Model == "" {
-		ppCfg.Model = "sonar"
+	if cfg.model == "" {
+		cfg.model = "sonar"
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
 
 	return &PerplexityConnector{
-		config: ppCfg,
-		vault:  v,
+		BaseConnector: connectors.NewBaseConnector(connectors.BaseConnectorInfo{
+			ID:           "perplexity",
+			Name:         "perplexity",
+			Description:  "Perplexity AI web search connector",
+			Instructions: "Search the web using Perplexity AI",
+			Type:         "websearch",
+			Enabled:      true,
+		}),
+
+		config: &cfg,
 		ctx:    connCtx,
 		cancel: cancel,
 	}, nil
+}
+
+func init() {
+	connectors.Register("perplexity", func(
+		ctx context.Context,
+		cfg config.Connector,
+	) (connectors.Connector, error) {
+		v, err := vault.Load()
+		if err != nil {
+			return nil, fmt.Errorf("perplexity: vault: %w", err)
+		}
+
+		ppCfg := Config{
+			maxResults: 5,
+			model:      "sonar",
+		}
+		ppCfg.credentials.APIKey, err = v.GetSecret(ctx, cfg.VaultPaths["api_key"].Path)
+		if err != nil {
+			return nil, fmt.Errorf("perplexity: get api_key: %w", err)
+		}
+
+		if v, ok := cfg.RawConfig["max_results"].(int); ok {
+			ppCfg.maxResults = v
+		}
+
+		if v, ok := cfg.RawConfig["model"].(string); ok {
+			ppCfg.model = v
+		}
+
+		conn, err := New(ctx, ppCfg)
+		if err != nil {
+			return nil, err
+		}
+
+		// override metadata from config
+		conn.BaseConnector = connectors.NewBaseConnectorFromConfig(cfg)
+
+		return conn, nil
+	})
 }
 
 // ====================
 // Connector Interface
 // ====================
 
-func (p *PerplexityConnector) Name() string                   { return p.config.Name }
-func (p *PerplexityConnector) ID() string                     { return p.config.ID }
-func (p *PerplexityConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeService }
-func (p *PerplexityConnector) Kind() string                   { return "websearch" }
+func (p *PerplexityConnector) Kind() string { return "websearch" }
 
 func (p *PerplexityConnector) Connect() error {
-	// Validate API key exists in vault
-	_, err := p.vault.GetSecret(p.ctx, p.config.VaultPaths["api_key"].Path)
-	if err != nil {
-		return fmt.Errorf("perplexity API key not found in vault: %w", err)
-	}
 	return nil
 }
 
@@ -129,20 +142,15 @@ func (p *PerplexityConnector) HealthCheck() error {
 // ====================
 
 func (p *PerplexityConnector) Search(ctx context.Context, req *connectors.SearchRequest) (*connectors.SearchResponse, error) {
-	apiKey, err := p.vault.GetSecret(ctx, p.config.VaultPaths["api_key"].Path)
-	if err != nil {
-		return nil, fmt.Errorf("get API key: %w", err)
-	}
-
 	maxResults := req.MaxResults
 	if maxResults == 0 {
-		maxResults = p.config.MaxResults
+		maxResults = p.config.maxResults
 	}
 
 	searchURL := "https://api.perplexity.ai/chat/completions"
 
 	payload := map[string]any{
-		"model": p.config.Model,
+		"model": p.config.model,
 		"messages": []map[string]string{
 			{
 				"role":    "system",
@@ -167,7 +175,7 @@ func (p *PerplexityConnector) Search(ctx context.Context, req *connectors.Search
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+	httpReq.Header.Set("Authorization", "Bearer "+p.config.credentials.APIKey)
 	httpReq.Header.Set("User-Agent", userAgent)
 
 	client := &http.Client{Timeout: 30 * time.Second}

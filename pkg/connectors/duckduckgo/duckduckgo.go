@@ -10,82 +10,84 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-viper/mapstructure/v2"
 	"github.com/sriramsme/OnlyAgents/internal/config"
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 const (
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
-func init() {
-	connectors.Register("duckduckgo", NewConnector)
-}
-
+// Config holds DuckDuckGo-specific configuration
 // Config holds DuckDuckGo-specific configuration
 type Config struct {
-	config.Connector
-	MaxResults int `mapstructure:"max_results"` // Default max results
+	maxResults int
 }
 
 // DuckDuckGoConnector implements WebSearchConnector interface
 type DuckDuckGoConnector struct {
 	config *Config
+
+	*connectors.BaseConnector
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-// NewConnector creates a new DuckDuckGo connector
-func NewConnector(
-	ctx context.Context,
-	cfg config.Connector,
-	v vault.Vault,
-	bus chan<- core.Event,
-) (connectors.Connector, error) {
-	ddgoCfg := &Config{
-		Connector: cfg,
-	}
-
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &ddgoCfg,
-		WeaklyTypedInput: true,
-		TagName:          "mapstructure",
-		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			mapstructure.StringToTimeDurationHookFunc(),
-			mapstructure.StringToSliceHookFunc(","),
-		),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create decoder: %w", err)
-	}
-	if err := decoder.Decode(cfg.RawConfig); err != nil {
-		return nil, fmt.Errorf("decode duckduckgo  config: %w", err)
-	}
-
-	if ddgoCfg.MaxResults == 0 {
-		ddgoCfg.MaxResults = 5
+// New creates a new DuckDuckGo connector
+func New(ctx context.Context, cfg Config) (*DuckDuckGoConnector, error) {
+	if cfg.maxResults == 0 {
+		cfg.maxResults = 5
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
 
 	return &DuckDuckGoConnector{
-		config: ddgoCfg,
+		BaseConnector: connectors.NewBaseConnector(connectors.BaseConnectorInfo{
+			ID:           "duckduckgo",
+			Name:         "duckduckgo",
+			Description:  "DuckDuckGo web search connector",
+			Instructions: "Search the web using DuckDuckGo",
+			Type:         "websearch",
+			Enabled:      true,
+		}),
+
+		config: &cfg,
 		ctx:    connCtx,
 		cancel: cancel,
 	}, nil
+}
+
+func init() {
+	connectors.Register("duckduckgo", func(
+		ctx context.Context,
+		cfg config.Connector,
+	) (connectors.Connector, error) {
+		ddgCfg := Config{
+			maxResults: 5,
+		}
+
+		if v, ok := cfg.RawConfig["max_results"].(int); ok {
+			ddgCfg.maxResults = v
+		}
+
+		conn, err := New(ctx, ddgCfg)
+		if err != nil {
+			return nil, err
+		}
+
+		// override metadata from config
+		conn.BaseConnector = connectors.NewBaseConnectorFromConfig(cfg)
+
+		return conn, nil
+	})
 }
 
 // ====================
 // Connector Interface
 // ====================
 
-func (d *DuckDuckGoConnector) Name() string                   { return d.config.Name }
-func (d *DuckDuckGoConnector) ID() string                     { return d.config.ID }
-func (d *DuckDuckGoConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeService }
-func (d *DuckDuckGoConnector) Kind() string                   { return "websearch" }
+func (d *DuckDuckGoConnector) Kind() string { return "websearch" }
 
 func (d *DuckDuckGoConnector) Connect() error {
 	return nil // No authentication needed
@@ -140,7 +142,7 @@ func (d *DuckDuckGoConnector) HealthCheck() error {
 func (d *DuckDuckGoConnector) Search(ctx context.Context, req *connectors.SearchRequest) (*connectors.SearchResponse, error) {
 	maxResults := req.MaxResults
 	if maxResults == 0 {
-		maxResults = d.config.MaxResults
+		maxResults = d.config.maxResults
 	}
 
 	searchURL := fmt.Sprintf("https://html.duckduckgo.com/html/?q=%s", url.QueryEscape(req.Query))

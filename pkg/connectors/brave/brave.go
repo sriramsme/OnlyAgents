@@ -13,92 +13,115 @@ import (
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
-
-func init() {
-	// Register factory with connectors package
-	connectors.Register("brave", NewConnector)
-}
 
 // Config holds Brave-specific configuration
 type Config struct {
-	config.Connector
-	MaxResults int `yaml:"max_results"` // Default max results
+	credentials Credentials
+	maxResults  int
 }
 
 type Credentials struct {
-	APIKey string `yaml:"api_key"` // Vault key
+	APIKey string
 }
 
 // BraveConnector implements WebSearchConnector interface
 type BraveConnector struct {
-	config *Config
-	vault  vault.Vault
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	*connectors.BaseConnector
+
+	config *Config
 }
 
 // NewConnector creates a new Brave connector
-func NewConnector(
+func New(
 	ctx context.Context,
-	cfg config.Connector,
-	v vault.Vault,
-	bus chan<- core.Event,
-) (connectors.WebSearchConnector, error) {
-	braveCfg := &Config{
-		Connector: cfg,
+	cfg Config,
+) (*BraveConnector, error) {
+	if cfg.credentials.APIKey == "" {
+		return nil, fmt.Errorf("brave: missing api key")
 	}
 
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &braveCfg,
-		WeaklyTypedInput: true,
-		TagName:          "mapstructure",
-		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			mapstructure.StringToTimeDurationHookFunc(),
-			mapstructure.StringToSliceHookFunc(","),
-		),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create decoder: %w", err)
-	}
-	if err := decoder.Decode(cfg.RawConfig); err != nil {
-		return nil, fmt.Errorf("decode brave config: %w", err)
-	}
-
-	if braveCfg.MaxResults == 0 {
-		braveCfg.MaxResults = 5
+	if cfg.maxResults == 0 {
+		cfg.maxResults = 5
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
 
 	return &BraveConnector{
-		config: braveCfg,
-		vault:  v,
+		BaseConnector: connectors.NewBaseConnector(connectors.BaseConnectorInfo{
+			ID:           "brave",
+			Name:         "brave",
+			Description:  "Brave search connector",
+			Instructions: "Search the web using Brave Search API",
+			Type:         "websearch",
+			Enabled:      true,
+		}),
+
+		config: &cfg,
 		ctx:    connCtx,
 		cancel: cancel,
 	}, nil
 }
 
+func init() {
+	connectors.Register("brave", func(
+		ctx context.Context,
+		cfg config.Connector,
+	) (connectors.Connector, error) {
+		var braveCfg Config
+
+		decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+			Result:           &braveCfg,
+			WeaklyTypedInput: true,
+			TagName:          "mapstructure",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("create decoder: %w", err)
+		}
+
+		if err := decoder.Decode(cfg.RawConfig); err != nil {
+			return nil, fmt.Errorf("decode brave config: %w", err)
+		}
+
+		v, err := vault.Load()
+		if err != nil {
+			return nil, fmt.Errorf("brave: vault: %w", err)
+		}
+
+		braveCfg.credentials.APIKey, err = v.GetSecret(ctx, cfg.VaultPaths["api_key"].Path)
+		if err != nil {
+			return nil, fmt.Errorf("brave: get api_key: %w", err)
+		}
+
+		conn, err := New(
+			ctx,
+			braveCfg,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// override base connector info from config
+		conn.BaseConnector = connectors.NewBaseConnectorFromConfig(cfg)
+
+		return conn, nil
+	})
+}
+
 // ====================
 // Connector Interface
 // ====================
-
-func (b *BraveConnector) Name() string                   { return b.config.Name }
-func (b *BraveConnector) ID() string                     { return b.config.ID }
-func (b *BraveConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeService }
-func (b *BraveConnector) Kind() string                   { return "websearch" }
+func (b *BraveConnector) Kind() string { return "websearch" }
 
 func (b *BraveConnector) Connect() error {
-	// Validate API key exists in vault
-	_, err := b.vault.GetSecret(b.ctx, b.config.VaultPaths["api_key"].Path)
-	if err != nil {
-		return fmt.Errorf("brave API key not found in vault: %w", err)
-	}
 	return nil
 }
 
 func (b *BraveConnector) Disconnect() error {
+	b.cancel()
 	return nil
 }
 
@@ -123,14 +146,11 @@ func (b *BraveConnector) HealthCheck() error {
 // ====================
 
 func (b *BraveConnector) Search(ctx context.Context, req *connectors.SearchRequest) (*connectors.SearchResponse, error) {
-	apiKey, err := b.vault.GetSecret(ctx, b.config.VaultPaths["api_key"].Path)
-	if err != nil {
-		return nil, fmt.Errorf("get API key: %w", err)
-	}
+	apiKey := b.config.credentials.APIKey
 
 	maxResults := req.MaxResults
 	if maxResults == 0 {
-		maxResults = b.config.MaxResults
+		maxResults = b.config.maxResults
 	}
 
 	searchURL := fmt.Sprintf("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d",

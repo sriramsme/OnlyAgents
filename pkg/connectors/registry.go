@@ -6,8 +6,6 @@ import (
 	"sync"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
-	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
 // Registry holds all connectors. Lives in kernel.
@@ -16,7 +14,7 @@ type Registry struct {
 	mu         sync.RWMutex
 }
 
-func NewRegistry(ctx context.Context, vault vault.Vault, bus chan<- core.Event) (*Registry, error) {
+func NewRegistry(ctx context.Context) (*Registry, error) {
 	configs, err := config.LoadAllConnectorConfigs()
 	if err != nil {
 		return nil, fmt.Errorf("load connector configs: %w", err)
@@ -37,7 +35,7 @@ func NewRegistry(ctx context.Context, vault vault.Vault, bus chan<- core.Event) 
 			return nil, fmt.Errorf("connector %s: %w", name, err)
 		}
 
-		conn, err := factory(ctx, *cfg, vault, bus)
+		conn, err := factory(ctx, *cfg)
 		if err != nil {
 			return nil, fmt.Errorf("connector %s: create: %w", name, err)
 		}

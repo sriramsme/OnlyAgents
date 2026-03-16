@@ -13,131 +13,120 @@ import (
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
 
-	"github.com/go-viper/mapstructure/v2"
-
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
-// init registers the Gmail connector factory
-// Kernel will call this factory to create instances
-func init() {
-	connectors.Register("gmail", NewConnector)
-}
-
-// Config holds Gmail-specific configuration
+// Config holds gmail-specific configuration
 type Config struct {
-	config.Connector
-	// OAuth
-	OAuthConfig *oauth2.Config `yaml:"-"` // Built from credentials
+	credentials Credentials
 }
 
 // GmailConnector implements EmailConnector interface
 type GmailConnector struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	config   *Config
-	vault    vault.Vault
-	eventBus chan<- core.Event
-	service  *gmail.Service
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	*connectors.BaseConnector
+
+	service *gmail.Service
+
+	cfg *Config
 }
 
 // NewConnector creates a new Gmail connector
-func NewConnector(
-	ctx context.Context,
-	cfg config.Connector,
-	v vault.Vault,
-	eventBus chan<- core.Event,
-) (connectors.Connector, error) {
-	gmailCfg := &Config{
-		Connector: cfg,
+type Credentials struct {
+	ClientID     string
+	ClientSecret string
+	RefreshToken string
+}
+
+func New(ctx context.Context, cfg Config) (*GmailConnector, error) {
+	if cfg.credentials.ClientID == "" || cfg.credentials.ClientSecret == "" || cfg.credentials.RefreshToken == "" {
+		return nil, fmt.Errorf("gmail: missing required credentials")
 	}
 
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		Result:           &gmailCfg,
-		WeaklyTypedInput: true,
-		TagName:          "mapstructure",
-		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			mapstructure.StringToTimeDurationHookFunc(),
-			mapstructure.StringToSliceHookFunc(","),
-		),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("create decoder: %w", err)
-	}
-	if err := decoder.Decode(cfg.RawConfig); err != nil {
-		return nil, fmt.Errorf("decode gmail config: %w", err)
-	}
+	connCtx, cancel := context.WithCancel(ctx)
 
-	connCtx, cancel := context.WithCancel(ctx) //nolint:gosec
 	return &GmailConnector{
-		ctx:      connCtx,
-		cancel:   cancel,
-		config:   gmailCfg,
-		vault:    v,
-		eventBus: eventBus,
+		BaseConnector: connectors.NewBaseConnector(connectors.BaseConnectorInfo{
+			ID:           "gmail",
+			Name:         "gmail",
+			Description:  "Gmail email connector",
+			Instructions: "Provides Gmail email operations",
+			Enabled:      true,
+			Type:         "email",
+		}),
+		ctx:    connCtx,
+		cancel: cancel,
+		cfg:    &cfg,
 	}, nil
+}
+
+// init registers the Gmail connector factory
+// Kernel will call this factory to create instances
+func init() {
+	connectors.Register("gmail", func(ctx context.Context, cfg config.Connector) (connectors.Connector, error) {
+		v, err := vault.Load()
+		if err != nil {
+			return nil, fmt.Errorf("gmail: vault: %w", err)
+		}
+
+		var gmailCfg Config
+
+		gmailCfg.credentials.ClientID, err = v.GetSecret(ctx, cfg.VaultPaths["client_id"].Path)
+		if err != nil {
+			return nil, fmt.Errorf("gmail: get client_id: %w", err)
+		}
+		gmailCfg.credentials.ClientSecret, err = v.GetSecret(ctx, cfg.VaultPaths["client_secret"].Path)
+		if err != nil {
+			return nil, fmt.Errorf("gmail: get client_secret: %w", err)
+		}
+		gmailCfg.credentials.RefreshToken, err = v.GetSecret(ctx, cfg.VaultPaths["refresh_token"].Path)
+		if err != nil {
+			return nil, fmt.Errorf("gmail: get refresh_token: %w", err)
+		}
+
+		conn, err := New(ctx, gmailCfg)
+		if err != nil {
+			return nil, err
+		}
+
+		// override base connector info from config
+		conn.BaseConnector = connectors.NewBaseConnectorFromConfig(cfg)
+
+		return conn, nil
+	})
 }
 
 // ====================
 // Connector Interface
 // ====================
-
-func (g *GmailConnector) Name() string                   { return g.config.Name }
-func (g *GmailConnector) ID() string                     { return g.config.ID }
-func (g *GmailConnector) Type() connectors.ConnectorType { return connectors.ConnectorTypeService }
-func (g *GmailConnector) Kind() string                   { return "email" }
+func (g *GmailConnector) Kind() string { return "email" }
 
 func (g *GmailConnector) Connect() error {
-	// Get credentials from vault
-	clientID, err := g.vault.GetSecret(g.ctx, g.config.VaultPaths["client_id"].Path)
-	if err != nil {
-		return fmt.Errorf("get client_id: %w", err)
-	}
-
-	clientSecret, err := g.vault.GetSecret(g.ctx, g.config.VaultPaths["client_secret"].Path)
-	if err != nil {
-		return fmt.Errorf("get client_secret: %w", err)
-	}
-
-	refreshToken, err := g.vault.GetSecret(g.ctx, g.config.VaultPaths["refresh_token"].Path)
-	if err != nil {
-		return fmt.Errorf("get refresh_token: %w", err)
-	}
-
-	// Configure OAuth2
 	oauthConfig := &oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
+		ClientID:     g.cfg.credentials.ClientID,
+		ClientSecret: g.cfg.credentials.ClientSecret,
 		Endpoint:     google.Endpoint,
-		RedirectURL:  "urn:ietf:wg:oauth:2.0:oob",
-		Scopes: []string{
-			gmail.GmailModifyScope,
-			gmail.GmailSendScope,
-		},
+		Scopes:       []string{gmail.GmailModifyScope, gmail.GmailSendScope},
 	}
-
 	token := &oauth2.Token{
-		RefreshToken: refreshToken,
+		RefreshToken: g.cfg.credentials.RefreshToken,
 		TokenType:    "Bearer",
 	}
-
-	httpClient := oauthConfig.Client(g.ctx, token)
-
-	// Create Gmail service
-	service, err := gmail.NewService(g.ctx, option.WithHTTPClient(httpClient))
+	service, err := gmail.NewService(g.ctx, option.WithHTTPClient(oauthConfig.Client(g.ctx, token)))
 	if err != nil {
 		return fmt.Errorf("create gmail service: %w", err)
 	}
-
 	g.service = service
 	return nil
 }
 
 func (g *GmailConnector) Disconnect() error {
 	g.service = nil
+	g.cancel()
 	return nil
 }
 
