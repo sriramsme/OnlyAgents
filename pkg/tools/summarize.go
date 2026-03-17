@@ -10,57 +10,79 @@ const (
 )
 
 type SummarizeTextInput struct {
-	Text     string          `json:"text"               desc:"Text content to summarize"`
-	Length   SummarizeLength `json:"length,omitempty"   desc:"short (~900), medium (~1800), long (~4200), xl (~9000). Default: medium"`
-	Language string          `json:"language,omitempty" desc:"Output language, e.g. 'english'. Default: match source"`
-	Focus    string          `json:"focus,omitempty"    desc:"Optional angle, e.g. 'key findings', 'technical details'"`
+	Text     string          `json:"text"               desc:"Text content to summarize"                                                        cli_short:"t" cli_pos:"1" cli_req:"true"`
+	Length   SummarizeLength `json:"length,omitempty"   desc:"Summary length (short ~900, medium ~1800, long ~4200, xl ~9000). Default: medium" cli_short:"l"`
+	Language string          `json:"language,omitempty" desc:"Output language (default: match source)"                                          cli_short:"g" cli_help:"e.g. english, spanish, french"`
+	Focus    string          `json:"focus,omitempty"    desc:"Optional focus for the summary"                                                   cli_short:"f" cli_help:"e.g. key findings, technical details, action items"`
 }
 
 type SummarizeURLInput struct {
-	URL      string          `json:"url"                desc:"Full URL to fetch and summarize"`
-	Length   SummarizeLength `json:"length,omitempty"   desc:"short, medium, long, xl. Default: medium"`
-	Language string          `json:"language,omitempty" desc:"Output language. Default: match source"`
-	Focus    string          `json:"focus,omitempty"    desc:"Optional focus for the summary"`
+	URL      string          `json:"url"                desc:"URL to fetch and summarize"                                                       cli_short:"u" cli_pos:"1" cli_req:"true"`
+	Length   SummarizeLength `json:"length,omitempty"   desc:"Summary length (short, medium, long, xl). Default: medium"                       cli_short:"l"`
+	Language string          `json:"language,omitempty" desc:"Output language (default: match source)"                                          cli_short:"g"`
+	Focus    string          `json:"focus,omitempty"    desc:"Optional focus for the summary"                                                   cli_short:"f"`
 }
 
 type SummarizeFileInput struct {
-	Path     string          `json:"path"               desc:"Local file path (.txt, .md, .pdf)"`
-	Length   SummarizeLength `json:"length,omitempty"   desc:"short, medium, long, xl. Default: medium"`
-	Language string          `json:"language,omitempty" desc:"Output language. Default: match source"`
-	Focus    string          `json:"focus,omitempty"    desc:"Optional focus for the summary"`
+	Path     string          `json:"path"               desc:"Path to local file (.txt, .md, .pdf)"                                             cli_short:"p" cli_pos:"1" cli_req:"true"`
+	Length   SummarizeLength `json:"length,omitempty"   desc:"Summary length (short, medium, long, xl). Default: medium"                       cli_short:"l"`
+	Language string          `json:"language,omitempty" desc:"Output language (default: match source)"                                          cli_short:"g"`
+	Focus    string          `json:"focus,omitempty"    desc:"Optional focus for the summary"                                                   cli_short:"f"`
 }
 
 type SummarizeYouTubeInput struct {
-	URL      string          `json:"url"                desc:"YouTube URL (youtube.com or youtu.be)"`
-	Length   SummarizeLength `json:"length,omitempty"   desc:"short, medium, long, xl. Default: medium"`
-	Language string          `json:"language,omitempty" desc:"Output language. Default: match source"`
+	URL      string          `json:"url"                desc:"YouTube URL (youtube.com or youtu.be)"                                            cli_short:"u" cli_pos:"1" cli_req:"true"`
+	Length   SummarizeLength `json:"length,omitempty"   desc:"Summary length (short, medium, long, xl). Default: medium"                       cli_short:"l"`
+	Language string          `json:"language,omitempty" desc:"Output language (default: match source)"                                          cli_short:"g"`
 }
 
-func GetSummarizeTools() []ToolDef {
-	return []ToolDef{
-		NewToolDef(
-			"summarize",
-			"summarize_text",
-			"Summarize raw text. Use when you already have the content.",
-			SchemaFromStruct(SummarizeTextInput{}),
-		),
-		NewToolDef(
-			"summarize",
-			"summarize_url",
-			"Fetch a URL and summarize its content. Works for articles, docs, blog posts.",
-			SchemaFromStruct(SummarizeURLInput{}),
-		),
-		NewToolDef(
-			"summarize",
-			"summarize_file",
-			"Read and summarize a local file. Supports .txt, .md, and .pdf.",
-			SchemaFromStruct(SummarizeFileInput{}),
-		),
-		NewToolDef(
-			"summarize",
-			"summarize_youtube",
-			"Extract transcript and summarize a YouTube video. Gracefully falls back if no transcript available.",
-			SchemaFromStruct(SummarizeYouTubeInput{}),
-		),
+func GetSummarizeEntries() []ToolEntry {
+	return []ToolEntry{
+		{
+			NewToolDef(
+				"summarize",
+				"summarize_text",
+				"Summarize raw text. Use when you already have the content.",
+				SchemaFromStruct(SummarizeTextInput{}),
+			),
+			SummarizeTextInput{},
+		},
+		{
+			NewToolDef(
+				"summarize",
+				"summarize_url",
+				"Fetch a URL and summarize its content. Works for articles, docs, blog posts.",
+				SchemaFromStruct(SummarizeURLInput{}),
+			),
+			SummarizeURLInput{},
+		},
+		{
+			NewToolDef(
+				"summarize",
+				"summarize_file",
+				"Read and summarize a local file. Supports .txt, .md, and .pdf.",
+				SchemaFromStruct(SummarizeFileInput{}),
+			),
+			SummarizeFileInput{},
+		},
+		{
+			NewToolDef(
+				"summarize",
+				"summarize_youtube",
+				"Extract transcript and summarize a YouTube video. Gracefully falls back if no transcript available.",
+				SchemaFromStruct(SummarizeYouTubeInput{}),
+			),
+			SummarizeYouTubeInput{},
+		},
 	}
+}
+
+// GetSummarizeTools derives from entries — no duplication
+func GetSummarizeTools() []ToolDef {
+	entries := GetSummarizeEntries()
+	defs := make([]ToolDef, len(entries))
+	for i, e := range entries {
+		defs[i] = e.Def
+	}
+	return defs
 }
