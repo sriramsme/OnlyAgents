@@ -1,0 +1,18 @@
+# skills/summarize.yaml
+name: summarize
+type: native
+enabled: true
+access_level: read
+description: Summarize text, URLs, files, and YouTube videos
+version: 1.0.0
+capabilities:
+  - text_summarization
+  - url_summarization
+  - file_summarization
+  - youtube_summarization
+
+# summarize specific config
+llm:
+  provider: "openai"
+  model: "gpt-5-nano"
+  api_key_path: "openai/api_key"

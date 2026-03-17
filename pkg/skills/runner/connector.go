@@ -4,6 +4,7 @@ package runner
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 
@@ -47,30 +48,64 @@ func (r *ConnectorRegistry[T]) Build(name string, root *cobra.Command) (T, error
 
 // RegisterFlags adds --connector flag and all connector-specific prefixed flags.
 func (r *ConnectorRegistry[T]) RegisterFlags(root *cobra.Command) {
-	names := make([]string, 0, len(r.entries))
+	connectorNames := []string{}
 	for name := range r.entries {
-		names = append(names, name)
+		connectorNames = append(connectorNames, name)
 	}
-	root.PersistentFlags().String("connector", r.def,
-		fmt.Sprintf("connector: %s", strings.Join(names, ", ")))
+	root.PersistentFlags().StringP("connector", "c", r.def,
+		fmt.Sprintf("connector: %s", strings.Join(connectorNames, ", ")))
 
-	for connName, entry := range r.entries {
-		if entry.Proto == nil {
+	// peek early so we only register relevant connector flags
+	active := r.peekConnector()
+	entry, ok := r.entries[active]
+	if !ok {
+		return
+	}
+	r.registerEntryFlags(root, active, entry)
+}
+
+func (r *ConnectorRegistry[T]) peekConnector() string {
+	args := os.Args[1:]
+	for i, arg := range args {
+		if (arg == "--connector" || arg == "-c") && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(arg, "--connector=") {
+			return strings.TrimPrefix(arg, "--connector=")
+		}
+		if strings.HasPrefix(arg, "-c=") {
+			return strings.TrimPrefix(arg, "-c=")
+		}
+	}
+	return r.def
+}
+
+func (r *ConnectorRegistry[T]) registerEntryFlags(root *cobra.Command, connName string, entry ConnectorEntry[T]) {
+	if entry.Proto == nil {
+		return
+	}
+	t := reflect.TypeOf(entry.Proto)
+	for i := range t.NumField() {
+		f := t.Field(i)
+		meta := tools.ParseFieldMeta(f)
+		if meta.JSONName == "" || meta.JSONName == "-" {
 			continue
 		}
-		t := reflect.TypeOf(entry.Proto)
-		for i := range t.NumField() {
-			f := t.Field(i)
-			meta := tools.ParseFieldMeta(f)
-			if meta.JSONName == "" || meta.JSONName == "-" {
-				continue
-			}
-			flagName := connName + "-" + meta.JSONName
-			desc := meta.SchemaDesc
-			if meta.CLIHelp != "" {
-				desc += " (" + meta.CLIHelp + ")"
-			}
+		flagName := strings.ReplaceAll(meta.JSONName, "_", "-")
+		desc := meta.SchemaDesc
+		if meta.CLIHelp != "" {
+			desc += " (" + meta.CLIHelp + ")"
+		}
+		if meta.CLIShort != "" {
+			root.PersistentFlags().StringP(flagName, meta.CLIShort, "", desc)
+		} else {
 			root.PersistentFlags().String(flagName, "", desc)
+		}
+		if meta.CLIRequired {
+			err := root.MarkPersistentFlagRequired(flagName)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 }
@@ -87,7 +122,8 @@ func buildConnectorConfig(connName string, proto any, root *cobra.Command) (any,
 		if name == "" || name == "-" {
 			continue
 		}
-		val, err := root.PersistentFlags().GetString(connName + "-" + name)
+		flagName := strings.ReplaceAll(name, "_", "-")
+		val, err := root.PersistentFlags().GetString(flagName)
 		if err != nil {
 			return nil, err
 		}
