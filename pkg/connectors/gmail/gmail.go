@@ -20,7 +20,9 @@ import (
 
 // Config holds gmail-specific configuration
 type Config struct {
-	credentials Credentials
+	ClientID     string `json:"client_id" desc:"Gmail Client ID" cli_req:"true"`
+	ClientSecret string `json:"client_secret" desc:"Gmail Client Secret" cli_req:"true"`
+	RefreshToken string `json:"refresh_token" desc:"Gmail Refresh Token" cli_req:"true"`
 }
 
 // GmailConnector implements EmailConnector interface
@@ -36,14 +38,10 @@ type GmailConnector struct {
 }
 
 // NewConnector creates a new Gmail connector
-type Credentials struct {
-	ClientID     string
-	ClientSecret string
-	RefreshToken string
-}
+type Credentials struct{}
 
 func New(ctx context.Context, cfg Config) (*GmailConnector, error) {
-	if cfg.credentials.ClientID == "" || cfg.credentials.ClientSecret == "" || cfg.credentials.RefreshToken == "" {
+	if cfg.ClientID == "" || cfg.ClientSecret == "" || cfg.RefreshToken == "" {
 		return nil, fmt.Errorf("gmail: missing required credentials")
 	}
 
@@ -75,15 +73,15 @@ func init() {
 
 		var gmailCfg Config
 
-		gmailCfg.credentials.ClientID, err = v.GetSecret(ctx, cfg.VaultPaths["client_id"].Path)
+		gmailCfg.ClientID, err = v.GetSecret(ctx, cfg.VaultPaths["client_id"].Path)
 		if err != nil {
 			return nil, fmt.Errorf("gmail: get client_id: %w", err)
 		}
-		gmailCfg.credentials.ClientSecret, err = v.GetSecret(ctx, cfg.VaultPaths["client_secret"].Path)
+		gmailCfg.ClientSecret, err = v.GetSecret(ctx, cfg.VaultPaths["client_secret"].Path)
 		if err != nil {
 			return nil, fmt.Errorf("gmail: get client_secret: %w", err)
 		}
-		gmailCfg.credentials.RefreshToken, err = v.GetSecret(ctx, cfg.VaultPaths["refresh_token"].Path)
+		gmailCfg.RefreshToken, err = v.GetSecret(ctx, cfg.VaultPaths["refresh_token"].Path)
 		if err != nil {
 			return nil, fmt.Errorf("gmail: get refresh_token: %w", err)
 		}
@@ -107,13 +105,13 @@ func (g *GmailConnector) Kind() string { return "email" }
 
 func (g *GmailConnector) Connect() error {
 	oauthConfig := &oauth2.Config{
-		ClientID:     g.cfg.credentials.ClientID,
-		ClientSecret: g.cfg.credentials.ClientSecret,
+		ClientID:     g.cfg.ClientID,
+		ClientSecret: g.cfg.ClientSecret,
 		Endpoint:     google.Endpoint,
 		Scopes:       []string{gmail.GmailModifyScope, gmail.GmailSendScope},
 	}
 	token := &oauth2.Token{
-		RefreshToken: g.cfg.credentials.RefreshToken,
+		RefreshToken: g.cfg.RefreshToken,
 		TokenType:    "Bearer",
 	}
 	service, err := gmail.NewService(g.ctx, option.WithHTTPClient(oauthConfig.Client(g.ctx, token)))
@@ -195,8 +193,8 @@ func (g *GmailConnector) SendEmail(ctx context.Context, req *connectors.SendEmai
 	return err
 }
 
-func (g *GmailConnector) DraftEmail(ctx context.Context, req *connectors.SendEmailRequest) error {
-	return nil
+func (g *GmailConnector) DraftEmail(ctx context.Context, req *connectors.SendEmailRequest) (*connectors.Email, error) {
+	return nil, nil
 }
 
 func (g *GmailConnector) GetEmail(ctx context.Context, id string) (*connectors.Email, error) {
