@@ -21,13 +21,9 @@ const (
 
 // Config holds Perplexity-specific configuration
 type Config struct {
-	maxResults  int
-	model       string
-	credentials Credentials
-}
-
-type Credentials struct {
-	APIKey string
+	APIKey     string `json:"api_key"              desc:"Perplexity API key" cli_req:"true"`
+	Model      string `json:"model,omitempty"      desc:"Model to use"        cli_help:"default: sonar"`
+	MaxResults int    `json:"max_results,omitempty" desc:"Max results to return"`
 }
 
 // PerplexityConnector implements WebSearchConnector interface
@@ -42,12 +38,12 @@ type PerplexityConnector struct {
 
 // NewConnector creates a new Perplexity connector
 func New(ctx context.Context, cfg Config) (*PerplexityConnector, error) {
-	if cfg.maxResults == 0 {
-		cfg.maxResults = 5
+	if cfg.MaxResults == 0 {
+		cfg.MaxResults = 5
 	}
 
-	if cfg.model == "" {
-		cfg.model = "sonar"
+	if cfg.Model == "" {
+		cfg.Model = "sonar"
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
@@ -79,20 +75,20 @@ func init() {
 		}
 
 		ppCfg := Config{
-			maxResults: 5,
-			model:      "sonar",
+			MaxResults: 5,
+			Model:      "sonar",
 		}
-		ppCfg.credentials.APIKey, err = v.GetSecret(ctx, cfg.VaultPaths["api_key"].Path)
+		ppCfg.APIKey, err = v.GetSecret(ctx, cfg.VaultPaths["api_key"].Path)
 		if err != nil {
 			return nil, fmt.Errorf("perplexity: get api_key: %w", err)
 		}
 
 		if v, ok := cfg.RawConfig["max_results"].(int); ok {
-			ppCfg.maxResults = v
+			ppCfg.MaxResults = v
 		}
 
 		if v, ok := cfg.RawConfig["model"].(string); ok {
-			ppCfg.model = v
+			ppCfg.Model = v
 		}
 
 		conn, err := New(ctx, ppCfg)
@@ -142,15 +138,15 @@ func (p *PerplexityConnector) HealthCheck() error {
 // ====================
 
 func (p *PerplexityConnector) Search(ctx context.Context, req *connectors.SearchRequest) (*connectors.SearchResponse, error) {
-	maxResults := req.MaxResults
-	if maxResults == 0 {
-		maxResults = p.config.maxResults
+	MaxResults := req.MaxResults
+	if MaxResults == 0 {
+		MaxResults = p.config.MaxResults
 	}
 
 	searchURL := "https://api.perplexity.ai/chat/completions"
 
 	payload := map[string]any{
-		"model": p.config.model,
+		"model": p.config.Model,
 		"messages": []map[string]string{
 			{
 				"role":    "system",
@@ -158,7 +154,7 @@ func (p *PerplexityConnector) Search(ctx context.Context, req *connectors.Search
 			},
 			{
 				"role":    "user",
-				"content": fmt.Sprintf("Search for: %s. Provide up to %d relevant results.", req.Query, maxResults),
+				"content": fmt.Sprintf("Search for: %s. Provide up to %d relevant results.", req.Query, MaxResults),
 			},
 		},
 		"max_tokens": 1000,
@@ -175,7 +171,7 @@ func (p *PerplexityConnector) Search(ctx context.Context, req *connectors.Search
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.config.credentials.APIKey)
+	httpReq.Header.Set("Authorization", "Bearer "+p.config.APIKey)
 	httpReq.Header.Set("User-Agent", userAgent)
 
 	client := &http.Client{Timeout: 30 * time.Second}

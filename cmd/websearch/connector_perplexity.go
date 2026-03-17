@@ -9,12 +9,7 @@ import (
 )
 
 func init() {
-	// override or extend buildConnector via a registry
-	registerConnector("perplexity", func(cfg any) (connectors.WebSearchConnector, error) {
-		var ddgCfg perplexity.Config
-		if cfg != nil {
-			ddgCfg = cfg.(perplexity.Config)
-		}
-		return perplexity.New(context.Background(), ddgCfg)
+	registry.Register("perplexity", perplexity.Config{}, func(cfg any) (connectors.WebSearchConnector, error) {
+		return perplexity.New(context.Background(), cfg.(perplexity.Config))
 	})
 }

@@ -17,12 +17,8 @@ import (
 
 // Config holds Brave-specific configuration
 type Config struct {
-	credentials Credentials
-	maxResults  int
-}
-
-type Credentials struct {
-	APIKey string
+	APIKey     string `json:"api_key"              desc:"Brave Search API key" cli_req:"true"`
+	MaxResults int    `json:"max_results,omitempty" desc:"Max results to return"`
 }
 
 // BraveConnector implements WebSearchConnector interface
@@ -40,12 +36,12 @@ func New(
 	ctx context.Context,
 	cfg Config,
 ) (*BraveConnector, error) {
-	if cfg.credentials.APIKey == "" {
+	if cfg.APIKey == "" {
 		return nil, fmt.Errorf("brave: missing api key")
 	}
 
-	if cfg.maxResults == 0 {
-		cfg.maxResults = 5
+	if cfg.MaxResults == 0 {
+		cfg.MaxResults = 5
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
@@ -91,7 +87,7 @@ func init() {
 			return nil, fmt.Errorf("brave: vault: %w", err)
 		}
 
-		braveCfg.credentials.APIKey, err = v.GetSecret(ctx, cfg.VaultPaths["api_key"].Path)
+		braveCfg.APIKey, err = v.GetSecret(ctx, cfg.VaultPaths["api_key"].Path)
 		if err != nil {
 			return nil, fmt.Errorf("brave: get api_key: %w", err)
 		}
@@ -146,15 +142,15 @@ func (b *BraveConnector) HealthCheck() error {
 // ====================
 
 func (b *BraveConnector) Search(ctx context.Context, req *connectors.SearchRequest) (*connectors.SearchResponse, error) {
-	apiKey := b.config.credentials.APIKey
+	APIKey := b.config.APIKey
 
-	maxResults := req.MaxResults
-	if maxResults == 0 {
-		maxResults = b.config.maxResults
+	MaxResults := req.MaxResults
+	if MaxResults == 0 {
+		MaxResults = b.config.MaxResults
 	}
 
 	searchURL := fmt.Sprintf("https://api.search.brave.com/res/v1/web/search?q=%s&count=%d",
-		url.QueryEscape(req.Query), maxResults)
+		url.QueryEscape(req.Query), MaxResults)
 
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
 	if err != nil {
@@ -162,7 +158,7 @@ func (b *BraveConnector) Search(ctx context.Context, req *connectors.SearchReque
 	}
 
 	httpReq.Header.Set("Accept", "application/json")
-	httpReq.Header.Set("X-Subscription-Token", apiKey)
+	httpReq.Header.Set("X-Subscription-Token", APIKey)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(httpReq)

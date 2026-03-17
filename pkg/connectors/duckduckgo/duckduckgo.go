@@ -19,9 +19,8 @@ const (
 )
 
 // Config holds DuckDuckGo-specific configuration
-// Config holds DuckDuckGo-specific configuration
 type Config struct {
-	maxResults int
+	MaxResults int `json:"max_results,omitempty" desc:"Max results to return" cli_help:"default: 10"`
 }
 
 // DuckDuckGoConnector implements WebSearchConnector interface
@@ -36,8 +35,8 @@ type DuckDuckGoConnector struct {
 
 // New creates a new DuckDuckGo connector
 func New(ctx context.Context, cfg Config) (*DuckDuckGoConnector, error) {
-	if cfg.maxResults == 0 {
-		cfg.maxResults = 5
+	if cfg.MaxResults == 0 {
+		cfg.MaxResults = 5
 	}
 
 	connCtx, cancel := context.WithCancel(ctx)
@@ -64,11 +63,11 @@ func init() {
 		cfg config.Connector,
 	) (connectors.Connector, error) {
 		ddgCfg := Config{
-			maxResults: 5,
+			MaxResults: 5,
 		}
 
 		if v, ok := cfg.RawConfig["max_results"].(int); ok {
-			ddgCfg.maxResults = v
+			ddgCfg.MaxResults = v
 		}
 
 		conn, err := New(ctx, ddgCfg)
@@ -140,9 +139,9 @@ func (d *DuckDuckGoConnector) HealthCheck() error {
 // ====================
 
 func (d *DuckDuckGoConnector) Search(ctx context.Context, req *connectors.SearchRequest) (*connectors.SearchResponse, error) {
-	maxResults := req.MaxResults
-	if maxResults == 0 {
-		maxResults = d.config.maxResults
+	MaxResults := req.MaxResults
+	if MaxResults == 0 {
+		MaxResults = d.config.MaxResults
 	}
 
 	searchURL := fmt.Sprintf("https://html.duckduckgo.com/html/?q=%s", url.QueryEscape(req.Query))
@@ -170,7 +169,7 @@ func (d *DuckDuckGoConnector) Search(ctx context.Context, req *connectors.Search
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
-	results, err := d.extractResults(string(body), maxResults, req.Query)
+	results, err := d.extractResults(string(body), MaxResults, req.Query)
 	if err != nil {
 		return nil, err
 	}
@@ -183,10 +182,10 @@ func (d *DuckDuckGoConnector) Search(ctx context.Context, req *connectors.Search
 	}, nil
 }
 
-func (d *DuckDuckGoConnector) extractResults(html string, maxResults int, query string) ([]connectors.SearchResult, error) {
+func (d *DuckDuckGoConnector) extractResults(html string, MaxResults int, query string) ([]connectors.SearchResult, error) {
 	// Extract result links
 	reLink := regexp.MustCompile(`<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)</a>`)
-	linkMatches := reLink.FindAllStringSubmatch(html, maxResults+5)
+	linkMatches := reLink.FindAllStringSubmatch(html, MaxResults+5)
 
 	if len(linkMatches) == 0 {
 		return []connectors.SearchResult{}, nil
@@ -194,10 +193,10 @@ func (d *DuckDuckGoConnector) extractResults(html string, maxResults int, query 
 
 	// Extract snippets
 	reSnippet := regexp.MustCompile(`<a class="result__snippet[^"]*".*?>([\s\S]*?)</a>`)
-	snippetMatches := reSnippet.FindAllStringSubmatch(html, maxResults+5)
+	snippetMatches := reSnippet.FindAllStringSubmatch(html, MaxResults+5)
 
-	results := make([]connectors.SearchResult, 0, maxResults)
-	maxItems := min(len(linkMatches), maxResults)
+	results := make([]connectors.SearchResult, 0, MaxResults)
+	maxItems := min(len(linkMatches), MaxResults)
 
 	for i := 0; i < maxItems; i++ {
 		urlStr := linkMatches[i][1]

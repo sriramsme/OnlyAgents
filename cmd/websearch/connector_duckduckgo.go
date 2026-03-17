@@ -8,12 +8,7 @@ import (
 )
 
 func init() {
-	// override or extend buildConnector via a registry
-	registerConnector("duckduckgo", func(cfg any) (connectors.WebSearchConnector, error) {
-		var ddgCfg duckduckgo.Config
-		if cfg != nil {
-			ddgCfg = cfg.(duckduckgo.Config)
-		}
-		return duckduckgo.New(context.Background(), ddgCfg)
+	registry.Register("duckduckgo", duckduckgo.Config{}, func(cfg any) (connectors.WebSearchConnector, error) {
+		return duckduckgo.New(context.Background(), cfg.(duckduckgo.Config))
 	})
 }

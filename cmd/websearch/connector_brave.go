@@ -9,12 +9,7 @@ import (
 )
 
 func init() {
-	// override or extend buildConnector via a registry
-	registerConnector("brave", func(cfg any) (connectors.WebSearchConnector, error) {
-		var ddgCfg brave.Config
-		if cfg != nil {
-			ddgCfg = cfg.(brave.Config)
-		}
-		return brave.New(context.Background(), ddgCfg)
+	registry.Register("brave", brave.Config{}, func(cfg any) (connectors.WebSearchConnector, error) {
+		return brave.New(context.Background(), cfg.(brave.Config))
 	})
 }
