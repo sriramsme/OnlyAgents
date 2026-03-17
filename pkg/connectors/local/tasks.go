@@ -11,12 +11,12 @@ import (
 )
 
 type TasksConnector struct {
-	store storage.Storage
+	store storage.TaskStore
 	name  string
 	id    string
 }
 
-func NewTasksConnector(store storage.Storage) connectors.TasksConnector {
+func NewTasksConnector(store storage.TaskStore) *TasksConnector {
 	return &TasksConnector{
 		store: store,
 		name:  "Local Tasks",

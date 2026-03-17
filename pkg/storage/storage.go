@@ -18,7 +18,6 @@ type Storage interface {
 	WorkflowStore
 	JobRunStore
 	TaskStore
-	ProjectStore
 	Close() error
 }
 
@@ -112,15 +111,6 @@ type WorkflowStore interface {
 	AllDependenciesSatisfied(ctx context.Context, taskID string) (bool, error)
 }
 
-// ProjectStore manages task groupings.
-type ProjectStore interface {
-	CreateProject(ctx context.Context, project *Project) error
-	GetProject(ctx context.Context, id string) (*Project, error)
-	UpdateProject(ctx context.Context, project *Project) error
-	DeleteProject(ctx context.Context, id string) error
-	ListProjects(ctx context.Context) ([]*Project, error)
-}
-
 // TaskStore manages tasks with optional project grouping.
 // TaskFilter fields are all optional — nil means no filter on that field.
 type TaskStore interface {
@@ -132,6 +122,12 @@ type TaskStore interface {
 	ListTasks(ctx context.Context, filter TaskFilter) ([]*Task, error)
 	SearchTasks(ctx context.Context, query string) ([]*Task, error)
 	GetTasksDueOn(ctx context.Context, date time.Time) ([]*Task, error)
+
+	CreateProject(ctx context.Context, project *Project) error
+	GetProject(ctx context.Context, id string) (*Project, error)
+	UpdateProject(ctx context.Context, project *Project) error
+	DeleteProject(ctx context.Context, id string) error
+	ListProjects(ctx context.Context) ([]*Project, error)
 }
 
 // JobRunStore tracks the last successful execution of each scheduled background job.

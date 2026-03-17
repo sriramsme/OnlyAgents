@@ -73,8 +73,6 @@ func applyMigration(db *sqlx.DB, name string) error {
 		return fmt.Errorf("record %s: %w", name, err)
 	}
 
-	fmt.Printf("storage: applied migration to file %s\n", name)
-
 	return nil
 }
 
@@ -82,13 +80,18 @@ func matchesPrefix(name string, prefixes []string) bool {
 	if len(prefixes) == 0 {
 		return true
 	}
-
+	// extract domain: "007_notes.sql" → "notes"
+	base := strings.TrimSuffix(name, ".sql")
+	parts := strings.SplitN(base, "_", 2)
+	if len(parts) < 2 {
+		return false
+	}
+	domain := parts[1]
 	for _, p := range prefixes {
-		if strings.HasPrefix(name, p) {
+		if domain == p {
 			return true
 		}
 	}
-
 	return false
 }
 

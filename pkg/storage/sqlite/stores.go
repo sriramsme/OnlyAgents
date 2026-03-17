@@ -4,7 +4,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
-func NewReminderStore(path string) (storage.ReminderStore, error) {
+func NewRemindersStore(path string) (storage.ReminderStore, error) {
 	db, err := openDB(path)
 	if err != nil {
 		return nil, err
