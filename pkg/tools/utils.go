@@ -7,6 +7,34 @@ import (
 	"strings"
 )
 
+type FieldMeta struct {
+	JSONName    string
+	SchemaDesc  string
+	CLIShort    string
+	CLIPos      string
+	CLIHelp     string
+	CLIRequired bool
+}
+
+func ParseFieldMeta(f reflect.StructField) FieldMeta {
+	return FieldMeta{
+		JSONName:    jsonFieldName(f),
+		SchemaDesc:  f.Tag.Get("desc"),
+		CLIShort:    f.Tag.Get("cli_short"),
+		CLIPos:      f.Tag.Get("cli_pos"),
+		CLIHelp:     f.Tag.Get("cli_help"),
+		CLIRequired: f.Tag.Get("cli_req") == "true",
+	}
+}
+
+func jsonFieldName(f reflect.StructField) string {
+	tag := f.Tag.Get("json")
+	if tag == "" {
+		return strings.ToLower(f.Name)
+	}
+	return strings.Split(tag, ",")[0]
+}
+
 // ParseArguments parses the JSON arguments string into a map
 func ParseArguments(args string) (map[string]any, error) {
 	if args == "" {

@@ -125,33 +125,27 @@ func toRuntimeConfig(c config.LLM) Config {
 }
 
 func resolveAPIKey(cfg Config) (string, error) {
-	// 1️⃣ direct key
+	// 1️⃣ Direct key (highest priority)
 	if cfg.APIKey != "" {
 		return cfg.APIKey, nil
 	}
 
-	// 2️⃣ vault lookup
+	// Load .env (setup phase)
+	if err := vault.LoadDotEnv(cfg.EnvPath); err != nil {
+		return "", fmt.Errorf("failed to load .env: %w", err)
+	}
+
+	// 2️⃣ Vault (internal)
 	if cfg.Vault != nil && cfg.KeyPath != "" {
 		return cfg.Vault.GetSecret(context.Background(), cfg.KeyPath)
 	}
 
-	// load .env if requested
-	if cfg.EnvPath != "" {
-		err := vault.LoadDotEnv(cfg.EnvPath)
-		if err != nil {
-			return "", fmt.Errorf("failed to load .env: %w", err)
-		}
+	// 3️⃣ Environment
+	envKey := cfg.APIKeyName
+	if envKey == "" {
+		envKey = providerEnvKey(Provider(cfg.Provider))
 	}
 
-	// 3️⃣ explicit env variable name
-	if cfg.APIKeyName != "" {
-		if val := os.Getenv(cfg.APIKeyName); val != "" {
-			return val, nil
-		}
-	}
-
-	// 4️⃣ provider default env key
-	envKey := providerEnvKey(Provider(cfg.Provider))
 	if envKey != "" {
 		if val := os.Getenv(envKey); val != "" {
 			return val, nil

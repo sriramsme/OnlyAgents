@@ -354,3 +354,25 @@ func ValidateModelConfig(
 
 	return nil
 }
+
+func KnownProviders() []string {
+	return []string{"anthropic", "openai", "gemini"}
+}
+
+func ProviderEnvVar(provider string) string {
+	m := map[string]string{
+		"anthropic": "ANTHROPIC_API_KEY",
+		"openai":    "OPENAI_API_KEY",
+		"gemini":    "GEMINI_API_KEY",
+	}
+	return m[provider]
+}
+
+func ProviderDefaultModel(provider string) string {
+	m := map[string]string{
+		"anthropic": "claude-sonnet-4-6",
+		"openai":    "gpt-5-nano",
+		"gemini":    "gemini-2.5-nano",
+	}
+	return m[provider]
+}
