@@ -32,6 +32,8 @@ func New(ctx context.Context, conn connectors.TasksConnector) (*TasksSkill, erro
 			Name:        "tasks",
 			Description: "Create, list, and manage tasks",
 			Version:     "1.0.0",
+			Tools:       tools.GetTasksTools(),
+			Groups:      tools.GetTasksGroups(),
 		}, skills.SkillTypeNative),
 		conn:   conn,
 		ctx:    skillCtx,
@@ -55,10 +57,15 @@ func init() {
 		skillCtx, cancel := context.WithCancel(ctx)
 
 		return &TasksSkill{
-			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
-			conn:      tasksConn,
-			ctx:       skillCtx,
-			cancel:    cancel,
+			BaseSkill: skills.NewBaseSkillFromConfig(
+				cfg,
+				skills.SkillTypeNative,
+				tools.GetTasksTools(),
+				tools.GetTasksGroups(),
+			),
+			conn:   tasksConn,
+			ctx:    skillCtx,
+			cancel: cancel,
 		}, nil
 	})
 }
@@ -70,10 +77,6 @@ func (s *TasksSkill) Initialize() error {
 func (s *TasksSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *TasksSkill) Tools() []tools.ToolDef {
-	return tools.GetTasksTools()
 }
 
 // nolint:gocyclo

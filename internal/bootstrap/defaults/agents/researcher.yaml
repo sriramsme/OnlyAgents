@@ -1,22 +1,22 @@
 id: "researcher"
 name: "Zuck"
-description: "Does research and gathers information from online sources.
-Supports web search,fetching urls, summarizing text, and more."
+description: |
+  Does research and gathers information from online sources.
+  Supports web search,fetching urls, summarizing text, and more.
 max_concurrency: 5
 buffer_size: 50
 enabled: true
 
 llm:
-  provider: "openai"  # anthropic, openai, gemini
-  model: "gpt-5-nano"  # model name
+  provider: "openai" # anthropic, openai, gemini
+  model: "gpt-5-nano" # model name
   # Vault key path - will lookup from vault
-  api_key_path: "openai/api_key"  # or "${vault:openai/api_key}"
+  api_key_path: "openai/api_key" # or "${vault:openai/api_key}"
 
 skills:
   - name: websearch
     connector: duckduckgo
   - name: summarize
-
 
 # ============================================
 # EXECUTION LIMITS (Guard Rails)

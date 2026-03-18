@@ -44,9 +44,10 @@ type Skill struct {
 
 	Connector *SkillConnectorSpec `mapstructure:"connector,omitempty"`
 
-	Groups map[string]string `mapstructure:"groups,omitempty"`
 	// CLI skill — tools block
-	Tools []SkillToolEntry `mapstructure:"tools,omitempty"`
+
+	Groups map[string]string `mapstructure:"groups,omitempty"`
+	Tools  []SkillToolEntry  `mapstructure:"tools,omitempty"`
 
 	// Executor config
 	Executor Executor `mapstructure:"executor,omitempty"`

@@ -7,12 +7,12 @@ agents:
   - general
 
 skills:
-  - web_search
+  - websearch
   - notes
-  - summarize # TODO: summarize long content
+  - summarize
 
 connectors:
-  - notes
-  - brave # preferred for research — cleaner results
-  - perplexity # fallback for complex queries
+  - local_notes
   - duckduckgo
+  - brave
+  - perplexity

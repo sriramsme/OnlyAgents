@@ -30,6 +30,8 @@ func New(ctx context.Context, conn connectors.RemindersConnector) (*RemindersSki
 			Name:        "reminders",
 			Description: "Create, list, and manage reminders",
 			Version:     "1.0.0",
+			Tools:       tools.GetRemindersTools(),
+			Groups:      tools.GetRemindersGroups(),
 		}, skills.SkillTypeNative),
 		conn:   conn,
 		ctx:    skillCtx,
@@ -48,10 +50,15 @@ func init() {
 		}
 		skillCtx, cancel := context.WithCancel(ctx)
 		return &RemindersSkill{
-			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
-			conn:      remindersConn,
-			ctx:       skillCtx,
-			cancel:    cancel,
+			BaseSkill: skills.NewBaseSkillFromConfig(
+				cfg,
+				skills.SkillTypeNative,
+				tools.GetRemindersTools(),
+				tools.GetRemindersGroups(),
+			),
+			conn:   remindersConn,
+			ctx:    skillCtx,
+			cancel: cancel,
 		}, nil
 	})
 }
@@ -63,10 +70,6 @@ func (s *RemindersSkill) Initialize() error {
 func (s *RemindersSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *RemindersSkill) Tools() []tools.ToolDef {
-	return tools.GetRemindersTools()
 }
 
 func (s *RemindersSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {

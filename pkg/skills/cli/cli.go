@@ -25,7 +25,6 @@ type CLISkill struct {
 
 	ctx      context.Context
 	cancel   context.CancelFunc
-	toolDefs []tools.ToolDef
 	commands map[string]*config.SkillToolEntry // toolName → command
 
 	executor *CLIExecutor
@@ -43,7 +42,6 @@ func NewCLISkill(ctx context.Context, cfg config.Skill, conn connectors.Connecto
 	if conn != nil {
 		return nil, fmt.Errorf("cli skill: connector is not empty")
 	}
-	base := skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeCLI)
 	executor := NewCLIExecutor(ctx, &cfg.Executor, security, cfg.Requires.Env)
 
 	toolDefs := make([]tools.ToolDef, 0, len(cfg.Tools))
@@ -107,9 +105,13 @@ func NewCLISkill(ctx context.Context, cfg config.Skill, conn connectors.Connecto
 		"tools", len(toolDefs),
 		"commands", len(commandMap))
 
+	groupDefs := make(map[tools.ToolGroup]string)
+	for name, desc := range cfg.Groups {
+		groupDefs[tools.ToolGroup(name)] = desc
+	}
+	base := skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeCLI, toolDefs, groupDefs)
 	return &CLISkill{
 		BaseSkill: base,
-		toolDefs:  toolDefs,
 		commands:  commandMap,
 		executor:  executor,
 		ctx:       cliCtx,
@@ -127,8 +129,6 @@ func (s *CLISkill) Shutdown() error {
 	s.cancel()
 	return nil
 }
-
-func (s *CLISkill) Tools() []tools.ToolDef { return s.toolDefs }
 
 // Execute runs the CLI command corresponding to toolName.
 func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {

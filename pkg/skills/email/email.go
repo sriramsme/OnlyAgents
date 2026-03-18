@@ -38,6 +38,8 @@ func New(ctx context.Context, conn connectors.EmailConnector) (*EmailSkill, erro
 			Version:     "1.0.0",
 			Enabled:     true,
 			AccessLevel: "read",
+			Tools:       tools.GetEmailTools(),
+			Groups:      tools.GetEmailGroups(),
 		}, skills.SkillTypeNative),
 		conn:   conn,
 		ctx:    skillCtx,
@@ -61,10 +63,15 @@ func init() {
 		skillCtx, cancel := context.WithCancel(ctx)
 
 		return &EmailSkill{
-			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
-			conn:      emailConn,
-			ctx:       skillCtx,
-			cancel:    cancel,
+			BaseSkill: skills.NewBaseSkillFromConfig(
+				cfg,
+				skills.SkillTypeNative,
+				tools.GetEmailTools(),
+				tools.GetEmailGroups(),
+			),
+			conn:   emailConn,
+			ctx:    skillCtx,
+			cancel: cancel,
 		}, nil
 	})
 }
@@ -78,11 +85,6 @@ func (s *EmailSkill) Initialize() error {
 func (s *EmailSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-// Tools returns the LLM function calling tools for email
-func (s *EmailSkill) Tools() []tools.ToolDef {
-	return tools.GetEmailTools()
 }
 
 // Execute runs a tool

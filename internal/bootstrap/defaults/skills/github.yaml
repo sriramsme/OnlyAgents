@@ -1,18 +1,28 @@
 name: github
 type: cli
 enabled: true
-access_level: read
-description: Interact with GitHub using the gh CLI for issues, PRs, CI runs, and advanced queries.
-version: 1.0.0
-instructions: |
-  1. Install the GitHub CLI: https://cli.github.com
-  2. Set GITHUB_TOKEN in ~/.onlyagents/.env
-     Get a token at: https://github.com/settings/tokens
+access_level: write
+has_groups: true
+description: >
+  Interact with GitHub using the gh CLI. Covers the full remote development
+  lifecycle: pull requests, issues, CI/CD, releases, repo management, and
+  search. For local git operations use the git skill instead.
 capabilities:
   - github
   - repository_management
   - ci_cd
   - issue_tracking
+  - pull_requests
+  - releases
+  - code_search
+  - workflow_automation
+version: 2.0.0
+instructions: |
+  1. Install the GitHub CLI: https://cli.github.com
+  2. Set GITHUB_TOKEN in ~/.onlyagents/.env
+     Get a token at: https://github.com/settings/tokens
+     Required scopes: repo, read:org, workflow
+  3. Verify setup: gh auth status
 requires:
   bins:
     - name: gh
@@ -24,114 +34,540 @@ requires:
     - GITHUB_TOKEN
 security:
   sanitized: true
-  sanitized_at: 2026-03-13T00:00:00Z
-  sanitized_by: converter
+  sanitized_at: 2026-03-17T00:00:00Z
+  sanitized_by: onlyagents
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GROUPS
+# ─────────────────────────────────────────────────────────────────────────────
+groups:
+  pr_read: "List, view, diff, and inspect PRs, their checks, reviews, and comments"
+  pr_write: "Create, merge, approve, request changes, comment, and close PRs"
+  issue: "List, view, create, comment, close, and reopen issues"
+  ci: "List, view, and rerun workflow runs; view failure logs"
+  workflow: "List, trigger, enable, and disable workflows"
+  release: "List, view, and create releases"
+  repo: "View, list, clone, and fork repositories"
+  search: "Search repos, issues, PRs, and code across GitHub"
+  passthrough: "Escape hatch — call any GitHub REST endpoint via gh api"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VALIDATION ANCHORS
+# ─────────────────────────────────────────────────────────────────────────────
+_validation_defaults:
+  read: &read
+    allowed_commands: [gh]
+    denied_patterns: ["rm -rf", "$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  write: &write
+    allowed_commands: [gh]
+    denied_patterns: ["rm -rf", "$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+    requires_confirmation: true
+
 tools:
+  # ── PR READ ────────────────────────────────────────────────────────────────
+
+  - name: gh_pr_list
+    description: List pull requests with state, author, labels, and draft status
+    group: pr_read
+    access: read
+    timeout: 10
+    command: "gh pr list --repo {{repo}} --state {{state}} --limit {{limit}} --json number,title,author,state,headRefName,labels,isDraft"
+    parameters:
+      - name: repo
+        type: string
+        description: Repository in owner/repo format
+      - name: state
+        type: string
+        description: "open | closed | merged | all"
+        default: open
+      - name: limit
+        type: integer
+        default: 20
+    validation: *read
+
+  - name: gh_pr_view
+    description: Show full PR details — body, reviewers, labels, merge status, and CI rollup
+    group: pr_read
+    access: read
+    timeout: 10
+    command: "gh pr view {{pr_id}} --repo {{repo}} --json number,title,body,state,author,reviewRequests,reviews,labels,mergeable,isDraft,headRefName,baseRefName,url,statusCheckRollup"
+    parameters:
+      - name: pr_id
+        type: integer
+      - name: repo
+        type: string
+        description: Repository in owner/repo format
+    validation: *read
+
+  - name: gh_pr_diff
+    description: Show the unified diff for a pull request
+    group: pr_read
+    access: read
+    timeout: 30
+    command: "gh pr diff {{pr_id}} --repo {{repo}}"
+    parameters:
+      - name: pr_id
+        type: integer
+      - name: repo
+        type: string
+    validation: *read
+
   - name: gh_pr_checks
-    description: Check CI status on a PR
+    description: Show CI check status for a pull request
+    group: pr_read
     access: read
     timeout: 10
     command: "gh pr checks {{pr_id}} --repo {{repo}}"
     parameters:
       - name: pr_id
         type: integer
-        description: PR number
       - name: repo
         type: string
-        description: repository in owner/repo format
-    validation:
-      allowed_commands:
-        - gh
-      denied_patterns:
-        - "rm -rf"
-      max_output_size: 102400
-  - name: gh_run_list
-    description: List recent workflow runs
-    access: read
-    timeout: 10
-    command: "gh run list --repo {{repo}} --limit {{limit}}"
+    validation: *read
+
+  # ── PR WRITE ───────────────────────────────────────────────────────────────
+
+  - name: gh_pr_create
+    description: Open a new pull request from head branch into base branch
+    group: pr_write
+    access: write
+    timeout: 30
+    command: "gh pr create --repo {{repo}} --title {{title}} --body {{body}} --base {{base}} --head {{head}}"
     parameters:
       - name: repo
         type: string
-        description: repository in owner/repo format
+      - name: title
+        type: string
+      - name: body
+        type: string
+        description: PR description (markdown supported)
+      - name: base
+        type: string
+        description: Target branch
+        default: main
+      - name: head
+        type: string
+        description: Source branch
+    validation: *write
+
+  - name: gh_pr_merge
+    description: Merge a pull request
+    group: pr_write
+    access: write
+    timeout: 30
+    command: "gh pr merge {{pr_id}} --repo {{repo}} --{{strategy}} --delete-branch"
+    parameters:
+      - name: pr_id
+        type: integer
+      - name: repo
+        type: string
+      - name: strategy
+        type: string
+        description: "squash | merge | rebase"
+        default: squash
+    validation: *write
+
+  - name: gh_pr_review
+    description: Approve a PR, request changes, or leave a comment review
+    group: pr_write
+    access: write
+    timeout: 15
+    command: "gh pr review {{pr_id}} --repo {{repo}} {{action}} --body {{body}}"
+    parameters:
+      - name: pr_id
+        type: integer
+      - name: repo
+        type: string
+      - name: action
+        type: string
+        description: "--approve | --request-changes | --comment"
+      - name: body
+        type: string
+        description: Review comment (required for --request-changes)
+        default: ""
+    validation: *write
+
+  - name: gh_pr_comment
+    description: Post a general comment on a pull request
+    group: pr_write
+    access: write
+    timeout: 15
+    command: "gh pr comment {{pr_id}} --repo {{repo}} --body {{body}}"
+    parameters:
+      - name: pr_id
+        type: integer
+      - name: repo
+        type: string
+      - name: body
+        type: string
+    validation: *write
+
+  - name: gh_pr_close
+    description: Close or reopen a pull request
+    group: pr_write
+    access: write
+    timeout: 10
+    command: "gh pr {{action}} {{pr_id}} --repo {{repo}}"
+    parameters:
+      - name: action
+        type: string
+        description: "close | reopen"
+      - name: pr_id
+        type: integer
+      - name: repo
+        type: string
+    validation: *write
+
+  # ── ISSUE ──────────────────────────────────────────────────────────────────
+
+  - name: gh_issue_list
+    description: List issues with state, labels, and assignees
+    group: issue
+    access: read
+    timeout: 10
+    command: "gh issue list --repo {{repo}} --state {{state}} --limit {{limit}} --json number,title,state,author,labels,assignees,createdAt"
+    parameters:
+      - name: repo
+        type: string
+      - name: state
+        type: string
+        description: "open | closed | all"
+        default: open
       - name: limit
         type: integer
-        description: number of runs to list
-    validation:
-      allowed_commands:
-        - gh
-      denied_patterns:
-        - "rm -rf"
-      max_output_size: 102400
+        default: 20
+    validation: *read
+
+  - name: gh_issue_view
+    description: Show full issue details including body, labels, assignees, and comments
+    group: issue
+    access: read
+    timeout: 10
+    command: "gh issue view {{issue_id}} --repo {{repo}} --json number,title,body,state,author,labels,assignees,comments,url,milestone"
+    parameters:
+      - name: issue_id
+        type: integer
+      - name: repo
+        type: string
+    validation: *read
+
+  - name: gh_issue_create
+    description: Open a new issue with title, body, optional labels and assignees
+    group: issue
+    access: write
+    timeout: 15
+    command: "gh issue create --repo {{repo}} --title {{title}} --body {{body}} --label {{labels}} --assignee {{assignees}}"
+    parameters:
+      - name: repo
+        type: string
+      - name: title
+        type: string
+      - name: body
+        type: string
+        description: Issue description (markdown supported)
+      - name: labels
+        type: string
+        description: Comma-separated label names
+        default: ""
+      - name: assignees
+        type: string
+        description: Comma-separated GitHub usernames
+        default: ""
+    validation: *write
+
+  - name: gh_issue_comment
+    description: Add a comment to an issue
+    group: issue
+    access: write
+    timeout: 15
+    command: "gh issue comment {{issue_id}} --repo {{repo}} --body {{body}}"
+    parameters:
+      - name: issue_id
+        type: integer
+      - name: repo
+        type: string
+      - name: body
+        type: string
+    validation: *write
+
+  - name: gh_issue_close
+    description: Close or reopen an issue
+    group: issue
+    access: write
+    timeout: 10
+    command: "gh issue {{action}} {{issue_id}} --repo {{repo}} {{reason_flag}}"
+    parameters:
+      - name: action
+        type: string
+        description: "close | reopen"
+      - name: issue_id
+        type: integer
+      - name: repo
+        type: string
+      - name: reason_flag
+        type: string
+        description: "For close: --reason completed or --reason not-planned. Leave empty for reopen."
+        default: "--reason completed"
+    validation: *write
+
+  # ── CI ─────────────────────────────────────────────────────────────────────
+
+  - name: gh_run_list
+    description: List recent workflow runs with status, conclusion, and branch
+    group: ci
+    access: read
+    timeout: 10
+    command: "gh run list --repo {{repo}} --limit {{limit}} --json databaseId,status,conclusion,workflowName,headBranch,createdAt,url"
+    parameters:
+      - name: repo
+        type: string
+      - name: limit
+        type: integer
+        default: 20
+    validation: *read
+
   - name: gh_run_view
-    description: View a run and see which steps failed
+    description: Show details and job statuses for a specific workflow run
+    group: ci
     access: read
     timeout: 10
     command: "gh run view {{run_id}} --repo {{repo}}"
     parameters:
       - name: run_id
         type: string
-        description: run identifier
+        description: databaseId from gh_run_list
       - name: repo
         type: string
-        description: repository in owner/repo format
-    validation:
-      allowed_commands:
-        - gh
-      denied_patterns:
-        - "rm -rf"
-      max_output_size: 102400
-  - name: gh_run_view_log
-    description: View logs for failed steps only
+    validation: *read
+
+  - name: gh_run_logs
+    description: View logs for failed steps only — most useful for debugging CI failures
+    group: ci
     access: read
-    timeout: 10
+    timeout: 30
     command: "gh run view {{run_id}} --repo {{repo}} --log-failed"
     parameters:
       - name: run_id
         type: string
-        description: run identifier
       - name: repo
         type: string
-        description: repository in owner/repo format
-    validation:
-      allowed_commands:
-        - gh
-      denied_patterns:
-        - "rm -rf"
-      max_output_size: 102400
-  - name: gh_api_pull_fields
-    description: Get PR with specific fields via the GitHub API
+    validation: *read
+
+  - name: gh_run_rerun
+    description: Re-run failed jobs in a workflow run
+    group: ci
+    access: write
+    timeout: 15
+    command: "gh run rerun {{run_id}} --repo {{repo}} --failed"
+    parameters:
+      - name: run_id
+        type: string
+      - name: repo
+        type: string
+    validation: *write
+
+  # ── WORKFLOW ───────────────────────────────────────────────────────────────
+
+  - name: gh_workflow_list
+    description: List all workflows in a repo with IDs and enabled/disabled state
+    group: workflow
     access: read
     timeout: 10
-    command: "gh api repos/{{owner}}/{{repo}}/pulls/{{pull_id}} --jq '.title, .state, .user.login'"
+    command: "gh workflow list --repo {{repo}} --json id,name,state,path"
+    parameters:
+      - name: repo
+        type: string
+    validation: *read
+
+  - name: gh_workflow_run
+    description: Manually trigger a workflow dispatch event
+    group: workflow
+    access: write
+    timeout: 30
+    command: "gh workflow run {{workflow}} --repo {{repo}} --ref {{ref}}"
+    parameters:
+      - name: workflow
+        type: string
+        description: Workflow filename (e.g. deploy.yml) or numeric ID
+      - name: repo
+        type: string
+      - name: ref
+        type: string
+        description: Branch or tag to run on
+        default: main
+    validation: *write
+
+  - name: gh_workflow_toggle
+    description: Enable or disable a workflow
+    group: workflow
+    access: write
+    timeout: 10
+    command: "gh workflow {{action}} {{workflow}} --repo {{repo}}"
+    parameters:
+      - name: action
+        type: string
+        description: "enable | disable"
+      - name: workflow
+        type: string
+        description: Workflow filename or ID
+      - name: repo
+        type: string
+    validation: *write
+
+  # ── RELEASE ────────────────────────────────────────────────────────────────
+
+  - name: gh_release_list
+    description: List recent releases including drafts and pre-releases
+    group: release
+    access: read
+    timeout: 10
+    command: "gh release list --repo {{repo}} --limit {{limit}} --json tagName,name,createdAt,isDraft,isPrerelease,url"
+    parameters:
+      - name: repo
+        type: string
+      - name: limit
+        type: integer
+        default: 10
+    validation: *read
+
+  - name: gh_release_view
+    description: Show full release details including assets and release notes
+    group: release
+    access: read
+    timeout: 10
+    command: "gh release view {{tag}} --repo {{repo}} --json tagName,name,body,createdAt,assets,url,isDraft,isPrerelease"
+    parameters:
+      - name: tag
+        type: string
+        description: Release tag (e.g. v1.2.0)
+      - name: repo
+        type: string
+    validation: *read
+
+  - name: gh_release_create
+    description: Create a new release with tag, title, and release notes
+    group: release
+    access: write
+    timeout: 30
+    command: "gh release create {{tag}} --repo {{repo}} --title {{title}} --notes {{notes}} {{flags}}"
+    parameters:
+      - name: tag
+        type: string
+        description: Semver tag (e.g. v1.2.0)
+      - name: repo
+        type: string
+      - name: title
+        type: string
+      - name: notes
+        type: string
+        description: Release notes (markdown supported)
+      - name: flags
+        type: string
+        description: "e.g. --draft, --prerelease"
+        default: ""
+    validation: *write
+
+  # ── REPO ───────────────────────────────────────────────────────────────────
+
+  - name: gh_repo_view
+    description: Show repo metadata — description, language, stars, open issues, default branch
+    group: repo
+    access: read
+    timeout: 10
+    command: "gh repo view {{repo}} --json name,owner,description,url,defaultBranchRef,stargazerCount,primaryLanguage,isPrivate,openIssues"
+    parameters:
+      - name: repo
+        type: string
+    validation: *read
+
+  - name: gh_repo_list
+    description: List repositories for a user or organisation
+    group: repo
+    access: read
+    timeout: 10
+    command: "gh repo list {{owner}} --limit {{limit}} --json name,description,url,isPrivate,primaryLanguage,updatedAt"
     parameters:
       - name: owner
         type: string
-        description: repository owner
-      - name: repo
-        type: string
-        description: repository name
-      - name: pull_id
+        description: GitHub username or org name
+      - name: limit
         type: integer
-        description: pull request number
-    validation:
-      allowed_commands:
-        - gh
-      denied_patterns:
-        - "rm -rf"
-      max_output_size: 102400
-  - name: gh_issue_list_json
-    description: List issues with JSON and optional jq filtering
+        default: 20
+    validation: *read
+
+  - name: gh_repo_clone
+    description: Clone a repository to a local directory
+    group: repo
     access: read
-    timeout: 10
-    command: "gh issue list --repo {{repo}} --json number,title --jq '.[] | \"\\(.number): \\(.title)\"'"
+    timeout: 60
+    command: "gh repo clone {{repo}} {{directory}}"
     parameters:
       - name: repo
         type: string
-        description: repository in owner/repo format
-    validation:
-      allowed_commands:
-        - gh
-      denied_patterns:
-        - "rm -rf"
-      max_output_size: 102400
+      - name: directory
+        type: string
+        description: Target local path. Leave empty to use repo name.
+        default: ""
+    validation: *read
+
+  # ── SEARCH ─────────────────────────────────────────────────────────────────
+
+  - name: gh_search
+    description: >
+      Search GitHub for repos, issues/PRs, or code. Supports all gh search
+      qualifiers (language:, stars:, label:, repo:, etc.)
+    group: search
+    access: read
+    timeout: 15
+    command: "gh search {{type}} {{query}} --limit {{limit}} --json {{fields}}"
+    parameters:
+      - name: type
+        type: string
+        description: "repos | issues | prs | code"
+      - name: query
+        type: string
+        description: >
+          Search query with optional qualifiers.
+          repos:  language:python stars:>1000
+          issues: repo:owner/repo is:open label:bug
+          code:   repo:owner/repo language:go "func main"
+      - name: limit
+        type: integer
+        default: 10
+      - name: fields
+        type: string
+        description: >
+          Comma-separated JSON fields to return.
+          repos:  fullName,description,url,stargazerCount,language
+          issues: number,title,repository,state,url
+          code:   repository,path,url
+        default: ""
+    validation: *read
+
+  # ── PASSTHROUGH ────────────────────────────────────────────────────────────
+
+  - name: gh_api
+    description: >
+      Call any GitHub REST API endpoint directly. Use for operations not covered
+      by named tools (branch protection, team membership, deploy environments, etc.)
+    group: passthrough
+    access: read
+    timeout: 30
+    command: "gh api {{endpoint}} --method {{method}} --jq {{jq_filter}}"
+    parameters:
+      - name: endpoint
+        type: string
+        description: >
+          API path, e.g. repos/owner/repo/branches or orgs/myorg/teams.
+          Full reference: https://docs.github.com/en/rest
+      - name: method
+        type: string
+        description: "GET | POST | PATCH | DELETE"
+        default: GET
+      - name: jq_filter
+        type: string
+        description: jq expression to shape the response. Use '.' to return raw output.
+        default: "."
+    validation: *read

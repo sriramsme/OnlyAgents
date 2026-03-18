@@ -36,6 +36,8 @@ func New(ctx context.Context, client llm.Client) (*SummarizeSkill, error) {
 			Version:     "1.0.0",
 			Enabled:     true,
 			AccessLevel: "read",
+			Tools:       tools.GetSummarizeTools(),
+			Groups:      tools.GetSummarizeGroups(),
 		}, skills.SkillTypeNative),
 		llmClient: client,
 		ctx:       skillCtx,
@@ -67,7 +69,12 @@ func init() {
 		skillCtx, cancel := context.WithCancel(ctx)
 
 		return &SummarizeSkill{
-			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
+			BaseSkill: skills.NewBaseSkillFromConfig(
+				cfg,
+				skills.SkillTypeNative,
+				tools.GetSummarizeTools(),
+				tools.GetSummarizeGroups(),
+			),
 			llmClient: client,
 			ctx:       skillCtx,
 			cancel:    cancel,
@@ -82,10 +89,6 @@ func (s *SummarizeSkill) Initialize() error {
 func (s *SummarizeSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *SummarizeSkill) Tools() []tools.ToolDef {
-	return tools.GetSummarizeTools()
 }
 
 func (s *SummarizeSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {

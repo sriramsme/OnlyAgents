@@ -33,6 +33,8 @@ func New(ctx context.Context, conn connectors.CalendarConnector) (*CalendarSkill
 			Description: "Create, view, and manage calendar events",
 			Version:     "1.0.0",
 			Enabled:     true,
+			Tools:       tools.GetCalendarTools(),
+			Groups:      tools.GetCalendarGroups(),
 		}, skills.SkillTypeNative),
 		conn:   conn,
 		ctx:    skillCtx,
@@ -57,10 +59,15 @@ func init() {
 		skillCtx, cancel := context.WithCancel(ctx)
 
 		return &CalendarSkill{
-			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
-			conn:      calendarConn,
-			ctx:       skillCtx,
-			cancel:    cancel,
+			BaseSkill: skills.NewBaseSkillFromConfig(
+				cfg,
+				skills.SkillTypeNative,
+				tools.GetCalendarTools(),
+				tools.GetCalendarGroups(),
+			),
+			conn:   calendarConn,
+			ctx:    skillCtx,
+			cancel: cancel,
 		}, nil
 	})
 }
@@ -72,10 +79,6 @@ func (s *CalendarSkill) Initialize() error {
 func (s *CalendarSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *CalendarSkill) Tools() []tools.ToolDef {
-	return tools.GetCalendarTools()
 }
 
 func (s *CalendarSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {

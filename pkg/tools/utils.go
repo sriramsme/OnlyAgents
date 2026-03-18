@@ -100,7 +100,7 @@ func NewToolDef(skill string, name, description string, params map[string]any, t
 		Name:        name,
 		Description: description,
 		Parameters:  params,
-		Group:       string(toolGroup),
+		Group:       toolGroup,
 	}
 }
 

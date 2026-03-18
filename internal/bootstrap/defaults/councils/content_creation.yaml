@@ -9,11 +9,12 @@ agents:
 skills:
   - web_search # research while writing
   - notes # drafts and saved content
-  - fetch_url # TODO: read reference articles
   - tasks # track content pipeline
+  - summarize # summarize articles
 
 connectors:
-  - notes
-  - tasks
+  - local_notes
+  - local_tasks
+  - duckduckgo # research
   - brave # research
   - perplexity # research

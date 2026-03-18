@@ -9,7 +9,7 @@ agents:
   - general
 
 skills:
-  - github # CLI — ships today
+  - github
   - git # TODO: CLI skill
   - filesystem # TODO: read/write/search files
   - ripgrep # TODO: CLI skill — fast code search
@@ -18,5 +18,6 @@ skills:
   - web_search # for docs lookup
 
 connectors:
-  - github # TODO: native connector (PR status, CI logs, issues)
-  - brave # docs and Stack Overflow searches
+  - brave
+  - duckduckgo
+  - perplexity

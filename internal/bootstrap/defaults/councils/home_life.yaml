@@ -12,8 +12,8 @@ skills:
   - tasks
   - notes
   - web_search
-  - weather # CLI — ships today
-  - email # TODO: native skill
+  - weather
+  - email
   - home_assistant # TODO: CLI skill — home automation via HA REST API
 
 connectors:
@@ -22,4 +22,4 @@ connectors:
   - tasks
   - notes
   - duckduckgo
-  - gmail # TODO: native connector
+  - gmail

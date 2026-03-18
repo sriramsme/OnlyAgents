@@ -20,7 +20,7 @@ type ToolDef struct {
 	RequiresConfirmation bool `json:"requires_confirmation,omitempty"`
 
 	// What group this tool belongs to (e.g., "git_switch", "git_branch" belong to branch group of git skill)
-	Group string `json:"group,omitempty"`
+	Group ToolGroup `json:"group,omitempty"`
 }
 
 // ToolCall represents a tool call request from the LLM.

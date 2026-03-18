@@ -43,6 +43,8 @@ func New(ctx context.Context, conn connectors.WebSearchConnector) (*WebSearchSki
 			Version:     "1.0.0",
 			Enabled:     true,
 			AccessLevel: "read",
+			Tools:       tools.GetWebSearchTools(),
+			Groups:      tools.GetWebSearchGroups(),
 		}, skills.SkillTypeNative),
 
 		conn:   conn,
@@ -67,10 +69,15 @@ func init() {
 		skillCtx, cancel := context.WithCancel(ctx)
 
 		return &WebSearchSkill{
-			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
-			conn:      webSearchConn,
-			ctx:       skillCtx,
-			cancel:    cancel,
+			BaseSkill: skills.NewBaseSkillFromConfig(
+				cfg,
+				skills.SkillTypeNative,
+				tools.GetWebSearchTools(),
+				tools.GetWebSearchGroups(),
+			),
+			conn:   webSearchConn,
+			ctx:    skillCtx,
+			cancel: cancel,
 		}, nil
 	})
 }
@@ -84,10 +91,6 @@ func (s *WebSearchSkill) Initialize() error {
 func (s *WebSearchSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *WebSearchSkill) Tools() []tools.ToolDef {
-	return tools.GetWebSearchTools()
 }
 
 func (s *WebSearchSkill) Execute(ctx context.Context, toolName string, params []byte) (any, error) {

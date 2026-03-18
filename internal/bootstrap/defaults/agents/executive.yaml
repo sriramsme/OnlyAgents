@@ -1,24 +1,25 @@
 id: "executive" # must be unique per agent
 name: "Dragon"
-description: "The executive assistant in a council of specialized agents.
-Handles delegation, coordination, and synthesis of results."
-is_executive: true   # only one agent can be an executive
+description: |
+  The executive assistant in a council of specialized agents.
+  Handles delegation, coordination, and synthesis of results.
+is_executive: true # only one agent can be an executive
 max_concurrency: 4
 buffer_size: 20
 enabled: true
 
 # Executive has looser limits since it coordinates rather than executes
-max_iterations: 5               # Should delegate quickly
+max_iterations: 5 # Should delegate quickly
 max_tool_calls_per_iteration: 2 # Typically: delegate + maybe find_best_agent
-max_cumulative_tool_calls: 8    # Total delegations + meta-operations
-max_execution_time: 5m          # Longer to wait for delegations
-enable_early_stopping: false    # Don't early stop coordination
+max_cumulative_tool_calls: 8 # Total delegations + meta-operations
+max_execution_time: 5m # Longer to wait for delegations
+enable_early_stopping: false # Don't early stop coordination
 
 llm:
-  provider: "openai"  # anthropic, openai, gemini
-  model: "gpt-5-nano"  # model name
-# Vault key path - will lookup from vault
-  api_key_path: "openai/api_key"  # or "${vault:openai/api_key}"
+  provider: "openai" # anthropic, openai, gemini
+  model: "gpt-5-nano" # model name
+  # Vault key path - will lookup from vault
+  api_key_path: "openai/api_key" # or "${vault:openai/api_key}"
 
 channels:
   - telegram

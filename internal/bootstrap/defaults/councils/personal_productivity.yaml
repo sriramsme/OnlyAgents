@@ -13,6 +13,7 @@ skills:
   - tasks
   - web_search
   - weather
+  - summarize
 
 connectors:
   - duckduckgo

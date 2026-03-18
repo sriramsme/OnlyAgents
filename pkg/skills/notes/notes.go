@@ -32,6 +32,8 @@ func New(ctx context.Context, conn connectors.NotesConnector) (*NotesSkill, erro
 			Name:        "notes",
 			Description: "Create, read, update, and manage notes",
 			Version:     "1.0.0",
+			Tools:       tools.GetNotesTools(),
+			Groups:      tools.GetNotesGroups(),
 		}, skills.SkillTypeNative),
 		conn:   conn,
 		ctx:    skillCtx,
@@ -55,10 +57,15 @@ func init() {
 		skillCtx, cancel := context.WithCancel(ctx)
 
 		return &NotesSkill{
-			BaseSkill: skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeNative),
-			conn:      notesConn,
-			ctx:       skillCtx,
-			cancel:    cancel,
+			BaseSkill: skills.NewBaseSkillFromConfig(
+				cfg,
+				skills.SkillTypeNative,
+				tools.GetNotesTools(),
+				tools.GetNotesGroups(),
+			),
+			conn:   notesConn,
+			ctx:    skillCtx,
+			cancel: cancel,
 		}, nil
 	})
 }
@@ -70,10 +77,6 @@ func (s *NotesSkill) Initialize() error {
 func (s *NotesSkill) Shutdown() error {
 	s.cancel()
 	return nil
-}
-
-func (s *NotesSkill) Tools() []tools.ToolDef {
-	return tools.GetNotesTools()
 }
 
 func (s *NotesSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {

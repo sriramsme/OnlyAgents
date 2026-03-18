@@ -17,5 +17,5 @@ skills:
   - web_search
 
 connectors:
-  - github # TODO: native connector
+  - duckduckgo
   - brave
