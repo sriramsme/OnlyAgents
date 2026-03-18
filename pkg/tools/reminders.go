@@ -26,6 +26,20 @@ type ReminderDeleteInput struct {
 	ID string `json:"id" desc:"Reminder ID to delete" cli_short:"i" cli_pos:"1" cli_req:"true"`
 }
 
+const (
+	RemindersRead   ToolGroup = "reminders_read"
+	RemindersWrite  ToolGroup = "reminders_write"
+	RemindersManage ToolGroup = "reminders_manage"
+)
+
+func GetRemindersGroups() map[ToolGroup]string {
+	return map[ToolGroup]string{
+		RemindersRead:   "View and list reminders",
+		RemindersWrite:  "Create new reminders that trigger at a scheduled time",
+		RemindersManage: "Update or delete existing reminders",
+	}
+}
+
 func GetRemindersEntries() []ToolEntry {
 	return []ToolEntry{
 		{
@@ -34,6 +48,7 @@ func GetRemindersEntries() []ToolEntry {
 				"reminders_create",
 				"Create one or more reminders that fires at a specific time via the user's active channel. Always use this tool even for single-reminder creation.",
 				SchemaFromStruct(ReminderCreateInput{}),
+				RemindersWrite,
 			),
 			ReminderCreateInput{},
 		},
@@ -43,6 +58,7 @@ func GetRemindersEntries() []ToolEntry {
 				"reminder_get",
 				"Get details of a specific reminder by ID",
 				SchemaFromStruct(ReminderGetInput{}),
+				RemindersRead,
 			),
 			ReminderGetInput{},
 		},
@@ -52,6 +68,7 @@ func GetRemindersEntries() []ToolEntry {
 				"reminder_update",
 				"Update the title, body, or due time of a reminder",
 				SchemaFromStruct(ReminderUpdateInput{}),
+				RemindersManage,
 			),
 			ReminderUpdateInput{},
 		},
@@ -61,6 +78,7 @@ func GetRemindersEntries() []ToolEntry {
 				"reminder_delete",
 				"Delete a reminder by ID",
 				SchemaFromStruct(ReminderDeleteInput{}),
+				RemindersManage,
 			),
 			ReminderDeleteInput{},
 		},
@@ -70,6 +88,7 @@ func GetRemindersEntries() []ToolEntry {
 				"reminder_list",
 				"List all pending (unsent) reminders",
 				SchemaFromStruct(struct{}{}),
+				RemindersRead,
 			),
 			struct{}{},
 		},

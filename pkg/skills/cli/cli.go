@@ -96,6 +96,7 @@ func NewCLISkill(ctx context.Context, cfg config.Skill, conn connectors.Connecto
 			t.Name,
 			t.Description,
 			tools.BuildParams(buildParamProps(t.Parameters), params),
+			tools.ToolGroup(t.Group),
 		))
 		commandMap[t.Name] = t
 	}

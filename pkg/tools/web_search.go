@@ -11,6 +11,16 @@ type WebSearchFetchInput struct {
 	MaxLength int    `json:"max_length,omitempty" desc:"Max characters to return (default: 8000, max: 32000)" cli_short:"l" cli_help:"e.g. 4000, 8000, 16000"`
 }
 
+const (
+	WebSearch ToolGroup = "websearch"
+)
+
+func GetWebSearchGroups() map[ToolGroup]string {
+	return map[ToolGroup]string{
+		WebSearch: "Search and retrieve information from the web, including result discovery and content extraction",
+	}
+}
+
 func GetWebSearchEntries() []ToolEntry {
 	return []ToolEntry{
 		{
@@ -19,6 +29,7 @@ func GetWebSearchEntries() []ToolEntry {
 				"websearch_search",
 				"Search the web for current information. Returns titles, URLs, and snippets from search results.",
 				SchemaFromStruct(WebSearchInput{}),
+				WebSearch,
 			),
 			WebSearchInput{},
 		},
@@ -28,6 +39,7 @@ func GetWebSearchEntries() []ToolEntry {
 				"websearch_fetch",
 				"Fetch a URL and extract its readable text content. Use after websearch_search to read the full content of a result.",
 				SchemaFromStruct(WebSearchFetchInput{}),
+				WebSearch,
 			),
 			WebSearchFetchInput{},
 		},

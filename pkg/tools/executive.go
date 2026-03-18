@@ -73,6 +73,7 @@ func GetExecutiveTools() []ToolDef {
 				"- 'Send email to Bob' → send_directly_to_user=true (single action, user just needs confirmation)\n"+
 				"- 'Get weather then suggest activities' → send_directly_to_user=false (you need weather data to suggest activities)",
 			delegateSchema,
+			"",
 		),
 		NewToolDef(
 			"meta_tools",
@@ -84,6 +85,7 @@ func GetExecutiveTools() []ToolDef {
 				"Do NOT use for multiple operations on the same agent (e.g. creating 3 tasks = one delegation to Friday, not a workflow). "+
 				"Do NOT use for sequential operations a single agent can handle internally.",
 			workflowSchema,
+			"",
 		),
 	}
 }

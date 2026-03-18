@@ -35,6 +35,18 @@ type NotesPinInput struct {
 	Pinned bool   `json:"pinned" desc:"True to pin, false to unpin" cli_short:"p"`
 }
 
+const (
+	NotesRead  ToolGroup = "notes_read"
+	NotesWrite ToolGroup = "notes_write"
+)
+
+func GetNotesGroups() map[ToolGroup]string {
+	return map[ToolGroup]string{
+		NotesRead:  "Read and discover notes: list, view, and search note content",
+		NotesWrite: "Create, update, delete, and organize notes (pin/unpin)",
+	}
+}
+
 func GetNotesEntries() []ToolEntry {
 	return []ToolEntry{
 		{
@@ -43,6 +55,7 @@ func GetNotesEntries() []ToolEntry {
 				"notes_create",
 				"Create one or more notes with a title and optional Markdown content. Always use this tool even for single-note creation.",
 				SchemaFromStruct(NotesCreateInput{}),
+				NotesWrite,
 			),
 			NotesCreateInput{},
 		},
@@ -52,6 +65,7 @@ func GetNotesEntries() []ToolEntry {
 				"notes_update",
 				"Update the title, content, or tags of an existing note",
 				SchemaFromStruct(NotesUpdateInput{}),
+				NotesWrite,
 			),
 			NotesUpdateInput{},
 		},
@@ -61,6 +75,7 @@ func GetNotesEntries() []ToolEntry {
 				"notes_get",
 				"Get the full content of a specific note by ID",
 				SchemaFromStruct(NotesGetInput{}),
+				NotesRead,
 			),
 			NotesGetInput{},
 		},
@@ -70,6 +85,7 @@ func GetNotesEntries() []ToolEntry {
 				"notes_delete",
 				"Delete a note by ID",
 				SchemaFromStruct(NotesDeleteInput{}),
+				NotesWrite,
 			),
 			NotesDeleteInput{},
 		},
@@ -79,6 +95,7 @@ func GetNotesEntries() []ToolEntry {
 				"notes_list",
 				"List all notes, pinned notes appear first",
 				SchemaFromStruct(struct{}{}),
+				NotesRead,
 			),
 			struct{}{},
 		},
@@ -88,6 +105,7 @@ func GetNotesEntries() []ToolEntry {
 				"notes_search",
 				"Search notes by title and content using full-text search",
 				SchemaFromStruct(NotesSearchInput{}),
+				NotesRead,
 			),
 			NotesSearchInput{},
 		},
@@ -97,6 +115,7 @@ func GetNotesEntries() []ToolEntry {
 				"notes_pin",
 				"Pin or unpin a note",
 				SchemaFromStruct(NotesPinInput{}),
+				NotesWrite,
 			),
 			NotesPinInput{},
 		},

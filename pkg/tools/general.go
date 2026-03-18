@@ -20,6 +20,7 @@ When to use: you need a capability not in your current toolset.
 Example: find_skill("websearch") → tools added: [search_web, fetch_page]
 You can then call search_web(...) directly.`,
 			SchemaFromStruct(FindSkillInput{}),
+			"",
 		),
 	}
 }

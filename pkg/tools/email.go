@@ -35,6 +35,20 @@ type EmailDeleteInput struct {
 	EmailID string `json:"email_id" desc:"The email ID to delete" cli_short:"i" cli_pos:"1" cli_req:"true"`
 }
 
+const (
+	EmailRead   ToolGroup = "email_read"
+	EmailWrite  ToolGroup = "email_write"
+	EmailManage ToolGroup = "email_manage"
+)
+
+func GetEmailGroups() map[ToolGroup]string {
+	return map[ToolGroup]string{
+		EmailRead:   "Search and view emails",
+		EmailWrite:  "Compose, draft, and send emails",
+		EmailManage: "Modify email state such as marking as read or deleting",
+	}
+}
+
 func GetEmailEntries() []ToolEntry {
 	return []ToolEntry{
 		{
@@ -43,6 +57,7 @@ func GetEmailEntries() []ToolEntry {
 				"email_send",
 				"Send an email to one or more recipients",
 				SchemaFromStruct(EmailSendInput{}),
+				EmailWrite,
 			),
 			EmailSendInput{},
 		},
@@ -52,6 +67,7 @@ func GetEmailEntries() []ToolEntry {
 				"email_search",
 				"Search for emails matching criteria",
 				SchemaFromStruct(EmailSearchInput{}),
+				EmailRead,
 			),
 			EmailSearchInput{},
 		},
@@ -61,6 +77,7 @@ func GetEmailEntries() []ToolEntry {
 				"email_get",
 				"Get full details of a specific email by ID",
 				SchemaFromStruct(EmailGetInput{}),
+				EmailRead,
 			),
 			EmailGetInput{},
 		},
@@ -70,6 +87,7 @@ func GetEmailEntries() []ToolEntry {
 				"email_draft",
 				"Use AI to draft an email based on context and tone",
 				SchemaFromStruct(EmailDraftInput{}),
+				EmailWrite,
 			),
 			EmailDraftInput{},
 		},
@@ -79,6 +97,7 @@ func GetEmailEntries() []ToolEntry {
 				"email_mark_read",
 				"Mark an email as read",
 				SchemaFromStruct(EmailMarkReadInput{}),
+				EmailManage,
 			),
 			EmailMarkReadInput{},
 		},
@@ -88,6 +107,7 @@ func GetEmailEntries() []ToolEntry {
 				"email_delete",
 				"Delete an email",
 				SchemaFromStruct(EmailDeleteInput{}),
+				EmailManage,
 			),
 			EmailDeleteInput{},
 		},

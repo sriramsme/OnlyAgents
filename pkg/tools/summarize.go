@@ -36,6 +36,16 @@ type SummarizeYouTubeInput struct {
 	Language string          `json:"language,omitempty" desc:"Output language (default: match source)"                                          cli_short:"g"`
 }
 
+const (
+	SummarizeTransform ToolGroup = "summarize_transform"
+)
+
+func GetSummarizeGroups() map[ToolGroup]string {
+	return map[ToolGroup]string{
+		SummarizeTransform: "Transform content into concise summaries from various sources (text, URLs, files, videos)",
+	}
+}
+
 func GetSummarizeEntries() []ToolEntry {
 	return []ToolEntry{
 		{
@@ -44,6 +54,7 @@ func GetSummarizeEntries() []ToolEntry {
 				"summarize_text",
 				"Summarize raw text. Use when you already have the content.",
 				SchemaFromStruct(SummarizeTextInput{}),
+				SummarizeTransform,
 			),
 			SummarizeTextInput{},
 		},
@@ -53,6 +64,7 @@ func GetSummarizeEntries() []ToolEntry {
 				"summarize_url",
 				"Fetch a URL and summarize its content. Works for articles, docs, blog posts.",
 				SchemaFromStruct(SummarizeURLInput{}),
+				SummarizeTransform,
 			),
 			SummarizeURLInput{},
 		},
@@ -62,6 +74,7 @@ func GetSummarizeEntries() []ToolEntry {
 				"summarize_file",
 				"Read and summarize a local file. Supports .txt, .md, and .pdf.",
 				SchemaFromStruct(SummarizeFileInput{}),
+				SummarizeTransform,
 			),
 			SummarizeFileInput{},
 		},
@@ -71,6 +84,7 @@ func GetSummarizeEntries() []ToolEntry {
 				"summarize_youtube",
 				"Extract transcript and summarize a YouTube video. Gracefully falls back if no transcript available.",
 				SchemaFromStruct(SummarizeYouTubeInput{}),
+				SummarizeTransform,
 			),
 			SummarizeYouTubeInput{},
 		},

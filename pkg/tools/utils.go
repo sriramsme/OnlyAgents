@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+type ToolGroup string
+
 type FieldMeta struct {
 	JSONName    string
 	SchemaDesc  string
@@ -81,7 +83,7 @@ func FormatResult(result any) string {
 // ====================
 
 // NewToolDef creates a new tool definition with basic validation
-func NewToolDef(skill string, name, description string, params map[string]any) ToolDef {
+func NewToolDef(skill string, name, description string, params map[string]any, toolGroup ToolGroup) ToolDef {
 	// Ensure params has required structure
 	if params == nil {
 		params = make(map[string]any)
@@ -98,6 +100,7 @@ func NewToolDef(skill string, name, description string, params map[string]any) T
 		Name:        name,
 		Description: description,
 		Parameters:  params,
+		Group:       string(toolGroup),
 	}
 }
 

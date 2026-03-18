@@ -75,6 +75,7 @@ func TestOpenAIToolCalling(t *testing.T) {
 			},
 			[]string{"location"},
 		),
+		"",
 	)
 
 	ctx := context.Background()

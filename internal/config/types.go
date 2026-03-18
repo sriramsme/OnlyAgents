@@ -43,6 +43,8 @@ type Skill struct {
 	Security     SkillSecurity     `mapstructure:"security,omitempty"`
 
 	Connector *SkillConnectorSpec `mapstructure:"connector,omitempty"`
+
+	Groups map[string]string `mapstructure:"groups,omitempty"`
 	// CLI skill — tools block
 	Tools []SkillToolEntry `mapstructure:"tools,omitempty"`
 
@@ -69,6 +71,7 @@ type SkillToolEntry struct {
 	Timeout     int              `mapstructure:"timeout"`
 	Parameters  []SkillParamDef  `mapstructure:"parameters"`
 	Validation  *SkillValidation `mapstructure:"validation,omitempty"`
+	Group       string           `mapstructure:"group,omitempty"`
 }
 
 type SkillParamDef struct {

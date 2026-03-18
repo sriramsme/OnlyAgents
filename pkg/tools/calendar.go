@@ -54,14 +54,29 @@ func ParseEventTime(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
+const (
+	CalendarRead   ToolGroup = "calendar_read"
+	CalendarWrite  ToolGroup = "calendar_write"
+	CalendarManage ToolGroup = "calendar_manage"
+)
+
+func GetCalendarGroups() map[ToolGroup]string {
+	return map[ToolGroup]string{
+		CalendarRead:   "View and query calendar events, including availability and schedules",
+		CalendarWrite:  "Create new calendar events",
+		CalendarManage: "Modify or delete existing calendar events",
+	}
+}
+
 func GetCalendarEntries() []ToolEntry {
 	return []ToolEntry{
 		{
 			NewToolDef(
 				"calendar",
 				"calendar_create_events",
-				"Create one ore more calendar events. Always use this tool even for single-event creation.",
+				"Create one or more calendar events. Always use this tool even for single-event creation.",
 				SchemaFromStruct(CalendarCreateEventInput{}),
+				CalendarWrite,
 			),
 			CalendarCreateEventInput{},
 		},
@@ -71,6 +86,7 @@ func GetCalendarEntries() []ToolEntry {
 				"calendar_update_event",
 				"Update an existing calendar event by ID",
 				SchemaFromStruct(CalendarUpdateEventInput{}),
+				CalendarManage,
 			),
 			CalendarUpdateEventInput{},
 		},
@@ -80,6 +96,7 @@ func GetCalendarEntries() []ToolEntry {
 				"calendar_get_event",
 				"Get full details of a specific calendar event by ID",
 				SchemaFromStruct(CalendarGetEventInput{}),
+				CalendarRead,
 			),
 			CalendarGetEventInput{},
 		},
@@ -89,6 +106,7 @@ func GetCalendarEntries() []ToolEntry {
 				"calendar_delete_event",
 				"Delete a calendar event by ID",
 				SchemaFromStruct(CalendarDeleteEventInput{}),
+				CalendarManage,
 			),
 			CalendarDeleteEventInput{},
 		},
@@ -98,6 +116,7 @@ func GetCalendarEntries() []ToolEntry {
 				"calendar_list_events",
 				"List calendar events within a date/time range",
 				SchemaFromStruct(CalendarListEventsInput{}),
+				CalendarRead,
 			),
 			CalendarListEventsInput{},
 		},
@@ -107,6 +126,7 @@ func GetCalendarEntries() []ToolEntry {
 				"calendar_get_upcoming",
 				"Get the next N upcoming calendar events from now",
 				SchemaFromStruct(CalendarGetUpcomingInput{}),
+				CalendarRead,
 			),
 			CalendarGetUpcomingInput{},
 		},
@@ -116,6 +136,7 @@ func GetCalendarEntries() []ToolEntry {
 				"calendar_find_slots",
 				"Find available free time slots in the calendar within a given window",
 				SchemaFromStruct(CalendarFindSlotsInput{}),
+				CalendarRead,
 			),
 			CalendarFindSlotsInput{},
 		},

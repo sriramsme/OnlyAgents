@@ -79,15 +79,34 @@ type TaskSetPriorityInput struct {
 	Priority string `json:"priority" desc:"New priority"   cli_short:"r" cli_req:"true" cli_help:"low, medium, high" enum:"low,medium,high"`
 }
 
+const (
+	TasksRead  ToolGroup = "tasks_read"
+	TasksWrite ToolGroup = "tasks_write"
+
+	ProjectRead  ToolGroup = "project_read"
+	ProjectWrite ToolGroup = "project_write"
+)
+
+func GetTasksGroups() map[ToolGroup]string {
+	return map[ToolGroup]string{
+		TasksRead:  "View, list, search, and filter tasks",
+		TasksWrite: "Create, update, delete, and modify tasks (status, priority, movement)",
+
+		ProjectRead:  "View and list projects used to organize tasks",
+		ProjectWrite: "Create, update, and delete projects that group tasks",
+	}
+}
+
 func GetTasksEntries() []ToolEntry {
 	return []ToolEntry{
-		// Projects
+		// Projects - WRITE
 		{
 			NewToolDef(
 				"tasks",
 				"project_create",
 				"Create a new project to group related tasks",
 				SchemaFromStruct(ProjectCreateInput{}),
+				ProjectWrite,
 			),
 			ProjectCreateInput{},
 		},
@@ -97,6 +116,7 @@ func GetTasksEntries() []ToolEntry {
 				"project_update",
 				"Update a project's name, description, or color",
 				SchemaFromStruct(ProjectUpdateInput{}),
+				ProjectWrite,
 			),
 			ProjectUpdateInput{},
 		},
@@ -106,15 +126,19 @@ func GetTasksEntries() []ToolEntry {
 				"project_delete",
 				"Delete a project. Tasks in the project become unassigned.",
 				SchemaFromStruct(ProjectDeleteInput{}),
+				ProjectWrite,
 			),
 			ProjectDeleteInput{},
 		},
+
+		// Projects - READ
 		{
 			NewToolDef(
 				"tasks",
 				"project_get",
 				"Get details of a specific project",
 				SchemaFromStruct(ProjectGetInput{}),
+				ProjectRead,
 			),
 			ProjectGetInput{},
 		},
@@ -124,17 +148,19 @@ func GetTasksEntries() []ToolEntry {
 				"project_list",
 				"List all projects",
 				SchemaFromStruct(struct{}{}),
+				ProjectRead,
 			),
 			struct{}{},
 		},
 
-		// Tasks
+		// Tasks - WRITE
 		{
 			NewToolDef(
 				"tasks",
 				"tasks_create",
 				"Create one or more tasks with optional project, priority, and due date. Always use this tool even for single-task creation.",
 				SchemaFromStruct(TaskCreateInput{}),
+				TasksWrite,
 			),
 			TaskCreateInput{},
 		},
@@ -144,17 +170,9 @@ func GetTasksEntries() []ToolEntry {
 				"task_update",
 				"Update a task's title, body, project, priority, status, due date, or tags",
 				SchemaFromStruct(TaskUpdateInput{}),
+				TasksWrite,
 			),
 			TaskUpdateInput{},
-		},
-		{
-			NewToolDef(
-				"tasks",
-				"task_get",
-				"Get full details of a specific task by ID",
-				SchemaFromStruct(TaskGetInput{}),
-			),
-			TaskGetInput{},
 		},
 		{
 			NewToolDef(
@@ -162,6 +180,7 @@ func GetTasksEntries() []ToolEntry {
 				"task_delete",
 				"Delete a task by ID",
 				SchemaFromStruct(TaskDeleteInput{}),
+				TasksWrite,
 			),
 			TaskDeleteInput{},
 		},
@@ -171,35 +190,9 @@ func GetTasksEntries() []ToolEntry {
 				"task_complete",
 				"Mark a task as done and record its completion time",
 				SchemaFromStruct(TaskCompleteInput{}),
+				TasksWrite,
 			),
 			TaskCompleteInput{},
-		},
-		{
-			NewToolDef(
-				"tasks",
-				"task_list",
-				"List tasks with optional filters by project, status, priority, or due date range",
-				SchemaFromStruct(TaskListInput{}),
-			),
-			TaskListInput{},
-		},
-		{
-			NewToolDef(
-				"tasks",
-				"task_search",
-				"Search tasks by title and description using full-text search",
-				SchemaFromStruct(TaskSearchInput{}),
-			),
-			TaskSearchInput{},
-		},
-		{
-			NewToolDef(
-				"tasks",
-				"task_today",
-				"Get all non-completed tasks due today",
-				SchemaFromStruct(struct{}{}),
-			),
-			struct{}{},
 		},
 		{
 			NewToolDef(
@@ -207,6 +200,7 @@ func GetTasksEntries() []ToolEntry {
 				"task_move",
 				"Move a task to a different project or remove it from its current project",
 				SchemaFromStruct(TaskMoveInput{}),
+				TasksWrite,
 			),
 			TaskMoveInput{},
 		},
@@ -216,8 +210,51 @@ func GetTasksEntries() []ToolEntry {
 				"task_set_priority",
 				"Change the priority of a task",
 				SchemaFromStruct(TaskSetPriorityInput{}),
+				TasksWrite,
 			),
 			TaskSetPriorityInput{},
+		},
+
+		// Tasks - READ
+		{
+			NewToolDef(
+				"tasks",
+				"task_get",
+				"Get full details of a specific task by ID",
+				SchemaFromStruct(TaskGetInput{}),
+				TasksRead,
+			),
+			TaskGetInput{},
+		},
+		{
+			NewToolDef(
+				"tasks",
+				"task_list",
+				"List tasks with optional filters by project, status, priority, or due date range",
+				SchemaFromStruct(TaskListInput{}),
+				TasksRead,
+			),
+			TaskListInput{},
+		},
+		{
+			NewToolDef(
+				"tasks",
+				"task_search",
+				"Search tasks by title and description using full-text search",
+				SchemaFromStruct(TaskSearchInput{}),
+				TasksRead,
+			),
+			TaskSearchInput{},
+		},
+		{
+			NewToolDef(
+				"tasks",
+				"task_today",
+				"Get all non-completed tasks due today",
+				SchemaFromStruct(struct{}{}),
+				TasksRead,
+			),
+			struct{}{},
 		},
 	}
 }
