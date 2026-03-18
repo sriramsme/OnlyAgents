@@ -41,15 +41,15 @@ security:
 # GROUPS
 # ─────────────────────────────────────────────────────────────────────────────
 groups:
-  pr_read: "List, view, diff, and inspect PRs, their checks, reviews, and comments"
-  pr_write: "Create, merge, approve, request changes, comment, and close PRs"
-  issue: "List, view, create, comment, close, and reopen issues"
-  ci: "List, view, and rerun workflow runs; view failure logs"
-  workflow: "List, trigger, enable, and disable workflows"
-  release: "List, view, and create releases"
-  repo: "View, list, clone, and fork repositories"
-  search: "Search repos, issues, PRs, and code across GitHub"
-  passthrough: "Escape hatch — call any GitHub REST endpoint via gh api"
+  gh_pr_read: "List, view, diff, and inspect PRs, their checks, reviews, and comments"
+  gh_pr_write: "Create, merge, approve, request changes, comment, and close PRs"
+  gh_issue: "List, view, create, comment, close, and reopen issues"
+  gh_ci: "List, view, and rerun workflow runs; view failure logs"
+  gh_workflow: "List, trigger, enable, and disable workflows"
+  gh_release: "List, view, and create releases"
+  gh_repo: "View, list, clone, and fork repositories"
+  gh_search: "Search repos, issues, PRs, and code across GitHub"
+  gh_passthrough: "Escape hatch — call any GitHub REST endpoint via gh api"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VALIDATION ANCHORS
@@ -70,7 +70,7 @@ tools:
 
   - name: gh_pr_list
     description: List pull requests with state, author, labels, and draft status
-    group: pr_read
+    group: gh_pr_read
     access: read
     timeout: 10
     command: "gh pr list --repo {{repo}} --state {{state}} --limit {{limit}} --json number,title,author,state,headRefName,labels,isDraft"
@@ -89,7 +89,7 @@ tools:
 
   - name: gh_pr_view
     description: Show full PR details — body, reviewers, labels, merge status, and CI rollup
-    group: pr_read
+    group: gh_pr_read
     access: read
     timeout: 10
     command: "gh pr view {{pr_id}} --repo {{repo}} --json number,title,body,state,author,reviewRequests,reviews,labels,mergeable,isDraft,headRefName,baseRefName,url,statusCheckRollup"
@@ -103,7 +103,7 @@ tools:
 
   - name: gh_pr_diff
     description: Show the unified diff for a pull request
-    group: pr_read
+    group: gh_pr_read
     access: read
     timeout: 30
     command: "gh pr diff {{pr_id}} --repo {{repo}}"
@@ -116,7 +116,7 @@ tools:
 
   - name: gh_pr_checks
     description: Show CI check status for a pull request
-    group: pr_read
+    group: gh_pr_read
     access: read
     timeout: 10
     command: "gh pr checks {{pr_id}} --repo {{repo}}"
@@ -131,7 +131,7 @@ tools:
 
   - name: gh_pr_create
     description: Open a new pull request from head branch into base branch
-    group: pr_write
+    group: gh_pr_write
     access: write
     timeout: 30
     command: "gh pr create --repo {{repo}} --title {{title}} --body {{body}} --base {{base}} --head {{head}}"
@@ -154,7 +154,7 @@ tools:
 
   - name: gh_pr_merge
     description: Merge a pull request
-    group: pr_write
+    group: gh_pr_write
     access: write
     timeout: 30
     command: "gh pr merge {{pr_id}} --repo {{repo}} --{{strategy}} --delete-branch"
@@ -171,7 +171,7 @@ tools:
 
   - name: gh_pr_review
     description: Approve a PR, request changes, or leave a comment review
-    group: pr_write
+    group: gh_pr_write
     access: write
     timeout: 15
     command: "gh pr review {{pr_id}} --repo {{repo}} {{action}} --body {{body}}"
@@ -191,7 +191,7 @@ tools:
 
   - name: gh_pr_comment
     description: Post a general comment on a pull request
-    group: pr_write
+    group: gh_pr_write
     access: write
     timeout: 15
     command: "gh pr comment {{pr_id}} --repo {{repo}} --body {{body}}"
@@ -206,7 +206,7 @@ tools:
 
   - name: gh_pr_close
     description: Close or reopen a pull request
-    group: pr_write
+    group: gh_pr_write
     access: write
     timeout: 10
     command: "gh pr {{action}} {{pr_id}} --repo {{repo}}"
@@ -224,7 +224,7 @@ tools:
 
   - name: gh_issue_list
     description: List issues with state, labels, and assignees
-    group: issue
+    group: ghissue
     access: read
     timeout: 10
     command: "gh issue list --repo {{repo}} --state {{state}} --limit {{limit}} --json number,title,state,author,labels,assignees,createdAt"
@@ -242,7 +242,7 @@ tools:
 
   - name: gh_issue_view
     description: Show full issue details including body, labels, assignees, and comments
-    group: issue
+    group: gh_issue
     access: read
     timeout: 10
     command: "gh issue view {{issue_id}} --repo {{repo}} --json number,title,body,state,author,labels,assignees,comments,url,milestone"
@@ -255,7 +255,7 @@ tools:
 
   - name: gh_issue_create
     description: Open a new issue with title, body, optional labels and assignees
-    group: issue
+    group: gh_issue
     access: write
     timeout: 15
     command: "gh issue create --repo {{repo}} --title {{title}} --body {{body}} --label {{labels}} --assignee {{assignees}}"
@@ -279,7 +279,7 @@ tools:
 
   - name: gh_issue_comment
     description: Add a comment to an issue
-    group: issue
+    group: gh_issue
     access: write
     timeout: 15
     command: "gh issue comment {{issue_id}} --repo {{repo}} --body {{body}}"
@@ -294,7 +294,7 @@ tools:
 
   - name: gh_issue_close
     description: Close or reopen an issue
-    group: issue
+    group: gh_issue
     access: write
     timeout: 10
     command: "gh issue {{action}} {{issue_id}} --repo {{repo}} {{reason_flag}}"
@@ -316,7 +316,7 @@ tools:
 
   - name: gh_run_list
     description: List recent workflow runs with status, conclusion, and branch
-    group: ci
+    group: gh_ci
     access: read
     timeout: 10
     command: "gh run list --repo {{repo}} --limit {{limit}} --json databaseId,status,conclusion,workflowName,headBranch,createdAt,url"
@@ -330,7 +330,7 @@ tools:
 
   - name: gh_run_view
     description: Show details and job statuses for a specific workflow run
-    group: ci
+    group: gh_ci
     access: read
     timeout: 10
     command: "gh run view {{run_id}} --repo {{repo}}"
@@ -344,7 +344,7 @@ tools:
 
   - name: gh_run_logs
     description: View logs for failed steps only — most useful for debugging CI failures
-    group: ci
+    group: gh_ci
     access: read
     timeout: 30
     command: "gh run view {{run_id}} --repo {{repo}} --log-failed"
@@ -357,7 +357,7 @@ tools:
 
   - name: gh_run_rerun
     description: Re-run failed jobs in a workflow run
-    group: ci
+    group: gh_ci
     access: write
     timeout: 15
     command: "gh run rerun {{run_id}} --repo {{repo}} --failed"
@@ -372,7 +372,7 @@ tools:
 
   - name: gh_workflow_list
     description: List all workflows in a repo with IDs and enabled/disabled state
-    group: workflow
+    group: gh_workflow
     access: read
     timeout: 10
     command: "gh workflow list --repo {{repo}} --json id,name,state,path"
@@ -383,7 +383,7 @@ tools:
 
   - name: gh_workflow_run
     description: Manually trigger a workflow dispatch event
-    group: workflow
+    group: gh_workflow
     access: write
     timeout: 30
     command: "gh workflow run {{workflow}} --repo {{repo}} --ref {{ref}}"
@@ -401,7 +401,7 @@ tools:
 
   - name: gh_workflow_toggle
     description: Enable or disable a workflow
-    group: workflow
+    group: gh_workflow
     access: write
     timeout: 10
     command: "gh workflow {{action}} {{workflow}} --repo {{repo}}"
@@ -420,7 +420,7 @@ tools:
 
   - name: gh_release_list
     description: List recent releases including drafts and pre-releases
-    group: release
+    group: gh_release
     access: read
     timeout: 10
     command: "gh release list --repo {{repo}} --limit {{limit}} --json tagName,name,createdAt,isDraft,isPrerelease,url"
@@ -434,7 +434,7 @@ tools:
 
   - name: gh_release_view
     description: Show full release details including assets and release notes
-    group: release
+    group: gh_release
     access: read
     timeout: 10
     command: "gh release view {{tag}} --repo {{repo}} --json tagName,name,body,createdAt,assets,url,isDraft,isPrerelease"
@@ -448,7 +448,7 @@ tools:
 
   - name: gh_release_create
     description: Create a new release with tag, title, and release notes
-    group: release
+    group: gh_release
     access: write
     timeout: 30
     command: "gh release create {{tag}} --repo {{repo}} --title {{title}} --notes {{notes}} {{flags}}"
@@ -473,7 +473,7 @@ tools:
 
   - name: gh_repo_view
     description: Show repo metadata — description, language, stars, open issues, default branch
-    group: repo
+    group: gh_repo
     access: read
     timeout: 10
     command: "gh repo view {{repo}} --json name,owner,description,url,defaultBranchRef,stargazerCount,primaryLanguage,isPrivate,openIssues"
@@ -499,7 +499,7 @@ tools:
 
   - name: gh_repo_clone
     description: Clone a repository to a local directory
-    group: repo
+    group: gh_repo
     access: read
     timeout: 60
     command: "gh repo clone {{repo}} {{directory}}"
@@ -518,7 +518,7 @@ tools:
     description: >
       Search GitHub for repos, issues/PRs, or code. Supports all gh search
       qualifiers (language:, stars:, label:, repo:, etc.)
-    group: search
+    group: gh_search
     access: read
     timeout: 15
     command: "gh search {{type}} {{query}} --limit {{limit}} --json {{fields}}"
@@ -552,7 +552,7 @@ tools:
     description: >
       Call any GitHub REST API endpoint directly. Use for operations not covered
       by named tools (branch protection, team membership, deploy environments, etc.)
-    group: passthrough
+    group: gh_passthrough
     access: read
     timeout: 30
     command: "gh api {{endpoint}} --method {{method}} --jq {{jq_filter}}"

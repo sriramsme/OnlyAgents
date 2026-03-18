@@ -23,9 +23,14 @@ security:
   sanitized: true
   sanitized_at: 2026-03-13T00:00:00Z
   sanitized_by: converter
+
+groups:
+  weather: "Get current weather, forecasts, and historical weather data"
+
 tools:
   - name: wttr_current
     description: Get quick one-line weather for a location
+    group: weather
     access: read
     timeout: 10
     command: 'curl -s "wttr.in/{{location}}?format=3"'
@@ -35,6 +40,7 @@ tools:
         description: City name, airport code, or coordinates
   - name: wttr_forecast
     description: Get full terminal forecast
+    group: weather
     access: read
     timeout: 15
     command: 'curl -s "wttr.in/{{location}}?T"'
@@ -44,6 +50,7 @@ tools:
         description: City name or coordinates
   - name: open_meteo_current
     description: Get current weather using coordinates (JSON output)
+    group: weather
     access: read
     timeout: 10
     command: 'curl -s "https://api.open-meteo.com/v1/forecast?latitude={{latitude}}&longitude={{longitude}}&current_weather=true"'

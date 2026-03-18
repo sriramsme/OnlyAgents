@@ -37,13 +37,13 @@ security:
 # groups before the execution step.
 # ─────────────────────────────────────────────────────────────────────────────
 groups:
-  inspect: "Read repo state — status, log, diff, blame, show, stash list, remotes, tags"
-  branch: "Create, switch, and delete branches"
-  commit: "Stage, commit, restore, revert, cherry-pick, merge"
-  sync: "fetch, pull, push"
-  stash: "Save, apply, pop, and drop stash entries"
-  history: "Rebase, reset, amend — rewrites or discards history"
-  passthrough: "Escape hatch — run any git subcommand not covered by named tools"
+  git_inspect: "Read repo state — status, log, diff, blame, show, stash list, remotes, tags"
+  git_branch: "Create, switch, and delete branches"
+  git_commit: "Stage, commit, restore, revert, cherry-pick, merge"
+  git_sync: "fetch, pull, push"
+  git_stash: "Save, apply, pop, and drop stash entries"
+  git_history: "Rebase, reset, amend — rewrites or discards history"
+  git_passthrough: "Escape hatch — run any git subcommand not covered by named tools"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VALIDATION ANCHORS
@@ -75,7 +75,7 @@ tools:
 
   - name: git_status
     description: Show working tree status — staged, unstaged, and untracked files
-    group: inspect
+    group: git_inspect
     access: read
     timeout: 10
     command: "git -C {{repo_path}} status --short --branch"
@@ -85,7 +85,7 @@ tools:
 
   - name: git_log
     description: Show commit history as a decorated graph. Scope by branch or file.
-    group: inspect
+    group: git_inspect
     access: read
     timeout: 10
     command: "git -C {{repo_path}} log {{ref}} --oneline --decorate --graph --max-count={{limit}} -- {{path_filter}}"
@@ -106,7 +106,7 @@ tools:
 
   - name: git_diff
     description: Show diffs — unstaged changes, staged changes, or between two refs
-    group: inspect
+    group: git_inspect
     access: read
     timeout: 10
     command: "git -C {{repo_path}} diff {{ref_range}} -- {{path_filter}}"
@@ -126,7 +126,7 @@ tools:
 
   - name: git_show
     description: Show diff and metadata for a specific commit
-    group: inspect
+    group: git_inspect
     access: read
     timeout: 10
     command: "git -C {{repo_path}} show {{ref}} --stat"
@@ -139,7 +139,7 @@ tools:
 
   - name: git_blame
     description: Show who last changed each line of a file and in which commit
-    group: inspect
+    group: git_inspect
     access: read
     timeout: 15
     command: "git -C {{repo_path}} blame {{file}} --date=short"
@@ -152,7 +152,7 @@ tools:
 
   - name: git_stash_list
     description: List all stash entries with index, source branch, and message
-    group: inspect
+    group: git_inspect
     access: read
     timeout: 10
     command: "git -C {{repo_path}} stash list"
@@ -162,7 +162,7 @@ tools:
 
   - name: git_remote_list
     description: List configured remotes with fetch and push URLs
-    group: inspect
+    group: git_inspect
     access: read
     timeout: 10
     command: "git -C {{repo_path}} remote -v"
@@ -172,7 +172,7 @@ tools:
 
   - name: git_tag_list
     description: List all tags sorted by version descending
-    group: inspect
+    group: git_inspect
     access: read
     timeout: 10
     command: "git -C {{repo_path}} tag --sort=-version:refname"
@@ -184,7 +184,7 @@ tools:
 
   - name: git_branch_list
     description: List local branches sorted by most recent commit
-    group: branch
+    group: git_branch
     access: read
     timeout: 10
     command: "git -C {{repo_path}} branch {{flags}} --sort=-committerdate"
@@ -198,7 +198,7 @@ tools:
 
   - name: git_switch
     description: Switch to an existing branch, or create and switch to a new one
-    group: branch
+    group: git_branch
     access: write
     timeout: 10
     command: "git -C {{repo_path}} switch {{flags}} {{branch}} {{start_point}}"
@@ -219,7 +219,7 @@ tools:
 
   - name: git_branch_delete
     description: Delete a local branch. Use flag -D to force-delete an unmerged branch.
-    group: branch
+    group: git_branch
     access: write
     timeout: 10
     command: "git -C {{repo_path}} branch {{flag}} {{branch_name}}"
@@ -237,7 +237,7 @@ tools:
 
   - name: git_add
     description: Stage files for the next commit. Use '.' to stage all changes.
-    group: commit
+    group: git_commit
     access: write
     timeout: 10
     command: "git -C {{repo_path}} add -- {{paths}}"
@@ -252,7 +252,7 @@ tools:
     description: >
       Discard unstaged changes in working tree (default), or unstage files with --staged.
       Does not touch committed history.
-    group: commit
+    group: git_commit
     access: write
     timeout: 10
     command: "git -C {{repo_path}} restore {{flags}} -- {{paths}}"
@@ -269,7 +269,7 @@ tools:
 
   - name: git_commit
     description: Create a commit from all staged changes
-    group: commit
+    group: git_commit
     access: write
     timeout: 15
     command: "git -C {{repo_path}} commit --message {{message}}"
@@ -283,7 +283,7 @@ tools:
   - name: git_revert
     description: >
       Create a new commit that reverses a given commit. Safe — does not rewrite history.
-    group: commit
+    group: git_commit
     access: write
     timeout: 15
     command: "git -C {{repo_path}} revert {{ref}} --no-edit"
@@ -296,7 +296,7 @@ tools:
 
   - name: git_cherry_pick
     description: Apply the changes from a specific commit onto the current branch
-    group: commit
+    group: git_commit
     access: write
     timeout: 15
     command: "git -C {{repo_path}} cherry-pick {{ref}}"
@@ -309,13 +309,13 @@ tools:
 
   - name: git_merge
     description: Merge a branch into the current branch (always creates a merge commit)
-    group: commit
+    group: git_commit
     access: write
     timeout: 15
     command: "git -C {{repo_path}} merge {{branch}} --no-ff"
     parameters:
       - *repo_path
-      - name: branch
+      - name: git_branch
         type: string
         description: Branch or commit to merge in
     validation: *write
@@ -324,7 +324,7 @@ tools:
 
   - name: git_fetch
     description: Download objects and refs from remote without merging. Prunes stale remote branches.
-    group: sync
+    group: git_sync
     access: write
     timeout: 30
     command: "git -C {{repo_path}} fetch {{remote}} --prune"
@@ -337,7 +337,7 @@ tools:
 
   - name: git_pull
     description: Fetch and integrate remote changes into current branch
-    group: sync
+    group: git_sync
     access: write
     timeout: 30
     command: "git -C {{repo_path}} pull {{remote}} {{branch}} --rebase={{rebase}}"
@@ -358,7 +358,7 @@ tools:
 
   - name: git_push
     description: Push current branch to remote
-    group: sync
+    group: git_sync
     access: write
     timeout: 30
     command: "git -C {{repo_path}} push {{remote}} {{branch}} {{flags}}"
@@ -384,7 +384,7 @@ tools:
       Push, pop, apply, or drop stash entries. Combines all stash operations
       into one tool since they share identical validation and the subcommand
       is self-documenting.
-    group: stash
+    group: git_stash
     access: write
     timeout: 10
     command: "git -C {{repo_path}} stash {{subcommand}}"
@@ -406,7 +406,7 @@ tools:
     description: >
       ⚠️ Rewrite the most recent commit. Updates message and/or staged changes.
       Do not use on commits already pushed to a shared branch.
-    group: history
+    group: git_history
     access: write
     timeout: 15
     command: "git -C {{repo_path}} commit --amend {{flags}} --message {{message}}"
@@ -427,7 +427,7 @@ tools:
       ⚠️ Rebase current branch onto another ref. Pass -i for interactive mode
       (squash, reorder, drop commits). Rewrites history — do not use on commits
       already pushed to a shared branch without a follow-up force-with-lease push.
-    group: history
+    group: git_history
     access: write
     timeout: 60
     command: "git -C {{repo_path}} rebase {{flags}} {{onto}}"
@@ -444,7 +444,7 @@ tools:
 
   - name: git_rebase_control
     description: Continue, skip, or abort an in-progress rebase
-    group: history
+    group: git_history
     access: write
     timeout: 10
     command: "git -C {{repo_path}} rebase {{action}}"
@@ -461,7 +461,7 @@ tools:
       --soft  keeps changes staged.
       --mixed unstages changes but keeps them in working tree (default).
       --hard  DISCARDS all changes permanently. Unrecoverable without reflog.
-    group: history
+    group: git_history
     access: write
     timeout: 10
     danger: true
@@ -482,7 +482,7 @@ tools:
       ⚠️ Force-push with lease. Only succeeds if no teammate has pushed since
       your last fetch. Rewrites remote history — coordinate before using on
       shared branches.
-    group: history
+    group: git_history
     access: write
     timeout: 30
     command: "git -C {{repo_path}} push {{remote}} {{branch}} --force-with-lease"
@@ -503,7 +503,7 @@ tools:
     description: >
       Run any git subcommand not covered by the named tools. Use only when
       no named tool fits. Must start with a valid git subcommand.
-    group: passthrough
+    group: git_passthrough
     access: write
     timeout: 30
     command: "git -C {{repo_path}} {{subcommand}}"

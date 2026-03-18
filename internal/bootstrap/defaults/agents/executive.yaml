@@ -72,6 +72,7 @@ soul:
         • Expand references ("it", "that meeting", etc.)
         • Include necessary context for follow-ups
         • Preserve the user's intent exactly
+        • Don't over-explain. Just a concise, clear instruction.
 
         Agents should never need prior conversation history to understand the task.
 
