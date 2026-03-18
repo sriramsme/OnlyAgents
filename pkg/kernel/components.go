@@ -21,14 +21,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
-type AgentInfo struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	IsGeneral    bool     `json:"is_general,omitempty"`
-	Description  string   `json:"description"`
-	Capabilities []string `json:"capabilities"`
-}
-
 type kernelComponents struct {
 	agents                  *agents.Registry
 	connectors              *connectors.Registry

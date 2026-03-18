@@ -35,15 +35,21 @@ type Agent struct {
 	maxConcurrency   int
 	streamingEnabled bool
 
+	soul            *Soul
+	userContext     string
+	availableAgents map[string]AgentInfo // only populated for executive
+	systemPrompt    string               // always the assembled result, never set externally
+
 	// Core capabilities
 	llmClient      llm.Client
-	soul           *Soul
 	skillsBindings []config.SkillBinding
 	skills         map[string]skills.Skill // owns lifecycle
+
 	// Tool definitions given to LLM (schema only, no implementation)
 	// Kernel populates this based on which skills are assigned to this agent.
 	tools        []tools.ToolDef
 	toolSkillMap map[string]string
+	activeGroups map[string]map[string][]tools.ToolGroup // session → skill → groups
 
 	// Kernel bus — agent fires events here (tool calls, outbound messages)
 	outbox chan<- core.Event
@@ -54,7 +60,6 @@ type Agent struct {
 	cm *memory.ConversationManager // shared across all agents, injected by kernel
 	mm *memory.MemoryManager       // shared across all agents, injected by kernel
 
-	systemPrompt     string
 	handleFindSkill  handleFindSkillFunc // injected by kernel only for general agents
 	resolveAgentName AgentNameResolver
 
@@ -112,6 +117,7 @@ func NewAgent(
 		tools:            []tools.ToolDef{},
 		skills:           make(map[string]skills.Skill),
 		toolSkillMap:     make(map[string]string),
+		availableAgents:  make(map[string]AgentInfo), // only populated for executive
 		cm:               cm,
 		mm:               mm,
 		inbox:            make(chan core.Event, cfg.BufferSize),

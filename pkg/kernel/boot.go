@@ -3,8 +3,8 @@ package kernel
 func kernelInitializers() []Initializer {
 	return []Initializer{
 		connectorsInitializer{},
-		agentsInitializer{},
-		promptsInitializer{},
+		agentsInitializer{},  // assigns skills, deps, user context, available agents
+		promptsInitializer{}, // always last — all data must be set before this
 	}
 }
 

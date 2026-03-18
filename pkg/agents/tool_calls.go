@@ -49,10 +49,10 @@ func (a *Agent) processToolCalls(
 
 		if a.isExecutive && isExecutiveMetaTool(tc.Function.Name) {
 			exec = a.handleExecutiveMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel)
-		} else if a.isGeneral && a.isGeneralMetaTool(tc.Function.Name) {
+		} else if a.isGeneral && isGeneralMetaTool(tc.Function.Name) {
 			exec = a.handleGeneralMetaTool(ctx, correlationID, tc)
 		} else {
-			exec = a.requestToolCall(ctx, correlationID, tc)
+			exec = a.requestToolCall(ctx, sessionID, correlationID, tc)
 		}
 
 		a.emitUI(core.UIEvent{
@@ -124,7 +124,17 @@ func (a *Agent) processToolCalls(
 	return messages, false, nil
 }
 
-func (a *Agent) requestToolCall(ctx context.Context, correlationID string, tc tools.ToolCall) tools.ToolExecution {
+func (a *Agent) requestToolCall(
+	ctx context.Context,
+	sessionID string,
+	correlationID string,
+	tc tools.ToolCall,
+) tools.ToolExecution {
+	// Meta tools are handled internally — never routed to a skill
+	if isSubAgentMetaTool(tc.Function.Name) {
+		return a.handleMetaTool(ctx, sessionID, tc)
+	}
+
 	skill, ok := a.skills[a.toolSkillMap[tc.Function.Name]]
 	if !ok {
 		return tools.ExecErr(fmt.Errorf("no skill registered for tool %q", tc.Function.Name))

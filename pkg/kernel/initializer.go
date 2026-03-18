@@ -28,9 +28,21 @@ func (i agentsInitializer) Init(ctx context.Context, k *Kernel) error {
 	if err != nil {
 		return err
 	}
+	err = k.assignUserContext()
+	if err != nil {
+		return err
+	}
+	err = k.assignAvailableAgents()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (i promptsInitializer) Init(ctx context.Context, k *Kernel) error {
-	return k.buildSystemPrompts()
+	err := k.assignSystemPrompts()
+	if err != nil {
+		return err
+	}
+	return nil
 }

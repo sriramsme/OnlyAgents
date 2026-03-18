@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
@@ -90,6 +91,96 @@ func (k *Kernel) assignAgentSkills() error {
 	return nil
 }
 
+// assignAgentDependencies assigns dependencies to agents
+func (k *Kernel) assignAgentDependencies() error {
+	k.agents.GetExecutive().SetResolveAgentName(k.ResolveAgentName)
+	k.agents.GetGeneral().SetHandleFindSkill(k.handleFindSkill)
+	return nil
+}
+
+// assignUserContext assigns the user profile / preference section injected by kernel.
+func (k *Kernel) assignUserContext() error {
+	userSection := k.buildUserContext()
+	for _, agent := range k.agents.All() {
+		agent.SetUserContext(userSection)
+	}
+	return nil
+}
+
+// assignAvailableAgents assigns the peer agent manifest — executive agents only.
+// Calling this on a non-executive agent is a no-op.
+func (k *Kernel) assignAvailableAgents() error {
+	availableAgents := k.buildAvailableAgentsMap()
+	executive := k.agents.GetExecutive()
+	executive.SetAvailableAgents(availableAgents)
+	return nil
+}
+
+func (k *Kernel) buildAvailableAgentsMap() map[string]agents.AgentInfo {
+	out := make(map[string]agents.AgentInfo)
+	allAgents := k.agents.All()
+	sort.Slice(allAgents, func(i, j int) bool {
+		return allAgents[i].Name() < allAgents[j].Name()
+	})
+
+	for _, agent := range allAgents {
+		if agent.IsExecutive() {
+			continue
+		}
+		// Union of all skill capabilities
+		capSet := make(map[string]bool)
+		for _, skillName := range agent.GetSkillNames() {
+			tmpl, ok := k.skills.Get(skillName)
+			if !ok {
+				continue
+			}
+			for _, c := range tmpl.Capabilities {
+				capSet[c] = true
+			}
+		}
+		caps := make([]string, 0, len(capSet))
+		for c := range capSet {
+			caps = append(caps, c)
+		}
+		if agent.IsGeneral() {
+			caps = append(caps, "find_skill_online")
+		}
+		sort.Strings(caps)
+
+		agentInfo := agents.AgentInfo{
+			ID:           agent.ID(),
+			Name:         agent.Name(),
+			Description:  agent.Description(),
+			Capabilities: caps,
+		}
+		if agent.IsGeneral() {
+			agentInfo.IsGeneral = true
+		}
+		out[agent.ID()] = agentInfo
+	}
+
+	return out
+}
+
+func (k *Kernel) buildUserContext() string {
+	return fmt.Sprintf(`
+=== Who the user is ===
+Name: %s (preferred: "%s")
+Job: %s
+Background: %s
+Timezone: %s
+Daily Routine: %s
+Values: %s`,
+		k.user.Identity.Name,
+		k.user.Identity.PreferredName,
+		k.user.Identity.Role,
+		k.user.Background.Professional,
+		k.user.Identity.Timezone,
+		k.user.DailyRoutine,
+		strings.Join(k.user.Preferences.WhatIValue, ", "),
+	)
+}
+
 func (k *Kernel) validateSkillBindings(agent agents.RuntimeAgent) error {
 	for _, binding := range agent.GetSkillBindings() {
 		tmpl, ok := k.skills.Get(binding.Name)
@@ -126,12 +217,6 @@ func (k *Kernel) validateSkillBindings(agent agents.RuntimeAgent) error {
 				agent.ID(), binding.Name, connectorName)
 		}
 	}
-	return nil
-}
-
-func (k *Kernel) assignAgentDependencies() error {
-	k.agents.GetExecutive().SetResolveAgentName(k.ResolveAgentName)
-	k.agents.GetGeneral().SetHandleFindSkill(k.handleFindSkill)
 	return nil
 }
 

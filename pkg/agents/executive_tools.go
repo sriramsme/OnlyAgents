@@ -16,16 +16,6 @@ import (
 // These methods are used by executive agents to delegate and create workflows
 // They're called from the agent's execute() loop when LLM calls meta-tools
 
-// isMetaTool checks if a tool name is a meta-tool
-func isExecutiveMetaTool(toolName string) bool {
-	metaTools := map[string]bool{
-		"delegate_to_agent": true,
-		"create_workflow":   true,
-		"find_best_agent":   true,
-	}
-	return metaTools[toolName]
-}
-
 // handleMetaTool routes meta-tool calls to appropriate handlers
 func (a *Agent) handleExecutiveMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channelMetadata *core.ChannelMetadata) tools.ToolExecution {
 	a.logger.Debug("handling meta-tool",

@@ -28,6 +28,7 @@ type RuntimeAgent interface {
 
 	SetTools(tools []tools.ToolDef)
 	AddTools(tools []tools.ToolDef)
+	AttachSkill(skill skills.Skill) error
 	AddSkill(skill skills.Skill)
 	GetSkillNames() []string
 	ListToolNames() []string
@@ -35,7 +36,18 @@ type RuntimeAgent interface {
 
 	SetHandleFindSkill(fn handleFindSkillFunc)
 	SetResolveAgentName(fn AgentNameResolver)
-	SetSystemPrompt(userSection, extra string)
+	SetUserContext(userContext string)
+	SetAvailableAgents(agents map[string]AgentInfo) // only populated for executive
+	RegisterPeer(agentInfo AgentInfo)               // no-op for non-executive
+	RebuildSystemPrompt()
+}
+
+type AgentInfo struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	IsGeneral    bool     `json:"is_general,omitempty"`
+	Description  string   `json:"description"`
+	Capabilities []string `json:"capabilities"`
 }
 
 // AgentRegistry holds all running agents. Lives in kernel.
