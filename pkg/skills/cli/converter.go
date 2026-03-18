@@ -168,9 +168,11 @@ instructions: |
   1. Install <binary>: <install URL or command>
   2. Set <ENV_VAR_NAME> in ~/.onlyagents/.env
      Get it at: <where to obtain the value>
+
 capabilities:
-  - <primary_capability>
-  - <sub_capability>
+  - <domain_outcome>
+  - <domain_outcome>
+
 requires:
   bins:
     - name: <binary>
@@ -180,13 +182,20 @@ requires:
         manual: <https://install-url>
   env:
     - ENV_VAR_NAME
+
 security:
   sanitized: true
   sanitized_at: <RFC3339 timestamp>
   sanitized_by: converter
+
+groups:
+  <skill>_<capability>: "<one-line description of what tools in this group do>"
+  <entity>_<capability>: "<description — use entity prefix when skill has sub-domains>"
+
 tools:
   - name: <tool_name>
     description: <what the tool does>
+    group: <group_name>
     access: <read|write|admin>
     timeout: 30
     command: <shell command with {{param}} placeholders>
@@ -202,6 +211,51 @@ tools:
       max_output_size: 102400
   - name: <next_tool_name>
     ...`
+
+const groupRules = `
+TOOL GROUPS:
+Groups are intra-agent: the sub-agent reads these to load ONLY the tools needed for a task.
+Think "what operation type is the agent performing right now?" not "what domain is this skill in?"
+
+Naming convention:
+  - Default: <skill_name>_<capability>  e.g. git_inspect, git_sync
+  - Sub-domain: <entity>_<capability>   e.g. project_read, project_write
+    Use sub-domain prefix when the skill manages multiple distinct entities
+    (e.g. tasks + projects, repos + PRs) where skill_* would be ambiguous.
+
+Rules:
+  - 3-6 groups per skill. Too few = no routing benefit. Too many = fragmentation.
+  - Group names should reflect tool access level:
+    read tools  → <domain>_read or <domain>_inspect
+    write tools → <domain>_write or <domain>_<verb>
+    admin tools → <domain>_manage
+  - Split read vs write for each domain: git_inspect (read) vs git_commit (write)
+  - Group names are snake_case slugs, no spaces
+  - Group descriptions describe the OPERATION TYPE across all tools in the group,
+    not a single tool. Start with a verb or noun phrase.
+    Good: "View, list, search, and filter tasks"
+    Bad:  "get_task tool"
+  - Every tool must belong to exactly one group — no ungrouped tools
+  - A passthrough/escape-hatch tool gets its own group: <skill>_passthrough
+  - Do NOT create a group per tool — that defeats the purpose
+  - Do NOT use generic names like "misc", "other", "utilities"
+`
+
+const capabilityRules = `
+CAPABILITIES:
+Capabilities are inter-agent: the executive reads these to decide WHICH skill to route to.
+Think "what would an orchestrator call this domain?" not "what does this tool do?"
+
+Rules:
+  - 3-5 capabilities max
+  - Describe the OUTCOME or DOMAIN, not the implementation
+  - Use phrases a non-technical user would say to describe what they need
+    Good: "version_control", "code_review", "ci_cd"
+    Bad:  "git_inspect", "run_tests" (too operational — those are groups)
+  - Do NOT use generic cross-domain terms like "read", "write", "manage" —
+    these tell the executive nothing about which skill to route to
+  - Do NOT repeat group names as capabilities — they operate at different levels
+`
 
 func buildSystemPrompt(nameHint string) string {
 	nameConstraint := ""
@@ -236,17 +290,12 @@ RULES:
   - bins: one install step per binary referencing the manual URL
   - env: one step per env var telling user to add to ~/.onlyagents/.env with note on where to get the value
   - If neither bins nor env, omit instructions entirely.
-- capabilities: domain-level slugs describing what workflows this skill enables.
-  Think from an executive agent's perspective: "what kind of task would I route here?"
-  Rules:
-  - Describe the OUTCOME or DOMAIN, not the implementation
-  - 3-5 capabilities max
-  - Ask: "would a non-technical user use this phrase to describe what they need?"
-    Yes → good capability. No → too technical or too granular.
+%s
+%s
 %s
 CANONICAL FORMAT:
 
-%s`, nameConstraint, canonicalFormat)
+%s`, nameConstraint, capabilityRules, groupRules, canonicalFormat)
 }
 
 func buildUserMessage(raw string) string {
