@@ -1,21 +1,25 @@
 name: devops
-description: Infrastructure and operations team for managing deployments, servers, containers, and pipelines.
+description: >
+  Infrastructure and operations team for deploying and managing applications
+  in production - containers, clusters, cloud platforms, and DNS.
+  Covers the full outer loop from built artifact to live URL.
 enabled: false
-
 agents:
-  - devops # TODO: new agent — deployments, infra, monitoring
-  - general
-
+  - infra_runtime
+  - cloud_platform
 skills:
-  - docker # TODO: CLI skill
-  - kubectl # TODO: CLI skill
-  - git # TODO: CLI skill
-  - github # CLI — ships today
-  - make # TODO: CLI skill
-  - restic # TODO: CLI skill — backups
-  - ssh # TODO: CLI skill — remote server access
-  - web_search
-
+  - docker
+  - kubectl
+  - vercel
+  - wrangler
+  - supabase
+  - firebase
+  - git
+  - github
+  - make
+  - jq
+  - filesystem
+  - websearch
 connectors:
-  - duckduckgo
   - brave
+  - duckduckgo

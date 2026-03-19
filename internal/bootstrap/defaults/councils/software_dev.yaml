@@ -1,22 +1,24 @@
 name: software_dev
-description: Collaborative engineering team for software development workflows. Covers coding, code review, testing, and repository management.
+description: >
+  Collaborative engineering team for building software - writing code,
+  managing dependencies, searching codebases, and versioning work.
+  Covers the full inner loop from first file to merged PR.
 enabled: false
-
 agents:
-  - developer # TODO: new agent — code writing, debugging, file ops
-  - reviewer # TODO: new agent — code review, suggestions
-  - tester # TODO: new agent — test generation, test analysis
-  - general
-
+  - code_writer
+  - code_versioning
 skills:
+  - filesystem
+  - ripgrep
+  - jq
+  - make
+  - npm
+  - pip
+  - psql
+  - git
   - github
-  - git # TODO: CLI skill
-  - filesystem # TODO: read/write/search files
-  - ripgrep # TODO: CLI skill — fast code search
-  - make # TODO: CLI skill
-  - docker # TODO: CLI skill
-  - web_search # for docs lookup
-
+  - docker
+  - websearch
 connectors:
   - brave
   - duckduckgo

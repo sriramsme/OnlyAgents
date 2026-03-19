@@ -26,7 +26,6 @@ type Agent struct {
 	Skills           []SkillBinding `mapstructure:"skills"`
 	Channels         []string       `mapstructure:"channels"`
 	Soul             Soul           `mapstructure:"soul"`
-	User             User           `mapstructure:"user"`
 
 	// ============================================
 	// EXECUTION LIMITS (Guard Rails)

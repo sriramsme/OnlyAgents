@@ -20,6 +20,7 @@ skills:
   - name: reminders # you can omit the connector field if you use the default
   - name: tasks
     connector: "" # or you can put an empty string to use the default
+  - name: weather # cli skill — no connector
 
 # ============================================
 # EXECUTION LIMITS
