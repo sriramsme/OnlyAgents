@@ -1,0 +1,345 @@
+name: wrangler
+type: cli
+enabled: true
+access_level: admin
+has_groups: true
+description: >
+  Cloudflare developer platform — deploy Workers and Pages, manage KV and R2
+  storage, and configure DNS records via the Wrangler CLI.
+capabilities:
+  - edge_deployment
+  - serverless_functions
+  - edge_storage
+  - dns_management
+version: 1.0.0
+instructions: |
+  wrangler must be installed and available on PATH.
+  Authenticate by setting CLOUDFLARE_API_TOKEN in ~/.onlyagents/.env.
+  Workers projects require a wrangler.toml in the project root.
+  Pages projects can be deployed from a build output directory.
+  Pass working_dir to target a specific project root.
+requires:
+  bins:
+    - name: wrangler
+      install:
+        brew: brew install cloudflare-wrangler
+        manual: https://developers.cloudflare.com/workers/wrangler/install-and-update/
+  env:
+    - CLOUDFLARE_API_TOKEN
+security:
+  sanitized: true
+  sanitized_at: 2026-03-18T00:00:00Z
+  sanitized_by: onlyagents
+
+groups:
+  wrangler_workers: "Deploy and manage Cloudflare Workers — dev, deploy, delete, tail logs"
+  wrangler_pages: "Deploy and manage Cloudflare Pages projects"
+  wrangler_kv: "Manage Workers KV namespaces and key-value entries"
+  wrangler_r2: "Manage R2 object storage buckets"
+  wrangler_dns: "Manage DNS records for Cloudflare zones"
+  wrangler_passthrough: "Escape hatch — run any wrangler command not covered by named tools"
+
+_validation_defaults:
+  read: &read
+    allowed_commands: [wrangler]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  write: &write
+    allowed_commands: [wrangler]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  destructive: &destructive
+    allowed_commands: [wrangler]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+    require_confirm: true
+
+_params:
+  working_dir: &working_dir
+    name: working_dir
+    type: string
+    description: Path to the project root containing wrangler.toml. Leave empty for current working directory.
+    default: ""
+
+tools:
+  # ── WORKERS ────────────────────────────────────────────────────────────────
+
+  - name: wrangler_dev
+    description: Start a local Workers development server that mirrors the production runtime.
+    group: wrangler_workers
+    access: write
+    timeout: 600
+    command: "wrangler dev {{#if port}}--port {{port}}{{/if}} {{#if working_dir}}--config {{working_dir}}/wrangler.toml{{/if}}"
+    parameters:
+      - *working_dir
+      - name: port
+        type: integer
+        description: Local port to listen on.
+        default: 8787
+    validation: *write
+
+  - name: wrangler_deploy
+    description: Deploy a Worker to Cloudflare's edge network.
+    group: wrangler_workers
+    access: write
+    timeout: 120
+    command: "wrangler deploy {{#if working_dir}}--config {{working_dir}}/wrangler.toml{{/if}}"
+    parameters:
+      - *working_dir
+    validation: *write
+
+  - name: wrangler_workers_list
+    description: List all deployed Workers in the account.
+    group: wrangler_workers
+    access: read
+    timeout: 15
+    command: "wrangler workers list"
+    parameters: []
+    validation: *read
+
+  - name: wrangler_tail
+    description: Stream live logs from a deployed Worker. Useful for debugging production issues.
+    group: wrangler_workers
+    access: read
+    timeout: 300
+    command: "wrangler tail {{name}} {{#if working_dir}}--config {{working_dir}}/wrangler.toml{{/if}}"
+    parameters:
+      - *working_dir
+      - name: name
+        type: string
+        description: Worker name to tail logs from.
+    validation: *read
+
+  - name: wrangler_worker_delete
+    description: Delete a deployed Worker from Cloudflare. Irreversible.
+    group: wrangler_workers
+    access: admin
+    timeout: 30
+    command: "wrangler delete {{name}} {{#if working_dir}}--config {{working_dir}}/wrangler.toml{{/if}}"
+    parameters:
+      - *working_dir
+      - name: name
+        type: string
+        description: Worker name to delete.
+    validation: *destructive
+
+  # ── PAGES ──────────────────────────────────────────────────────────────────
+
+  - name: wrangler_pages_list
+    description: List all Cloudflare Pages projects in the account.
+    group: wrangler_pages
+    access: read
+    timeout: 15
+    command: "wrangler pages project list"
+    parameters: []
+    validation: *read
+
+  - name: wrangler_pages_deploy
+    description: Deploy a static site or full-stack app to Cloudflare Pages.
+    group: wrangler_pages
+    access: write
+    timeout: 180
+    command: "wrangler pages deploy '{{directory}}' --project-name {{project}} {{#if branch}}--branch {{branch}}{{/if}} {{#if commit_message}}--commit-message '{{commit_message}}'{{/if}}"
+    parameters:
+      - name: directory
+        type: string
+        description: Path to the build output directory to deploy (e.g. dist, out, .next).
+      - name: project
+        type: string
+        description: Cloudflare Pages project name to deploy to.
+      - name: branch
+        type: string
+        description: Branch name for the deployment — determines if it goes to production or preview. Leave empty for the default branch.
+        default: ""
+      - name: commit_message
+        type: string
+        description: Commit message associated with the deployment.
+        default: ""
+    validation: *write
+
+  - name: wrangler_pages_deployments_list
+    description: List recent deployments for a Pages project with their status and URLs.
+    group: wrangler_pages
+    access: read
+    timeout: 15
+    command: "wrangler pages deployment list --project-name {{project}}"
+    parameters:
+      - name: project
+        type: string
+        description: Pages project name to list deployments for.
+    validation: *read
+
+  # ── KV ─────────────────────────────────────────────────────────────────────
+
+  - name: wrangler_kv_namespace_list
+    description: List all KV namespaces in the account.
+    group: wrangler_kv
+    access: read
+    timeout: 15
+    command: "wrangler kv namespace list"
+    parameters: []
+    validation: *read
+
+  - name: wrangler_kv_get
+    description: Get the value of a key from a KV namespace.
+    group: wrangler_kv
+    access: read
+    timeout: 15
+    command: "wrangler kv key get '{{key}}' --namespace-id {{namespace_id}}"
+    parameters:
+      - name: namespace_id
+        type: string
+        description: KV namespace ID (use wrangler_kv_namespace_list to find IDs).
+      - name: key
+        type: string
+        description: Key to retrieve.
+    validation: *read
+
+  - name: wrangler_kv_put
+    description: Put a key-value pair into a KV namespace. Pass ttl to set an expiry in seconds.
+    group: wrangler_kv
+    access: write
+    timeout: 15
+    command: "wrangler kv key put '{{key}}' '{{value}}' --namespace-id {{namespace_id}} {{#if ttl}}--ttl {{ttl}}{{/if}}"
+    parameters:
+      - name: namespace_id
+        type: string
+        description: KV namespace ID.
+      - name: key
+        type: string
+        description: Key to set.
+      - name: value
+        type: string
+        description: Value to store.
+      - name: ttl
+        type: integer
+        description: Time-to-live in seconds. Leave at 0 for no expiry.
+        default: 0
+    validation: *write
+
+  - name: wrangler_kv_delete
+    description: Delete a key from a KV namespace.
+    group: wrangler_kv
+    access: admin
+    timeout: 15
+    command: "wrangler kv key delete '{{key}}' --namespace-id {{namespace_id}}"
+    parameters:
+      - name: namespace_id
+        type: string
+        description: KV namespace ID.
+      - name: key
+        type: string
+        description: Key to delete.
+    validation: *destructive
+
+  # ── R2 ─────────────────────────────────────────────────────────────────────
+
+  - name: wrangler_r2_buckets_list
+    description: List all R2 buckets in the account.
+    group: wrangler_r2
+    access: read
+    timeout: 15
+    command: "wrangler r2 bucket list"
+    parameters: []
+    validation: *read
+
+  - name: wrangler_r2_bucket_create
+    description: Create a new R2 bucket.
+    group: wrangler_r2
+    access: write
+    timeout: 15
+    command: "wrangler r2 bucket create {{name}}"
+    parameters:
+      - name: name
+        type: string
+        description: Name for the new R2 bucket.
+    validation: *write
+
+  - name: wrangler_r2_bucket_delete
+    description: Delete an R2 bucket. The bucket must be empty before deletion.
+    group: wrangler_r2
+    access: admin
+    timeout: 15
+    command: "wrangler r2 bucket delete {{name}}"
+    parameters:
+      - name: name
+        type: string
+        description: Name of the R2 bucket to delete.
+    validation: *destructive
+
+  # ── DNS ────────────────────────────────────────────────────────────────────
+
+  - name: wrangler_dns_list
+    description: List all DNS records for a Cloudflare zone.
+    group: wrangler_dns
+    access: read
+    timeout: 15
+    command: "wrangler dns record list --zone {{zone}}"
+    parameters:
+      - name: zone
+        type: string
+        description: Zone name or ID to list DNS records for (e.g. example.com).
+    validation: *read
+
+  - name: wrangler_dns_add
+    description: Add a DNS record to a Cloudflare zone.
+    group: wrangler_dns
+    access: write
+    timeout: 15
+    command: "wrangler dns record create --zone {{zone}} --type {{type}} --name {{name}} --content '{{content}}' {{#if ttl}}--ttl {{ttl}}{{/if}} {{#if proxied}}--proxy{{/if}}"
+    parameters:
+      - name: zone
+        type: string
+        description: Zone name or ID (e.g. example.com).
+      - name: type
+        type: string
+        description: DNS record type — A, AAAA, CNAME, TXT, MX.
+      - name: name
+        type: string
+        description: Record name (e.g. @ for root, www, or api).
+      - name: content
+        type: string
+        description: Record value (e.g. IP address, target hostname, or TXT string).
+      - name: ttl
+        type: integer
+        description: Time-to-live in seconds. Use 1 for automatic TTL.
+        default: 1
+      - name: proxied
+        type: boolean
+        description: Route traffic through Cloudflare's proxy for DDoS protection and CDN.
+        default: true
+    validation: *write
+
+  - name: wrangler_dns_delete
+    description: Delete a DNS record from a Cloudflare zone.
+    group: wrangler_dns
+    access: admin
+    timeout: 15
+    command: "wrangler dns record delete --zone {{zone}} --id {{record_id}}"
+    parameters:
+      - name: zone
+        type: string
+        description: Zone name or ID.
+      - name: record_id
+        type: string
+        description: DNS record ID to delete (use wrangler_dns_list to find IDs).
+    validation: *destructive
+
+  # ── PASSTHROUGH ────────────────────────────────────────────────────────────
+
+  - name: wrangler_passthrough
+    description: Run any wrangler command not covered by named tools — for secrets, queues, d1, or hyperdrive commands.
+    group: wrangler_passthrough
+    access: admin
+    timeout: 60
+    command: "wrangler {{args}} {{#if working_dir}}--config {{working_dir}}/wrangler.toml{{/if}}"
+    parameters:
+      - *working_dir
+      - name: args
+        type: string
+        description: Full argument string to pass directly to wrangler (e.g. "secret put API_KEY" or "d1 list").
+    validation:
+      allowed_commands: [wrangler]
+      denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+      max_output_size: 102400
+      require_confirm: true

@@ -1,0 +1,389 @@
+name: supabase
+type: cli
+enabled: true
+access_level: admin
+has_groups: true
+description: >
+  Supabase project management — local development stack, database migrations,
+  edge functions, secrets, and type generation.
+capabilities:
+  - project_management
+  - database_migrations
+  - edge_functions
+  - secrets_management
+version: 1.0.0
+instructions: |
+  supabase CLI must be installed and available on PATH.
+  Authenticate by setting SUPABASE_ACCESS_TOKEN in ~/.onlyagents/.env, or run
+  supabase login interactively before use.
+  Most commands operate in a project directory containing a supabase/ folder.
+  Pass working_dir to target a specific project root.
+  Remote operations require the project to be linked first — use supabase_link.
+requires:
+  bins:
+    - name: supabase
+      install:
+        brew: brew install supabase/tap/supabase
+        manual: https://supabase.com/docs/guides/cli/getting-started
+  env:
+    - SUPABASE_ACCESS_TOKEN
+security:
+  sanitized: true
+  sanitized_at: 2026-03-18T00:00:00Z
+  sanitized_by: onlyagents
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GROUPS
+# ─────────────────────────────────────────────────────────────────────────────
+groups:
+  supabase_project: "Manage local and remote projects — init, start, stop, status, link, and list"
+  supabase_db: "Database migrations and schema operations — diff, push, reset, and dump"
+  supabase_functions: "Edge function lifecycle — scaffold, deploy, delete, list, and serve locally"
+  supabase_secrets: "Manage project secrets — set, list, and unset environment variables"
+  supabase_gen: "Generate type definitions from the database schema"
+  supabase_passthrough: "Escape hatch — run any supabase CLI command not covered by named tools"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VALIDATION ANCHORS
+# ─────────────────────────────────────────────────────────────────────────────
+_validation_defaults:
+  read: &read
+    allowed_commands: [supabase]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  write: &write
+    allowed_commands: [supabase]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  destructive: &destructive
+    allowed_commands: [supabase]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+    require_confirm: true
+
+_params:
+  working_dir: &working_dir
+    name: working_dir
+    type: string
+    description: Path to the project root containing the supabase/ directory. Leave empty for current working directory.
+    default: ""
+  project_ref: &project_ref
+    name: project_ref
+    type: string
+    description: Remote project reference ID. Leave empty to use the linked project.
+    default: ""
+
+tools:
+  # ── PROJECT ────────────────────────────────────────────────────────────────
+
+  - name: supabase_projects_list
+    description: List all remote Supabase projects in the authenticated account.
+    group: supabase_project
+    access: read
+    timeout: 15
+    command: "supabase projects list"
+    parameters: []
+    validation: *read
+
+  - name: supabase_init
+    description: Initialize a new Supabase project in the working directory. Creates the supabase/ config directory.
+    group: supabase_project
+    access: write
+    timeout: 15
+    command: "supabase init {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+    validation: *write
+
+  - name: supabase_link
+    description: Link the local project to a remote Supabase project. Required before pushing migrations or deploying functions.
+    group: supabase_project
+    access: write
+    timeout: 30
+    command: "supabase link --project-ref {{project_ref}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - name: project_ref
+        type: string
+        description: Remote project reference ID (found in the Supabase dashboard URL).
+    validation: *write
+
+  - name: supabase_start
+    description: Start the local Supabase development stack — Postgres, Auth, Storage, and Studio. Prints local API keys when ready.
+    group: supabase_project
+    access: write
+    timeout: 120
+    command: "supabase start {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+    validation: *write
+
+  - name: supabase_stop
+    description: Stop the local Supabase development stack. Pass backup=true to preserve data across restarts.
+    group: supabase_project
+    access: write
+    timeout: 30
+    command: "supabase stop {{#if backup}}--backup{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - name: backup
+        type: boolean
+        description: Preserve local data volumes when stopping. Without this, local data is lost on next start.
+        default: true
+    validation: *write
+
+  - name: supabase_status
+    description: Show the status of the local development stack — service health, local API URL, anon key, and service role key.
+    group: supabase_project
+    access: read
+    timeout: 15
+    command: "supabase status {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+    validation: *read
+
+  # ── DB ─────────────────────────────────────────────────────────────────────
+
+  - name: supabase_migration_new
+    description: Create a new empty migration file with a timestamped name in supabase/migrations/.
+    group: supabase_db
+    access: write
+    timeout: 10
+    command: "supabase migration new {{name}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - name: name
+        type: string
+        description: Descriptive name for the migration (e.g. add_users_table). Timestamp is prepended automatically.
+    validation: *write
+
+  - name: supabase_migration_list
+    description: List all local and remote migrations with their status — applied, pending, or diverged.
+    group: supabase_db
+    access: read
+    timeout: 15
+    command: "supabase migration list {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+    validation: *read
+
+  - name: supabase_db_push
+    description: Push pending local migrations to the remote database. Pass dry_run=true to preview without applying.
+    group: supabase_db
+    access: write
+    timeout: 60
+    command: "supabase db push {{#if dry_run}}--dry-run{{/if}} {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+      - name: dry_run
+        type: boolean
+        description: Preview the SQL that would be applied without executing it.
+        default: false
+    validation: *write
+
+  - name: supabase_db_diff
+    description: Diff the current database schema against local migrations and output the SQL delta. Useful for generating a new migration from schema changes.
+    group: supabase_db
+    access: read
+    timeout: 30
+    command: "supabase db diff {{#if name}}--file {{name}}{{/if}} {{#if schema}}--schema {{schema}}{{/if}} {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+      - name: name
+        type: string
+        description: If provided, writes the diff as a new migration file with this name instead of printing to stdout.
+        default: ""
+      - name: schema
+        type: string
+        description: Comma-separated schema names to diff. Leave empty for all schemas.
+        default: ""
+    validation: *read
+
+  - name: supabase_db_reset
+    description: Reset the local database by re-running all migrations from scratch. Destroys all local data.
+    group: supabase_db
+    access: admin
+    timeout: 60
+    command: "supabase db reset {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+    validation: *destructive
+
+  - name: supabase_db_dump
+    description: Dump the remote database schema or data to a SQL file.
+    group: supabase_db
+    access: read
+    timeout: 120
+    command: "supabase db dump {{#if data_only}}--data-only{{/if}} {{#if project_ref}}--project-ref {{project_ref}}{{/if}} --file '{{output_file}}' {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+      - name: output_file
+        type: string
+        description: Absolute path for the output SQL file (e.g. /tmp/schema.sql).
+      - name: data_only
+        type: boolean
+        description: Dump data only, skipping schema DDL.
+        default: false
+    validation: *read
+
+  # ── FUNCTIONS ──────────────────────────────────────────────────────────────
+
+  - name: supabase_functions_list
+    description: List all deployed edge functions for the linked remote project.
+    group: supabase_functions
+    access: read
+    timeout: 15
+    command: "supabase functions list {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+    validation: *read
+
+  - name: supabase_functions_new
+    description: Scaffold a new edge function with a boilerplate index.ts in supabase/functions/<name>/.
+    group: supabase_functions
+    access: write
+    timeout: 10
+    command: "supabase functions new {{name}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - name: name
+        type: string
+        description: Name of the edge function to create (e.g. send-welcome-email).
+    validation: *write
+
+  - name: supabase_functions_deploy
+    description: Deploy one or all edge functions to the remote project.
+    group: supabase_functions
+    access: write
+    timeout: 60
+    command: "supabase functions deploy {{#if name}}{{name}}{{/if}} {{#if no_verify_jwt}}--no-verify-jwt{{/if}} {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+      - name: name
+        type: string
+        description: Function name to deploy. Leave empty to deploy all functions.
+        default: ""
+      - name: no_verify_jwt
+        type: boolean
+        description: Disable JWT verification for the function — allows unauthenticated invocations.
+        default: false
+    validation: *write
+
+  - name: supabase_functions_delete
+    description: Delete a deployed edge function from the remote project.
+    group: supabase_functions
+    access: admin
+    timeout: 15
+    command: "supabase functions delete {{name}} {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+      - name: name
+        type: string
+        description: Name of the edge function to delete.
+    validation: *destructive
+
+  - name: supabase_functions_serve
+    description: Serve edge functions locally for development and testing. Watches for file changes.
+    group: supabase_functions
+    access: write
+    timeout: 600
+    command: "supabase functions serve {{#if name}}{{name}}{{/if}} {{#if no_verify_jwt}}--no-verify-jwt{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - name: name
+        type: string
+        description: Specific function to serve. Leave empty to serve all functions.
+        default: ""
+      - name: no_verify_jwt
+        type: boolean
+        description: Disable JWT verification for local testing.
+        default: false
+    validation: *write
+
+  # ── SECRETS ────────────────────────────────────────────────────────────────
+
+  - name: supabase_secrets_list
+    description: List all secret names for the remote project. Values are never shown.
+    group: supabase_secrets
+    access: read
+    timeout: 15
+    command: "supabase secrets list {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+    validation: *read
+
+  - name: supabase_secrets_set
+    description: Set one or more secrets for the remote project. Pass as KEY=VALUE pairs.
+    group: supabase_secrets
+    access: write
+    timeout: 15
+    command: "supabase secrets set {{secrets}} {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+      - name: secrets
+        type: string
+        description: Space-separated KEY=VALUE pairs to set (e.g. "STRIPE_KEY=sk_live_xxx SENDGRID_KEY=SG.xxx").
+    validation: *write
+
+  - name: supabase_secrets_unset
+    description: Remove one or more secrets from the remote project.
+    group: supabase_secrets
+    access: admin
+    timeout: 15
+    command: "supabase secrets unset {{keys}} {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+      - name: keys
+        type: string
+        description: Space-separated secret key names to remove (e.g. "STRIPE_KEY SENDGRID_KEY").
+    validation: *destructive
+
+  # ── GEN ────────────────────────────────────────────────────────────────────
+
+  - name: supabase_gen_types
+    description: Generate TypeScript type definitions from the remote database schema. Output to a file or stdout.
+    group: supabase_gen
+    access: read
+    timeout: 30
+    command: "supabase gen types typescript {{#if project_ref}}--project-ref {{project_ref}}{{/if}} {{#if schema}}--schema {{schema}}{{/if}} {{#if output_file}}> '{{output_file}}'{{/if}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - *project_ref
+      - name: schema
+        type: string
+        description: Comma-separated schema names to generate types for. Leave empty for all schemas.
+        default: ""
+      - name: output_file
+        type: string
+        description: Absolute path to write the generated types file (e.g. src/types/supabase.ts). Leave empty to print to stdout.
+        default: ""
+    validation: *read
+
+  # ── PASSTHROUGH ────────────────────────────────────────────────────────────
+
+  - name: supabase_passthrough
+    description: Run any supabase CLI command not covered by named tools — for inspect, logs, or orgs commands.
+    group: supabase_passthrough
+    access: admin
+    timeout: 60
+    command: "supabase {{args}} {{#if working_dir}}--workdir {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - name: args
+        type: string
+        description: Full argument string to pass directly to the supabase CLI (e.g. "inspect db bloat --project-ref xxx").
+    validation:
+      allowed_commands: [supabase]
+      denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+      max_output_size: 102400
+      require_confirm: true

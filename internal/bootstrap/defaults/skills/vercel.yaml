@@ -1,0 +1,293 @@
+name: vercel
+type: cli
+enabled: true
+access_level: admin
+has_groups: true
+description: >
+  Vercel project deployment and management — local dev server, deployments,
+  environment variables, domains, and logs.
+capabilities:
+  - frontend_deployment
+  - serverless_deployment
+  - domain_management
+version: 1.0.0
+instructions: |
+  vercel CLI must be installed and available on PATH.
+  Authenticate by setting VERCEL_TOKEN in ~/.onlyagents/.env for non-interactive use.
+  Most commands operate in a project directory containing a vercel.json or recognized framework config.
+  Pass working_dir to target a specific project root.
+  Link the project with vercel_link before running env or domain commands.
+requires:
+  bins:
+    - name: vercel
+      install:
+        brew: brew install vercel-cli
+        manual: https://vercel.com/docs/cli
+  env:
+    - VERCEL_TOKEN
+security:
+  sanitized: true
+  sanitized_at: 2026-03-18T00:00:00Z
+  sanitized_by: onlyagents
+
+groups:
+  vercel_project: "Initialize and link projects — init, link, list projects, and inspect deployments"
+  vercel_deploy: "Deploy to production or preview — dev server, deploy, and promote"
+  vercel_env: "Manage environment variables — list, add, remove, and pull to local .env"
+  vercel_domains: "Manage custom domains — list, add, remove, and inspect DNS"
+  vercel_passthrough: "Escape hatch — run any vercel CLI command not covered by named tools"
+
+_validation_defaults:
+  read: &read
+    allowed_commands: [vercel]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  write: &write
+    allowed_commands: [vercel]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  destructive: &destructive
+    allowed_commands: [vercel]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+    require_confirm: true
+
+_params:
+  working_dir: &working_dir
+    name: working_dir
+    type: string
+    description: Path to the project root. Leave empty for current working directory.
+    default: ""
+  scope: &scope
+    name: scope
+    type: string
+    description: Team slug or personal account to operate under. Leave empty for the default account.
+    default: ""
+
+tools:
+  # ── PROJECT ────────────────────────────────────────────────────────────────
+
+  - name: vercel_list
+    description: List all projects in the account with their latest deployment URL and status.
+    group: vercel_project
+    access: read
+    timeout: 15
+    command: "vercel list {{#if scope}}--scope {{scope}}{{/if}} --token $VERCEL_TOKEN"
+    parameters:
+      - *scope
+    validation: *read
+
+  - name: vercel_link
+    description: Link the working directory to an existing Vercel project. Required before env or domain commands.
+    group: vercel_project
+    access: write
+    timeout: 15
+    command: "vercel link --yes {{#if project}}--project {{project}}{{/if}} {{#if scope}}--scope {{scope}}{{/if}} {{#if working_dir}}--cwd {{working_dir}}{{/if}} --token $VERCEL_TOKEN"
+    parameters:
+      - *working_dir
+      - *scope
+      - name: project
+        type: string
+        description: Project name to link to. Leave empty to link interactively.
+        default: ""
+    validation: *write
+
+  - name: vercel_inspect
+    description: Show details about a deployment — status, build logs URL, environment, and assigned domains.
+    group: vercel_project
+    access: read
+    timeout: 15
+    command: "vercel inspect {{url}} {{#if scope}}--scope {{scope}}{{/if}} --token $VERCEL_TOKEN"
+    parameters:
+      - *scope
+      - name: url
+        type: string
+        description: Deployment URL to inspect (e.g. my-app-abc123.vercel.app).
+    validation: *read
+
+  # ── DEPLOY ─────────────────────────────────────────────────────────────────
+
+  - name: vercel_dev
+    description: Start the local Vercel development server — mirrors the production environment including serverless functions.
+    group: vercel_deploy
+    access: write
+    timeout: 600
+    command: "vercel dev {{#if port}}--listen {{port}}{{/if}} {{#if working_dir}}--cwd {{working_dir}}{{/if}} --token $VERCEL_TOKEN"
+    parameters:
+      - *working_dir
+      - name: port
+        type: integer
+        description: Local port to listen on.
+        default: 3000
+    validation: *write
+
+  - name: vercel_deploy
+    description: Deploy the project. Deploys to preview by default — pass prod=true to deploy to production.
+    group: vercel_deploy
+    access: write
+    timeout: 300
+    command: "vercel deploy {{#if prod}}--prod{{/if}} {{#if build_env}}--build-env {{build_env}}{{/if}} {{#if scope}}--scope {{scope}}{{/if}} {{#if working_dir}}--cwd {{working_dir}}{{/if}} --yes --token $VERCEL_TOKEN"
+    parameters:
+      - *working_dir
+      - *scope
+      - name: prod
+        type: boolean
+        description: Deploy to the production environment instead of a preview URL.
+        default: false
+      - name: build_env
+        type: string
+        description: Space-separated KEY=VALUE build environment variable overrides (e.g. "NODE_ENV=production API_URL=https://api.example.com").
+        default: ""
+    validation: *write
+
+  - name: vercel_promote
+    description: Promote a preview deployment to production without a rebuild.
+    group: vercel_deploy
+    access: write
+    timeout: 60
+    command: "vercel promote {{url}} {{#if scope}}--scope {{scope}}{{/if}} --yes --token $VERCEL_TOKEN"
+    parameters:
+      - *scope
+      - name: url
+        type: string
+        description: Preview deployment URL to promote to production.
+    validation: *write
+
+  - name: vercel_rollback
+    description: Roll back production to the previous deployment.
+    group: vercel_deploy
+    access: write
+    timeout: 60
+    command: "vercel rollback {{#if url}}{{url}}{{/if}} {{#if scope}}--scope {{scope}}{{/if}} --yes --token $VERCEL_TOKEN"
+    parameters:
+      - *scope
+      - name: url
+        type: string
+        description: Specific deployment URL to roll back to. Leave empty to roll back to the previous production deployment.
+        default: ""
+    validation: *write
+
+  # ── ENV ────────────────────────────────────────────────────────────────────
+
+  - name: vercel_env_list
+    description: List all environment variables for the project across environments.
+    group: vercel_env
+    access: read
+    timeout: 15
+    command: "vercel env ls {{environment}} {{#if scope}}--scope {{scope}}{{/if}} {{#if working_dir}}--cwd {{working_dir}}{{/if}} --token $VERCEL_TOKEN"
+    parameters:
+      - *working_dir
+      - *scope
+      - name: environment
+        type: string
+        description: Filter to a specific environment — production, preview, or development. Leave empty for all.
+        default: ""
+    validation: *read
+
+  - name: vercel_env_add
+    description: Add an environment variable to the project for one or more environments.
+    group: vercel_env
+    access: write
+    timeout: 15
+    command: "vercel env add {{key}} {{environment}} {{#if scope}}--scope {{scope}}{{/if}} {{#if working_dir}}--cwd {{working_dir}}{{/if}} --token $VERCEL_TOKEN"
+    parameters:
+      - *working_dir
+      - *scope
+      - name: key
+        type: string
+        description: Environment variable name (e.g. DATABASE_URL).
+      - name: environment
+        type: string
+        description: Target environment — production, preview, development, or all.
+        default: "production"
+    validation: *write
+
+  - name: vercel_env_remove
+    description: Remove an environment variable from the project.
+    group: vercel_env
+    access: admin
+    timeout: 15
+    command: "vercel env rm {{key}} {{environment}} {{#if scope}}--scope {{scope}}{{/if}} --yes {{#if working_dir}}--cwd {{working_dir}}{{/if}} --token $VERCEL_TOKEN"
+    parameters:
+      - *working_dir
+      - *scope
+      - name: key
+        type: string
+        description: Environment variable name to remove.
+      - name: environment
+        type: string
+        description: Environment to remove the variable from — production, preview, or development.
+        default: "production"
+    validation: *destructive
+
+  - name: vercel_env_pull
+    description: Pull environment variables for local development into a .env file.
+    group: vercel_env
+    access: read
+    timeout: 15
+    command: "vercel env pull {{#if output_file}}{{output_file}}{{else}}.env.local{{/if}} {{#if scope}}--scope {{scope}}{{/if}} {{#if working_dir}}--cwd {{working_dir}}{{/if}} --yes --token $VERCEL_TOKEN"
+    parameters:
+      - *working_dir
+      - *scope
+      - name: output_file
+        type: string
+        description: Output file path for the pulled env vars. Defaults to .env.local.
+        default: ""
+    validation: *read
+
+  # ── DOMAINS ────────────────────────────────────────────────────────────────
+
+  - name: vercel_domains_list
+    description: List all custom domains added to the account with their verification status.
+    group: vercel_domains
+    access: read
+    timeout: 15
+    command: "vercel domains ls {{#if scope}}--scope {{scope}}{{/if}} --token $VERCEL_TOKEN"
+    parameters:
+      - *scope
+    validation: *read
+
+  - name: vercel_domains_add
+    description: Add a custom domain to a project.
+    group: vercel_domains
+    access: write
+    timeout: 15
+    command: "vercel domains add {{domain}} {{#if scope}}--scope {{scope}}{{/if}} --token $VERCEL_TOKEN"
+    parameters:
+      - *scope
+      - name: domain
+        type: string
+        description: Domain name to add (e.g. example.com or app.example.com).
+    validation: *write
+
+  - name: vercel_domains_remove
+    description: Remove a custom domain from the account.
+    group: vercel_domains
+    access: admin
+    timeout: 15
+    command: "vercel domains rm {{domain}} {{#if scope}}--scope {{scope}}{{/if}} --yes --token $VERCEL_TOKEN"
+    parameters:
+      - *scope
+      - name: domain
+        type: string
+        description: Domain name to remove.
+    validation: *destructive
+
+  # ── PASSTHROUGH ────────────────────────────────────────────────────────────
+
+  - name: vercel_passthrough
+    description: Run any vercel CLI command not covered by named tools — for alias, certs, or git commands.
+    group: vercel_passthrough
+    access: admin
+    timeout: 60
+    command: "vercel {{args}} --token $VERCEL_TOKEN {{#if working_dir}}--cwd {{working_dir}}{{/if}}"
+    parameters:
+      - *working_dir
+      - name: args
+        type: string
+        description: Full argument string to pass directly to the vercel CLI (e.g. "alias set my-deploy.vercel.app my-domain.com").
+    validation:
+      allowed_commands: [vercel]
+      denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+      max_output_size: 102400
+      require_confirm: true

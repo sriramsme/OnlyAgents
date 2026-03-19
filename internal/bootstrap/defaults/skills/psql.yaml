@@ -1,0 +1,336 @@
+name: psql
+type: cli
+enabled: true
+access_level: admin
+has_groups: true
+description: >
+  PostgreSQL database operations — inspecting schemas, running queries, managing
+  databases and roles, and dumping or restoring data.
+capabilities:
+  - database_query
+  - schema_inspection
+  - database_management
+version: 1.0.0
+instructions: |
+  psql, pg_dump, and pg_restore must be installed and available on PATH.
+  Connection is controlled by the connection_string param (e.g. postgresql://user:pass@host:5432/dbname).
+  Leave connection_string empty to use PGHOST, PGPORT, PGUSER, PGPASSWORD, and PGDATABASE env vars.
+  Destructive tools (psql_manage group) require confirmation before execution.
+requires:
+  bins:
+    - name: psql
+      install:
+        brew: brew install libpq
+        apt: sudo apt install postgresql-client
+        manual: https://www.postgresql.org/download/
+    - name: pg_dump
+      install:
+        brew: brew install libpq
+        apt: sudo apt install postgresql-client
+        manual: https://www.postgresql.org/download/
+    - name: pg_restore
+      install:
+        brew: brew install libpq
+        apt: sudo apt install postgresql-client
+        manual: https://www.postgresql.org/download/
+security:
+  sanitized: true
+  sanitized_at: 2026-03-18T00:00:00Z
+  sanitized_by: onlyagents
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GROUPS
+# ─────────────────────────────────────────────────────────────────────────────
+groups:
+  psql_inspect: "Explore database structure — list databases, schemas, tables, columns, indexes, and constraints"
+  psql_query: "Run read-only SQL queries and explain query plans"
+  psql_write: "Execute data-modifying SQL — INSERT, UPDATE, DELETE, and DDL statements"
+  psql_manage: "Create and drop databases and roles — destructive and irreversible"
+  psql_dump: "Dump and restore databases and individual tables"
+  psql_passthrough: "Escape hatch — run any psql invocation not covered by named tools"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VALIDATION ANCHORS
+# ─────────────────────────────────────────────────────────────────────────────
+_validation_defaults:
+  read: &read
+    allowed_commands: [psql]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  write: &write
+    allowed_commands: [psql]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  destructive: &destructive
+    allowed_commands: [psql, pg_dump, pg_restore]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+    require_confirm: true
+
+_params:
+  connection_string: &connection_string
+    name: connection_string
+    type: string
+    description: PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname). Leave empty to use PG* environment variables.
+    default: ""
+
+tools:
+  # ── INSPECT ────────────────────────────────────────────────────────────────
+
+  - name: psql_list_databases
+    description: List all databases on the server with their owner, encoding, and size.
+    group: psql_inspect
+    access: read
+    timeout: 10
+    command: "psql {{connection_string}} -c '\\l+' --no-password"
+    parameters:
+      - *connection_string
+    validation: *read
+
+  - name: psql_list_tables
+    description: List all tables in a schema with their row estimates and total size.
+    group: psql_inspect
+    access: read
+    timeout: 10
+    command: 'psql {{connection_string}} -c "SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||''.''||tablename)) AS size, n_live_tup AS approx_rows FROM pg_stat_user_tables WHERE schemaname = ''{{schema}}'' ORDER BY pg_total_relation_size(schemaname||''.''||tablename) DESC;" --no-password'
+    parameters:
+      - *connection_string
+      - name: schema
+        type: string
+        description: Schema name to list tables from.
+        default: "public"
+    validation: *read
+
+  - name: psql_describe_table
+    description: Show column names, types, nullability, and defaults for a table. Also lists indexes and foreign key constraints.
+    group: psql_inspect
+    access: read
+    timeout: 10
+    command: "psql {{connection_string}} -c '\\d+ {{schema}}.{{table}}' --no-password"
+    parameters:
+      - *connection_string
+      - name: schema
+        type: string
+        description: Schema containing the table.
+        default: "public"
+      - name: table
+        type: string
+        description: Table name to describe.
+    validation: *read
+
+  - name: psql_list_indexes
+    description: List all indexes on a table with their definition and size.
+    group: psql_inspect
+    access: read
+    timeout: 10
+    command: 'psql {{connection_string}} -c "SELECT indexname, indexdef, pg_size_pretty(pg_relation_size(indexname::regclass)) AS size FROM pg_indexes WHERE schemaname = ''{{schema}}'' AND tablename = ''{{table}}'' ORDER BY pg_relation_size(indexname::regclass) DESC;" --no-password'
+    parameters:
+      - *connection_string
+      - name: schema
+        type: string
+        description: Schema containing the table.
+        default: "public"
+      - name: table
+        type: string
+        description: Table name to list indexes for.
+    validation: *read
+
+  - name: psql_list_functions
+    description: List user-defined functions in a schema with their argument types and return type.
+    group: psql_inspect
+    access: read
+    timeout: 10
+    command: 'psql {{connection_string}} -c "SELECT routine_name, routine_type, data_type AS return_type FROM information_schema.routines WHERE routine_schema = ''{{schema}}'' ORDER BY routine_name;" --no-password'
+    parameters:
+      - *connection_string
+      - name: schema
+        type: string
+        description: Schema to list functions from.
+        default: "public"
+    validation: *read
+
+  - name: psql_active_connections
+    description: Show active connections — client address, database, user, state, and current query. Useful before maintenance operations.
+    group: psql_inspect
+    access: read
+    timeout: 10
+    command: 'psql {{connection_string}} -c "SELECT pid, datname, usename, application_name, client_addr, state, LEFT(query, 80) AS query, query_start FROM pg_stat_activity WHERE state != ''idle'' ORDER BY query_start;" --no-password'
+    parameters:
+      - *connection_string
+    validation: *read
+
+  # ── QUERY ──────────────────────────────────────────────────────────────────
+
+  - name: psql_query
+    description: Run a read-only SQL query and return results. Wraps the query in a read-only transaction to prevent accidental writes.
+    group: psql_query
+    access: read
+    timeout: 30
+    command: "psql {{connection_string}} -c 'BEGIN; SET TRANSACTION READ ONLY; {{sql}} COMMIT;' --no-password {{#if csv}}-F, --csv{{/if}}"
+    parameters:
+      - *connection_string
+      - name: sql
+        type: string
+        description: SELECT statement to execute. Must be read-only — use psql_execute for writes.
+      - name: csv
+        type: boolean
+        description: Output results as CSV instead of the default table format.
+        default: false
+    validation: *read
+
+  - name: psql_explain
+    description: Show the query execution plan for a SQL statement. Pass analyze=true to run the query and show actual timings — only use on non-production or with fast queries.
+    group: psql_query
+    access: read
+    timeout: 30
+    command: "psql {{connection_string}} -c 'EXPLAIN {{#if analyze}}(ANALYZE, BUFFERS, FORMAT TEXT){{else}}(FORMAT TEXT){{/if}} {{sql}};' --no-password"
+    parameters:
+      - *connection_string
+      - name: sql
+        type: string
+        description: SQL statement to explain.
+      - name: analyze
+        type: boolean
+        description: Actually execute the query and show real timings and buffer usage. Avoid on expensive queries.
+        default: false
+    validation: *read
+
+  # ── WRITE ──────────────────────────────────────────────────────────────────
+
+  - name: psql_execute
+    description: Execute a data-modifying SQL statement — INSERT, UPDATE, DELETE, or DDL. Returns rows affected.
+    group: psql_write
+    access: write
+    timeout: 60
+    command: "psql {{connection_string}} -c '{{sql}}' --no-password"
+    parameters:
+      - *connection_string
+      - name: sql
+        type: string
+        description: SQL statement to execute. Supports INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, and other DDL.
+    validation: *write
+
+  - name: psql_run_file
+    description: Execute a SQL file against the database. Useful for running migrations, seed scripts, or multi-statement operations.
+    group: psql_write
+    access: write
+    timeout: 120
+    command: "psql {{connection_string}} -f '{{file}}' --no-password"
+    parameters:
+      - *connection_string
+      - name: file
+        type: string
+        description: Absolute path to the .sql file to execute.
+    validation: *write
+
+  # ── MANAGE ─────────────────────────────────────────────────────────────────
+
+  - name: psql_create_database
+    description: Create a new database with an optional owner.
+    group: psql_manage
+    access: admin
+    timeout: 15
+    command: "psql {{connection_string}} -c 'CREATE DATABASE {{dbname}}{{#if owner}} OWNER {{owner}}{{/if}};' --no-password"
+    parameters:
+      - *connection_string
+      - name: dbname
+        type: string
+        description: Name of the database to create.
+      - name: owner
+        type: string
+        description: Role that will own the new database. Leave empty to default to the current user.
+        default: ""
+    validation: *destructive
+
+  - name: psql_drop_database
+    description: Drop a database and all its contents. Irreversible — ensure no active connections exist first (use psql_active_connections).
+    group: psql_manage
+    access: admin
+    timeout: 15
+    command: "psql {{connection_string}} -c 'DROP DATABASE IF EXISTS {{dbname}};' --no-password"
+    parameters:
+      - *connection_string
+      - name: dbname
+        type: string
+        description: Name of the database to drop.
+    validation: *destructive
+
+  - name: psql_create_role
+    description: Create a new database role with optional login and password.
+    group: psql_manage
+    access: admin
+    timeout: 15
+    command: 'psql {{connection_string}} -c "CREATE ROLE {{rolename}}{{#if login}} LOGIN{{/if}}{{#if password}} PASSWORD ''{{password}}''{{/if}};" --no-password'
+    parameters:
+      - *connection_string
+      - name: rolename
+        type: string
+        description: Name of the role to create.
+      - name: login
+        type: boolean
+        description: Allow the role to log in as a user.
+        default: false
+      - name: password
+        type: string
+        description: Password for the role. Leave empty for no password.
+        default: ""
+    validation: *destructive
+
+  # ── DUMP ───────────────────────────────────────────────────────────────────
+
+  - name: psql_dump
+    description: Dump a database to a file in custom format. Use pg_restore to restore it. Pass table to dump a single table.
+    group: psql_dump
+    access: read
+    timeout: 300
+    command: "pg_dump {{connection_string}} --format=custom {{#if table}}--table={{schema}}.{{table}}{{/if}} --file='{{output_file}}' --no-password"
+    parameters:
+      - *connection_string
+      - name: output_file
+        type: string
+        description: Absolute path for the output dump file (e.g. /tmp/mydb.dump).
+      - name: table
+        type: string
+        description: Dump a single table instead of the whole database. Leave empty for a full database dump.
+        default: ""
+      - name: schema
+        type: string
+        description: Schema containing the table (only used when table is specified).
+        default: "public"
+    validation: *destructive
+
+  - name: psql_restore
+    description: Restore a database from a pg_dump custom-format file. Target database must exist.
+    group: psql_dump
+    access: admin
+    timeout: 300
+    command: "pg_restore {{connection_string}} --format=custom {{#if clean}}--clean{{/if}} --no-password '{{input_file}}'"
+    parameters:
+      - *connection_string
+      - name: input_file
+        type: string
+        description: Absolute path to the .dump file created by psql_dump.
+      - name: clean
+        type: boolean
+        description: Drop existing database objects before restoring. Useful for a clean overwrite.
+        default: false
+    validation: *destructive
+
+  # ── PASSTHROUGH ────────────────────────────────────────────────────────────
+
+  - name: psql_passthrough
+    description: Run any psql invocation not covered by named tools — for meta-commands, COPY operations, or custom flags.
+    group: psql_passthrough
+    access: admin
+    timeout: 60
+    command: "psql {{connection_string}} {{args}} --no-password"
+    parameters:
+      - *connection_string
+      - name: args
+        type: string
+        description: Full argument string to pass directly to psql (e.g. "-c '\\timing' -c 'SELECT now();'").
+    validation:
+      allowed_commands: [psql]
+      denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+      max_output_size: 102400
+      require_confirm: true
