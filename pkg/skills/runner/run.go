@@ -47,11 +47,11 @@ func Run(
 				if err != nil {
 					return err
 				}
-				result, err := skill.Execute(context.Background(), entry.Def.Name, payload)
-				if err != nil {
-					return err
+				exec := skill.Execute(context.Background(), entry.Def.Name, payload)
+				if exec.Err != nil {
+					return exec.Err
 				}
-				printResult(result)
+				printResult(exec.Result)
 				return nil
 			},
 		}

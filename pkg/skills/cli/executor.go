@@ -49,8 +49,9 @@ func NewCLIExecutor(ctx context.Context, cfg *config.Executor,
 	}
 }
 
-// Execute executes a shell command
-func (e *CLIExecutor) Execute(ctx context.Context, command string, timeoutSec int) (*ExecutionResult, error) {
+// Execute executes a shell command, injecting outputDir as OUTPUT_DIR so the
+// command knows where to write any files it produces.
+func (e *CLIExecutor) Execute(ctx context.Context, command string, timeoutSec int, outputDir string) (*ExecutionResult, error) {
 	if err := e.validateWorkingDir(); err != nil {
 		return nil, err
 	}
@@ -74,7 +75,7 @@ func (e *CLIExecutor) Execute(ctx context.Context, command string, timeoutSec in
 	shell := e.config.AllowedShells[0]
 	cmd := exec.CommandContext(execCtx, shell, "-c", command) //nolint:gosec
 	cmd.Dir = e.security.WorkingDir
-	cmd.Env = e.buildEnv(command)
+	cmd.Env = e.buildEnv(command, outputDir)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -177,15 +178,18 @@ func (e *CLIExecutor) validateWorkingDir() error {
 	return nil
 }
 
-func (e *CLIExecutor) buildEnv(command string) []string {
+func (e *CLIExecutor) buildEnv(command string, outputDir string) []string {
 	if e.security.ExecutionMode == "native" {
-		return os.Environ() // native mode — full env
+		env := os.Environ() // native mode — full env
+		env = append(env, "OUTPUT_DIR="+outputDir)
+		return env
 	}
 
 	// restricted mode — minimal env, no secrets leak
 	base := []string{
 		"HOME=" + e.security.WorkingDir,
 		"TMPDIR=" + filepath.Join(e.security.WorkingDir, "tmp"),
+		"OUTPUT_DIR=" + outputDir,
 		"PATH=" + e.buildPath(),
 		"TERM=dumb",
 		"LANG=en_US.UTF-8",

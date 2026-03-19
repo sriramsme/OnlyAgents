@@ -80,46 +80,57 @@ func (s *TasksSkill) Shutdown() error {
 }
 
 // nolint:gocyclo
-func (s *TasksSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {
+func (s *TasksSkill) Execute(ctx context.Context, toolName string, args []byte) tools.ToolExecution {
 	if s.conn == nil {
-		return nil, fmt.Errorf("tasks skill: connector not initialized")
+		return tools.ExecErr(fmt.Errorf("tasks skill: connector not initialized"))
 	}
+
+	var result any
+	var err error
+
 	switch toolName {
 	// Projects
 	case "project_create":
-		return s.createProject(ctx, args)
+		result, err = s.createProject(ctx, args)
 	case "project_update":
-		return s.updateProject(ctx, args)
+		result, err = s.updateProject(ctx, args)
 	case "project_delete":
-		return s.deleteProject(ctx, args)
+		result, err = s.deleteProject(ctx, args)
 	case "project_get":
-		return s.getProject(ctx, args)
+		result, err = s.getProject(ctx, args)
 	case "project_list":
-		return s.conn.ListProjects(ctx)
+		result, err = s.conn.ListProjects(ctx)
+
 	// Tasks
 	case "tasks_create":
-		return s.createTasks(ctx, args)
+		result, err = s.createTasks(ctx, args)
 	case "task_update":
-		return s.updateTask(ctx, args)
+		result, err = s.updateTask(ctx, args)
 	case "task_get":
-		return s.getTask(ctx, args)
+		result, err = s.getTask(ctx, args)
 	case "task_delete":
-		return s.deleteTask(ctx, args)
+		result, err = s.deleteTask(ctx, args)
 	case "task_complete":
-		return s.completeTask(ctx, args)
+		result, err = s.completeTask(ctx, args)
 	case "task_list":
-		return s.listTasks(ctx, args)
+		result, err = s.listTasks(ctx, args)
 	case "task_search":
-		return s.searchTasks(ctx, args)
+		result, err = s.searchTasks(ctx, args)
 	case "task_today":
-		return s.conn.GetTodaysTasks(ctx)
+		result, err = s.conn.GetTodaysTasks(ctx)
 	case "task_move":
-		return s.moveTask(ctx, args)
+		result, err = s.moveTask(ctx, args)
 	case "task_set_priority":
-		return s.setPriority(ctx, args)
+		result, err = s.setPriority(ctx, args)
+
 	default:
-		return nil, fmt.Errorf("tasks skill: unknown tool %q", toolName)
+		return tools.ExecErr(fmt.Errorf("tasks skill: unknown tool %q", toolName))
 	}
+
+	if err != nil {
+		return tools.ExecErr(err)
+	}
+	return tools.ExecOK(result)
 }
 
 // ── Projects ──────────────────────────────────────────────────────────────────

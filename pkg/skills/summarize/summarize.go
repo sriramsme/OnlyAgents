@@ -91,22 +91,31 @@ func (s *SummarizeSkill) Shutdown() error {
 	return nil
 }
 
-func (s *SummarizeSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {
+func (s *SummarizeSkill) Execute(ctx context.Context, toolName string, args []byte) tools.ToolExecution {
 	if s.llmClient == nil {
-		return nil, fmt.Errorf("summarize: LLM client not initialized")
+		return tools.ExecErr(fmt.Errorf("summarize: LLM client not initialized"))
 	}
+
+	var result any
+	var err error
+
 	switch toolName {
 	case "summarize_text":
-		return s.summarizeText(ctx, args)
+		result, err = s.summarizeText(ctx, args)
 	case "summarize_url":
-		return s.summarizeURL(ctx, args)
+		result, err = s.summarizeURL(ctx, args)
 	case "summarize_file":
-		return s.summarizeFile(ctx, args)
+		result, err = s.summarizeFile(ctx, args)
 	case "summarize_youtube":
-		return s.summarizeYouTube(ctx, args)
+		result, err = s.summarizeYouTube(ctx, args)
 	default:
-		return nil, fmt.Errorf("summarize: unknown tool %q", toolName)
+		return tools.ExecErr(fmt.Errorf("summarize: unknown tool %q", toolName))
 	}
+
+	if err != nil {
+		return tools.ExecErr(err)
+	}
+	return tools.ExecOK(result)
 }
 
 // ── tool handlers ─────────────────────────────────────────────────────────────

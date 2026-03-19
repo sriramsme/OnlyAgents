@@ -81,28 +81,37 @@ func (s *CalendarSkill) Shutdown() error {
 	return nil
 }
 
-func (s *CalendarSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {
+func (s *CalendarSkill) Execute(ctx context.Context, toolName string, args []byte) tools.ToolExecution {
 	if s.conn == nil {
-		return nil, fmt.Errorf("calendar skill: connector not initialized")
+		return tools.ExecErr(fmt.Errorf("calendar skill: connector not initialized"))
 	}
+
+	var result any
+	var err error
+
 	switch toolName {
 	case "calendar_create_events":
-		return s.createEvents(ctx, args)
+		result, err = s.createEvents(ctx, args)
 	case "calendar_update_event":
-		return s.updateEvent(ctx, args)
+		result, err = s.updateEvent(ctx, args)
 	case "calendar_get_event":
-		return s.getEvent(ctx, args)
+		result, err = s.getEvent(ctx, args)
 	case "calendar_delete_event":
-		return s.deleteEvent(ctx, args)
+		result, err = s.deleteEvent(ctx, args)
 	case "calendar_list_events":
-		return s.listEvents(ctx, args)
+		result, err = s.listEvents(ctx, args)
 	case "calendar_get_upcoming":
-		return s.getUpcoming(ctx, args)
+		result, err = s.getUpcoming(ctx, args)
 	case "calendar_find_slots":
-		return s.findSlots(ctx, args)
+		result, err = s.findSlots(ctx, args)
 	default:
-		return nil, fmt.Errorf("calendar skill: unknown tool %q", toolName)
+		return tools.ExecErr(fmt.Errorf("calendar skill: unknown tool %q", toolName))
 	}
+
+	if err != nil {
+		return tools.ExecErr(err)
+	}
+	return tools.ExecOK(result)
 }
 
 func (s *CalendarSkill) createEvents(ctx context.Context, args []byte) (any, error) {

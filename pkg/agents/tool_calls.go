@@ -167,27 +167,29 @@ func (a *Agent) requestToolCall(
 	execCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	result, err := skill.Execute(execCtx, tc.Function.Name, []byte(tc.Function.Arguments))
+	exec := skill.Execute(execCtx, tc.Function.Name, []byte(tc.Function.Arguments))
 
 	logger.Timing.EndPhaseWithMetadata(correlationID, toolPhase, map[string]any{
-		"tool":  tc.Function.Name,
-		"skill": skill.Name(),
-		"error": err != nil,
+		"tool":           tc.Function.Name,
+		"skill":          skill.Name(),
+		"error":          exec.Err != nil,
+		"produced_files": len(exec.ProducedFiles),
 	})
 
-	if err != nil {
+	if exec.Err != nil {
 		a.logger.Error("tool execution failed",
 			"tool", tc.Function.Name,
 			"skill", skill.Name(),
-			"error", err,
+			"error", exec.Err,
 			"correlation_id", correlationID)
-		return tools.ExecErr(err)
+	} else {
+		a.logger.Debug("tool execution succeeded",
+			"tool", tc.Function.Name,
+			"produced_files", len(exec.ProducedFiles),
+			"correlation_id", correlationID)
 	}
 
-	a.logger.Debug("tool execution succeeded",
-		"tool", tc.Function.Name,
-		"correlation_id", correlationID)
-	return tools.ExecOK(result)
+	return exec
 }
 
 // Add new method to fire task completion

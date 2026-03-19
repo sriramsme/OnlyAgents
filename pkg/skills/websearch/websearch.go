@@ -93,15 +93,23 @@ func (s *WebSearchSkill) Shutdown() error {
 	return nil
 }
 
-func (s *WebSearchSkill) Execute(ctx context.Context, toolName string, params []byte) (any, error) {
+func (s *WebSearchSkill) Execute(ctx context.Context, toolName string, params []byte) tools.ToolExecution {
+	var result any
+	var err error
+
 	switch toolName {
 	case "websearch_search":
-		return s.search(params)
+		result, err = s.search(params)
 	case "websearch_fetch":
-		return s.fetchURL(ctx, params)
+		result, err = s.fetchURL(ctx, params)
 	default:
-		return nil, fmt.Errorf("unknown tool: %s", toolName)
+		return tools.ExecErr(fmt.Errorf("unknown tool: %s", toolName))
 	}
+
+	if err != nil {
+		return tools.ExecErr(err)
+	}
+	return tools.ExecOK(result)
 }
 
 func (s *WebSearchSkill) search(args []byte) (any, error) {

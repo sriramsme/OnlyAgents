@@ -72,24 +72,33 @@ func (s *RemindersSkill) Shutdown() error {
 	return nil
 }
 
-func (s *RemindersSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {
+func (s *RemindersSkill) Execute(ctx context.Context, toolName string, args []byte) tools.ToolExecution {
 	if s.conn == nil {
-		return nil, fmt.Errorf("reminders skill: connector not initialized")
+		return tools.ExecErr(fmt.Errorf("reminders skill: connector not initialized"))
 	}
+
+	var result any
+	var err error
+
 	switch toolName {
 	case "reminders_create":
-		return s.createReminders(ctx, args)
+		result, err = s.createReminders(ctx, args)
 	case "reminder_get":
-		return s.getReminder(ctx, args)
+		result, err = s.getReminder(ctx, args)
 	case "reminder_update":
-		return s.updateReminder(ctx, args)
+		result, err = s.updateReminder(ctx, args)
 	case "reminder_delete":
-		return s.deleteReminder(ctx, args)
+		result, err = s.deleteReminder(ctx, args)
 	case "reminder_list":
-		return s.conn.ListReminders(ctx)
+		result, err = s.conn.ListReminders(ctx)
 	default:
-		return nil, fmt.Errorf("reminders skill: unknown tool %q", toolName)
+		return tools.ExecErr(fmt.Errorf("reminders skill: unknown tool %q", toolName))
 	}
+
+	if err != nil {
+		return tools.ExecErr(err)
+	}
+	return tools.ExecOK(result)
 }
 
 func (s *RemindersSkill) createReminders(ctx context.Context, args []byte) (any, error) {

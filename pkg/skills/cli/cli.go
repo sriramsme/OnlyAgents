@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
@@ -131,34 +135,53 @@ func (s *CLISkill) Shutdown() error {
 }
 
 // Execute runs the CLI command corresponding to toolName.
-func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {
+func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) tools.ToolExecution {
 	var params map[string]any
 	if err := json.Unmarshal(args, &params); err != nil {
-		return nil, fmt.Errorf("parse args: %w", err)
+		return tools.ExecErr(fmt.Errorf("parse args: %w", err))
 	}
 
 	cmd, ok := s.commands[toolName]
 	if !ok {
-		return nil, fmt.Errorf("tool not found: %s", toolName)
+		return tools.ExecErr(fmt.Errorf("tool not found: %s", toolName))
 	}
 
 	command := buildCommand(cmd.Command, params)
-
 	if err := validateCommand(command, cmd.Validation); err != nil {
-		return nil, fmt.Errorf("command validation failed: %w", err)
+		return tools.ExecErr(fmt.Errorf("command validation failed: %w", err))
 	}
 
-	result, err := s.executor.Execute(ctx, command, cmd.Timeout)
+	// Create a per-call output directory. CLI commands write files here via
+	// the OUTPUT_DIR env var. We scan it after execution to collect produced files.
+	callID := uuid.NewString()
+	outputDir := filepath.Join(s.executor.security.WorkingDir, "output", callID)
+	if err := os.MkdirAll(outputDir, 0o700); err != nil {
+		return tools.ExecErr(fmt.Errorf("create output dir: %w", err))
+	}
+
+	result, err := s.executor.Execute(ctx, command, cmd.Timeout, outputDir)
 	if err != nil {
-		return nil, fmt.Errorf("command execution failed: %w", err)
+		return tools.ExecErr(fmt.Errorf("command execution failed: %w", err))
 	}
 
-	return map[string]any{
-		"output":      result.Stdout,
-		"error":       result.Stderr,
-		"exit_code":   result.ExitCode,
-		"duration_ms": result.Duration.Milliseconds(),
-	}, nil
+	// Collect any files the command wrote to outputDir.
+	producedFiles, err := scanOutputDir(outputDir)
+	if err != nil {
+		// Non-fatal — command succeeded, we just couldn't collect files.
+		logger.Log.Warn("failed to scan output dir",
+			"output_dir", outputDir,
+			"err", err)
+	}
+
+	return tools.ToolExecution{
+		Result: map[string]any{
+			"output":      result.Stdout,
+			"error":       result.Stderr,
+			"exit_code":   result.ExitCode,
+			"duration_ms": result.Duration.Milliseconds(),
+		},
+		ProducedFiles: producedFiles,
+	}
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -186,6 +209,27 @@ func buildCommand(template string, params map[string]any) string {
 		}
 		return match
 	})
+}
+
+// scanOutputDir returns absolute paths of all files written to dir.
+// Subdirectories are ignored — commands should write flat files to OUTPUT_DIR.
+func scanOutputDir(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // command didn't write anything, that's fine
+		}
+		return nil, fmt.Errorf("read output dir: %w", err)
+	}
+
+	var paths []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		paths = append(paths, filepath.Join(dir, entry.Name()))
+	}
+	return paths, nil
 }
 
 // validateCommand checks against skill-defined rules and hardcoded dangerous patterns.

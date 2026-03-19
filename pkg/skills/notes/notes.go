@@ -79,28 +79,37 @@ func (s *NotesSkill) Shutdown() error {
 	return nil
 }
 
-func (s *NotesSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {
+func (s *NotesSkill) Execute(ctx context.Context, toolName string, args []byte) tools.ToolExecution {
 	if s.conn == nil {
-		return nil, fmt.Errorf("notes skill: connector not initialized")
+		return tools.ExecErr(fmt.Errorf("notes skill: connector not initialized"))
 	}
+
+	var result any
+	var err error
+
 	switch toolName {
 	case "notes_create":
-		return s.createNotes(ctx, args)
+		result, err = s.createNotes(ctx, args)
 	case "notes_update":
-		return s.updateNote(ctx, args)
+		result, err = s.updateNote(ctx, args)
 	case "notes_get":
-		return s.getNote(ctx, args)
+		result, err = s.getNote(ctx, args)
 	case "notes_delete":
-		return s.deleteNote(ctx, args)
+		result, err = s.deleteNote(ctx, args)
 	case "notes_list":
-		return s.conn.ListNotes(ctx)
+		result, err = s.conn.ListNotes(ctx)
 	case "notes_search":
-		return s.searchNotes(ctx, args)
+		result, err = s.searchNotes(ctx, args)
 	case "notes_pin":
-		return s.pinNote(ctx, args)
+		result, err = s.pinNote(ctx, args)
 	default:
-		return nil, fmt.Errorf("notes skill: unknown tool %q", toolName)
+		return tools.ExecErr(fmt.Errorf("notes skill: unknown tool %q", toolName))
 	}
+
+	if err != nil {
+		return tools.ExecErr(err)
+	}
+	return tools.ExecOK(result)
 }
 
 func (s *NotesSkill) createNotes(ctx context.Context, args []byte) (any, error) {

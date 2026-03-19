@@ -41,7 +41,7 @@ type Skill interface {
 	ToolsByGroup(groups []tools.ToolGroup) []tools.ToolDef
 
 	// Execute is called by kernel when LLM requests a tool call
-	Execute(ctx context.Context, toolName string, args []byte) (any, error)
+	Execute(ctx context.Context, toolName string, args []byte) tools.ToolExecution
 
 	// Initialize is called by kernel at startup
 	Initialize() error

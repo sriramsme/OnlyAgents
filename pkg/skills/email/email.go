@@ -88,23 +88,31 @@ func (s *EmailSkill) Shutdown() error {
 }
 
 // Execute runs a tool
-func (s *EmailSkill) Execute(ctx context.Context, toolName string, args []byte) (any, error) {
+func (s *EmailSkill) Execute(ctx context.Context, toolName string, args []byte) tools.ToolExecution {
+	var result any
+	var err error
+
 	switch toolName {
 	case "email_send":
-		return s.sendEmail(ctx, args)
+		result, err = s.sendEmail(ctx, args)
 	case "email_search":
-		return s.searchEmails(ctx, args)
+		result, err = s.searchEmails(ctx, args)
 	case "email_get":
-		return s.getEmail(ctx, args)
+		result, err = s.getEmail(ctx, args)
 	case "email_draft":
-		return s.draftEmail(ctx, args)
+		result, err = s.draftEmail(ctx, args)
 	case "email_mark_read":
-		return s.markAsRead(ctx, args)
+		result, err = s.markAsRead(ctx, args)
 	case "email_delete":
-		return s.deleteEmail(ctx, args)
+		result, err = s.deleteEmail(ctx, args)
 	default:
-		return nil, fmt.Errorf("unknown tool: %s", toolName)
+		return tools.ExecErr(fmt.Errorf("unknown tool: %s", toolName))
 	}
+
+	if err != nil {
+		return tools.ExecErr(err)
+	}
+	return tools.ExecOK(result)
 }
 
 // ====================
