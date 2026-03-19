@@ -14,6 +14,9 @@ const (
 	// Below this, all tools are injected directly — no meta tools, no planning step.
 	toolThreshold = 7
 
+	skillManifestHeader = `## Available Skills
+Each skill represents a domain you can operate in.`
+
 	groupManifestHeader = `## Tool Groups
 
 Your tools are loaded on-demand by group. Before executing any task, call
@@ -42,6 +45,10 @@ func (a *Agent) RebuildSystemPrompt() {
 		parts = append(parts, a.userContext)
 	}
 
+	if manifest := a.buildSkillManifest(); manifest != "" {
+		parts = append(parts, manifest)
+	}
+
 	if manifest := a.buildGroupManifest(); manifest != "" {
 		parts = append(parts, manifest)
 	}
@@ -63,6 +70,21 @@ func (a *Agent) formatAvailableAgents() string {
 		return ""
 	}
 	return "=== AVAILABLE SUB-AGENTS ===\n" + string(b)
+}
+
+func (a *Agent) buildSkillManifest() string {
+	if len(a.skills) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(skillManifestHeader)
+	b.WriteString("\n\n")
+
+	for skillName, skill := range a.skills {
+		fmt.Fprintf(&b, "%-14s — %s\n", skillName, skill.Description())
+	}
+
+	return b.String()
 }
 
 // buildGroupManifest generates the tool groups section of the system prompt.

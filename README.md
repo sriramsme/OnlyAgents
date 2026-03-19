@@ -1,4 +1,3 @@
-
 # OnlyAgents
 
 [![CI](https://github.com/sriramsme/onlyagents/workflows/CI/badge.svg)](https://github.com/sriramsme/onlyagents/actions)
@@ -8,13 +7,15 @@
 
 Self-hosted, open-source infrastructure for autonomous AI agents. Written in Go. Single binary.
 
-OnlyAgents runs a multi-agent system — one executive agent that understands intent, decomposes it, and routes to a council of specialized sub-agents. Each sub-agent has its own LLM, its own tools, its own capabilities. The executive synthesizes results and responds. Agents communicate, delegate, and collaborate — and when a task spans multiple agents, a workflow engine coordinates the steps.
+OnlyAgents runs a multi-agent system. One executive agent that understands intent, decomposes it, and routes to a council of specialized sub-agents.
 
-This is not a wrapper around a single LLM call. It is a runtime for agents that think, act, and remember.
+This is not a wrapper around a single LLM call. It is a runtime for agents.
+
+[Go to Installation](#installation)
 
 ## Why Go
-Most agent frameworks are Python — hundreds of megabytes of runtime overhead before your agent does anything. OnlyAgents is a single statically-linked binary with no runtime dependencies.
 
+Many agent frameworks depend on high-level runtimes and large dependency trees. OnlyAgents compiles to a single statically linked binary with no runtime dependencies, keeping the system lightweight and easy to run.
 
 | Metric / Package                | **OnlyAgents**        | **OpenClaw**     | **NanoBot**            |
 | ------------------------------- | --------------------- | ---------------- | ---------------------- |
@@ -82,29 +83,29 @@ Same binary on a $5/mo VPS, a spare Mac Mini, a Raspberry Pi, or a rack server. 
 ```
 Read more [here](docs/architecture.md)
 
-**Executive agent** — top of the hierarchy. Receives all user messages, decides whether to answer directly, delegate to a sub-agent, or decompose into a multi-step workflow. Rewrites requests with full context before delegating.
+**Executive agent:** top of the hierarchy. Receives all user messages, decides whether to answer directly, delegate to a sub-agent, or decompose into a multi-step workflow. Rewrites requests with full context before delegating.
 
-**Sub-agents** — specialized and capability-bounded. Each has its own LLM client (provider and model configured independently), its own soul, and access only to relevant tools. Trust and cost boundaries live at the agent level — run a cheap fast model for CRUD, a more capable one for reasoning.
+**Sub-agents:** specialized and capability-bounded. Each has independent models, its own soul, and access only to relevant tools. Trust and cost boundaries live at the agent level - run a cheap fast model for CRUD, a more capable one for reasoning.
 
-**Kernel** — the runtime. Agent lifecycle, event bus, skill registry, connector wiring, graceful shutdown. Agents don't communicate directly — everything routes through the kernel.
+**Kernel:** the runtime. Agent lifecycle, event bus, skill registry, connector wiring, graceful shutdown. Agents don't communicate directly — everything routes through the kernel.
 
-**Soul** — agent personality and behavioral config in YAML. Communication style, delegation acknowledgments, routing logic, refusal rules. Shapes LLM behavior without prompt engineering in code.
+**Soul:** configuration that defines an agent’s behavior, tone, and decision rules.
 
-**Workflow engine** — cross-agent coordination. When a task spans multiple agents, the executive creates a workflow with ordered steps and tracked dependencies. Individual agents handle multi-step operations internally.
+**Workflow engine:** cross-agent coordination. When a task spans multiple agents, the executive creates a workflow with ordered steps and tracked dependencies. Individual agents handle multi-step operations internally.
 
 
-**Skills** — defines agent capabilities.
+**Skills:** defines agent capabilities.
 
-* **Native** — implemented in Go and integrated through connector interfaces. Examples: `calendar`, `notes`, `reminders`, `tasks`, `web_search`, `email`.
-* **CLI** — defined by `SKILL.md` files and executed through installed command-line tools. If `gh`, `kubectl`, or `ffmpeg` are installed, the corresponding skill works automatically.
-* **System** — internal framework skills used for orchestration (e.g., `task_complete`, `delegate_to_agent`, `find_best_agent`).
+* **Native** - implemented in Go. You can install them standalone for your own use with `go install github.com/sriramsme/OnlyAgents/cmd/<skill_name>`.
+* **CLI** - defined by `<skill>.yaml` files and executed through installed command-line tools.
+* **System** - internal framework skills used for orchestration (e.g., `delegate_to_agent` ).
 
-Popular CLI skills may later be promoted to native skills as the project evolves.
+  Popular CLI skills may later be promoted to native skills as the project evolves.
 
-**Connectors** - handle integrations with data sources and services.
+**Connectors:** handle integrations with data sources and services.
 
 * **Local connectors** operate entirely on the local system (e.g., SQLite-backed calendar, notes, tasks).
-* **Service connectors** integrate with external APIs such as Gmail, Notion, or web search providers.
+* **Service connectors** integrate with external APIs such as Gmail, Notion, Brave.
 
 A **skill defines the capability**, while a **connector defines where the data or service comes from**.
 
@@ -134,17 +135,11 @@ Agents remember. Automatically. No configuration required.
 └────────────────────────────────────────────────────────────────┘
 ```
 
-All summarization runs in-process via a cron scheduler. On startup, catch-up logic runs any missed jobs. The facts database uses SQLite FTS5 for search — no vector embeddings required.
+All summarization runs in-process via a cron scheduler. On startup, catch-up logic runs any missed jobs. The facts database uses SQLite FTS5 for search - no vector embeddings required.
 
 ## Default Agents
 
-Some agents that we believe applies for everyone, ship out of the box. Their configurations and souls are tuned — modify them if you want, but the defaults are a solid starting point.
-
-**Executive** (`configs/agents/executive.yaml`) — the orchestrator. Every message goes through here first. Knows all registered sub-agents and their capabilities. Decides routing. Never delegates when it can answer directly.
-
-**Productivity / Friday** (`configs/agents/productivity.yaml`) — handles calendar, notes, reminders, and tasks natively. No third-party integrations required. Uses `claude-haiku` — CRUD operations don't need a heavy model.
-
-**General** (`configs/agents/general.yaml`) — the fallback. When no specialized agent matches a task, General handles it. Has access to all skills in the local registry. If no local skill covers the request, it queries online skill registries (Clawhub and others), downloads and converts matching skills on the fly, and uses them.
+Some agents that we believe applies for everyone, ship out of the box. Their configurations and souls are tuned - modify them if you want, but the defaults are a solid starting point.
 
 Rules:
 - Only one executive and one general agent can exist in a deployment.
@@ -153,23 +148,25 @@ Rules:
 
 ## The Web Interface (OAChannel)
 
-OnlyAgents ships with a built-in web interface connected over a single persistent WebSocket. No polling. One connection carries everything — chat, streaming responses, real-time agent activity, tool call notifications, delegations between agents, and proactive messages like reminders and daily digests.
+> Work in progress.
 
-**Chat panel** — conversations with the executive. Responses stream token by token. Sessions are persistent — the interface resumes your last conversation on return. Reconnects and page reloads are transparent.
+OnlyAgents ships with a built-in web interface connected over a single persistent WebSocket. No polling. One connection carries everything like chat, streaming responses, real-time agent activity, tool call notifications, delegations between agents, and proactive messages like reminders and daily digests.
 
-**Council room** — live view of the system as it works. Which agents are active, what they're doing, tool calls in flight, delegations as they happen.
+**Chat panel:** conversations with the executive. Responses stream token by token. Sessions are persistent - the interface resumes your last conversation on return. Reconnects and page reloads are transparent.
 
-OAChannel is architecturally identical to any other channel — agents have no special awareness of it. The REST API and WebSocket protocol are fully documented. Build your own interface if you want.
+**Council room:** live view of the system as it works. Which agents are active, what they're doing, tool calls in flight, delegations as they happen.
+
+OAChannel is architecturally identical to any other channel - agents have no special awareness of it. The REST API and WebSocket protocol are fully documented. Build your own interface if you want.
 
 ## Modes
 
-**Agent mode** — headless. No HTTP server. Smallest footprint.
+**Agent mode:** headless. No HTTP server. Smallest footprint.
 
 ```
 onlyagents start --no-server
 ```
 
-**Server mode** — full stack. REST API, embedded web UI, WebSocket, Telegram.
+**Server mode:** full stack. REST API, embedded web UI, WebSocket, Telegram.
 
 ```
 onlyagents start
@@ -207,7 +204,7 @@ The Makefile builds the web UI first, then installs the binary. The interface is
 
 Pre-built binaries include all channels, all LLM providers, and the `env` vault backend. If you're building from source and want a smaller binary, build tags let you include only what you need.
 
-**Channels** — by default all channels are included. To include only what you use:
+**Channels:** by default all channels are included. To include only what you use:
 
 ```bash
 # Telegram only (no OAChannel/web UI)
@@ -217,13 +214,13 @@ go install -tags channel_telegram ./cmd/onlyagents/
 go install -tags channel_onlyagents ./cmd/onlyagents/
 ```
 
-**LLM providers** — by default all providers are included. For example, to include only Anthropic:
+**LLM providers:** by default all providers are included. For example, to include only Anthropic:
 
 ```bash
 go install -tags llm_anthropic ./cmd/onlyagents/
 ```
 
-**Vault backends** — `env` is always included. HashiCorp, AWS, and GCP vault backends are available but not yet tested in production — opt in explicitly:
+**Vault backends:** `env` is always included. HashiCorp, AWS, and GCP vault backends are available but not yet tested — opt in explicitly:
 
 ```bash
 go install -tags vault_hashicorp ./cmd/onlyagents/  #untested
@@ -246,7 +243,9 @@ onlyagents setup
 
 This walks through creating your config directory, setting your user profile,
 configuring an LLM provider, choosing a channel, and setting your auth password.
-Safe to re-run — already configured steps can be skipped.
+Safe to re-run. already configured steps can be skipped.
+
+[Available commands](#cli)
 
 ## Councils
 
@@ -262,16 +261,13 @@ OnlyAgents ships with various built-in councils:
 | ---------------------- | -------------------------------------------------------- |
 | `personal_productivity`| Calendar, tasks, reminders, and notes. No setup needed.  |
 | `research`             | Web search, summarization, and note-taking.              |
-| `software_dev`         | Engineering team — coding, review, testing, GitHub.      |
-| `devops`               | Infrastructure — Docker, Kubernetes, deployments.        |
+| `software_dev`         | Engineering team - coding, review, testing, GitHub.      |
+| `devops`               | Infrastructure - Docker, Kubernetes, deployments.        |
 | `content_creation`     | Writing, drafting, and research-backed content.          |
 | `home_life`            | Household tasks, weather, travel, and home automation.   |
 
-Councils don't change the runtime architecture — they enable the right agents, skills, and connectors for a domain. The executive agent and kernel work exactly the same way.
+Councils don't change the runtime architecture. All they do is enable the right agents, skills, and connectors for a domain. The executive agent and kernel work exactly the same way.
 
-```bash
-
-```
 ## Configuration
 
 All config and runtime data lives in `~/.onlyagents/`.
@@ -367,8 +363,10 @@ onlyagents connector view <name>   View connector config
 onlyagents connector edit <name>   Edit connector config interactively
 
 onlyagents skill list              List all skills
+onlyagents skill install <name>    Install required binaries for a skill
 onlyagents skill enable <name>     Enable a skill
 onlyagents skill disable <name>    Disable a skill
+onlyagents skill validate <name>   Validate a skill's requirements (bins, env vars)
 onlyagents skill view <name>       View skill config
 onlyagents skill edit <name>       Edit skill config interactively
 onlyagents skill tools <name>      List tools provided by a skill
