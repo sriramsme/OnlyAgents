@@ -28,6 +28,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
@@ -71,6 +72,11 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus)
 	paths, err := bootstrap.Init()
 	if err != nil {
 		return nil, fmt.Errorf("init paths: %w", err)
+	}
+
+	err = media.Init(paths.Media)
+	if err != nil {
+		return nil, fmt.Errorf("init media: %w", err)
 	}
 
 	cfg, err := config.LoadAppConfig()

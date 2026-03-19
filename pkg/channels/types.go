@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 )
 
 // Connector defines the interface for platform integrations
@@ -51,22 +52,23 @@ type Config struct {
 
 // IncomingMessage represents a message from a platform
 type IncomingMessage struct {
-	MessageID  string                `json:"message_id"`
-	PlatformID string                `json:"platform_id"`
-	Channel    *core.ChannelMetadata `json:"channel"`
-	Content    string                `json:"content"`
-	MediaPaths []string              `json:"media_paths,omitempty"`
-	IsGroup    bool                  `json:"is_group"`
-	ReplyToID  string                `json:"reply_to_id,omitempty"`
-	Metadata   map[string]string     `json:"metadata,omitempty"`
-	Raw        interface{}           `json:"raw,omitempty"`
+	MessageID   string                `json:"message_id"`
+	PlatformID  string                `json:"platform_id"`
+	Channel     *core.ChannelMetadata `json:"channel"`
+	Content     string                `json:"content"`
+	Attachments []*media.Attachment   `json:"attachments,omitempty"`
+	IsGroup     bool                  `json:"is_group"`
+	ReplyToID   string                `json:"reply_to_id,omitempty"`
+	Metadata    map[string]string     `json:"metadata,omitempty"`
+	Raw         interface{}           `json:"raw,omitempty"`
 }
 
 // OutgoingMessage represents a message to send to a platform
 type OutgoingMessage struct {
-	Channel   *core.ChannelMetadata  `json:"channel"`
-	Content   string                 `json:"content"`
-	ReplyToID string                 `json:"reply_to_id,omitempty"`
-	ParseMode string                 `json:"parse_mode,omitempty"`
-	Options   map[string]interface{} `json:"options,omitempty"`
+	Channel     *core.ChannelMetadata  `json:"channel"`
+	Content     string                 `json:"content"`
+	Attachments []*media.Attachment    `json:"attachments,omitempty"`
+	ReplyToID   string                 `json:"reply_to_id,omitempty"`
+	ParseMode   string                 `json:"parse_mode,omitempty"`
+	Options     map[string]interface{} `json:"options,omitempty"`
 }

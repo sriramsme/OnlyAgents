@@ -1,6 +1,10 @@
 package core
 
-import "time"
+import (
+	"time"
+
+	"github.com/sriramsme/OnlyAgents/pkg/media"
+)
 
 // EventType identifies the type of event
 type EventType string
@@ -107,17 +111,19 @@ type Event struct {
 
 // MessageReceivedPayload: User message from channel
 type MessageReceivedPayload struct {
-	Channel  *ChannelMetadata  `json:"channel"`
-	Content  string            `json:"content"`
-	Metadata map[string]string `json:"metadata"`
+	Channel     *ChannelMetadata    `json:"channel"`
+	Content     string              `json:"content"`
+	Attachments []*media.Attachment `json:"attachments,omitempty"`
+	Metadata    map[string]string   `json:"metadata"`
 }
 
 // OutboundMessagePayload: Response to send to channel
 type OutboundMessagePayload struct {
-	Channel   *ChannelMetadata `json:"channel"`
-	Content   string           `json:"content"`
-	ReplyToID string           `json:"reply_to_id,omitempty"`
-	ParseMode string           `json:"parse_mode,omitempty"`
+	Channel     *ChannelMetadata    `json:"channel"`
+	Content     string              `json:"content"`
+	Attachments []*media.Attachment `json:"attachments,omitempty"`
+	ReplyToID   string              `json:"reply_to_id,omitempty"`
+	ParseMode   string              `json:"parse_mode,omitempty"`
 }
 
 // AgentExecutePayload: Execute agent with message
@@ -125,6 +131,7 @@ type AgentExecutePayload struct {
 	Message     string              `json:"user_message"`
 	MessageType MessageType         `json:"message_type"`
 	Channel     *ChannelMetadata    `json:"channel"`
+	Attachments []*media.Attachment `json:"attachments,omitempty"`
 	Delegation  *DelegationMetadata `json:"delegation,omitempty"`
 	Workflow    *WorkflowMetadata   `json:"workflow,omitempty"`
 	Agent       *AgentMetadata      `json:"agent,omitempty"`
@@ -163,12 +170,13 @@ type AgentMetadata struct {
 
 // AgentDelegatePayload: Delegate task to another agent
 type AgentDelegatePayload struct {
-	DelegationID       string         `json:"delegation_id"` // Unique delegation ID
-	AgentID            string         `json:"agent_id"`      // Target agent ID (specified by executive)
-	Task               string         `json:"task"`          // Task description
-	Context            map[string]any `json:"context,omitempty"`
-	SendDirectlyToUser bool           `json:"send_directly_to_user"`
-	Timeout            int            `json:"timeout,omitempty"` // Seconds
+	DelegationID       string              `json:"delegation_id"` // Unique delegation ID
+	AgentID            string              `json:"agent_id"`      // Target agent ID (specified by executive)
+	Task               string              `json:"task"`          // Task description
+	Context            map[string]any      `json:"context,omitempty"`
+	Attachments        []*media.Attachment `json:"attachments,omitempty"`
+	SendDirectlyToUser bool                `json:"send_directly_to_user"`
+	Timeout            int                 `json:"timeout,omitempty"` // Seconds
 
 	// In case is sending directly to user, sub-agent needs chatID, channelName etc
 	Channel *ChannelMetadata `json:"channel,omitempty"`
@@ -183,10 +191,11 @@ type DelegationResultPayload struct {
 
 // AgentMessagePayload: Direct agent-to-agent message (future)
 type AgentMessagePayload struct {
-	FromAgent string         `json:"from_agent"`
-	ToAgent   string         `json:"to_agent"`
-	Content   string         `json:"content"`
-	Context   map[string]any `json:"context,omitempty"`
+	FromAgent   string              `json:"from_agent"`
+	ToAgent     string              `json:"to_agent"`
+	Content     string              `json:"content"`
+	Context     map[string]any      `json:"context,omitempty"`
+	Attachments []*media.Attachment `json:"attachments,omitempty"`
 }
 
 type SessionGetPayload struct {

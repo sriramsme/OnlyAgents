@@ -37,6 +37,7 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 		Payload: core.AgentExecutePayload{
 			Message:     payload.Content,
 			MessageType: core.MessageTypeUser,
+			Attachments: payload.Attachments, // Attachments flow through unchanged — kernel is not file-aware.
 			Channel: &core.ChannelMetadata{
 				SessionID: payload.Channel.SessionID,
 				ChatID:    payload.Channel.ChatID,
@@ -53,7 +54,8 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 		logger.Timing.EndPhase(correlationID, "executive_routing")
 		k.logger.Debug("message routed to executive",
 			"correlation_id", correlationID,
-			"executive_id", executive.ID())
+			"executive_id", executive.ID(),
+			"attachments", len(payload.Attachments))
 
 	case <-time.After(5 * time.Second):
 		logger.Timing.EndPhase(correlationID, "executive_routing")
@@ -90,10 +92,11 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	defer cancel()
 
 	if err := ch.Send(ctx, channels.OutgoingMessage{
-		Channel:   payload.Channel,
-		Content:   payload.Content,
-		ReplyToID: payload.ReplyToID,
-		ParseMode: payload.ParseMode,
+		Channel:     payload.Channel,
+		Content:     payload.Content,
+		Attachments: payload.Attachments,
+		ReplyToID:   payload.ReplyToID,
+		ParseMode:   payload.ParseMode,
 	}); err != nil {
 		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
 		k.logger.Error("failed to send outbound message",

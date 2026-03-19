@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
@@ -112,6 +113,7 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 }
 
 // HandleTaskCompleted processes task completion from sub-agents
+// nolint:gocyclo
 func (e *Engine) HandleTaskCompleted(ctx context.Context, payload WFTaskCompletedPayload) error {
 	e.logger.Debug("handling task completion",
 		"workflow_id", payload.WorkflowID,
@@ -192,17 +194,25 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload WFTaskComplete
 					e.logger.Warn("failed to unmarshal channel", "error", err)
 				}
 			}
+			var attachments []*media.Attachment
+			if dep.Attachments != "" {
+				err := json.Unmarshal([]byte(dep.Attachments), &attachments)
+				if err != nil {
+					e.logger.Warn("failed to unmarshal attachments", "error", err)
+				}
+			}
 			// Fire TaskAssigned for this dependent
 			e.bus <- core.Event{
 				Type:          core.TaskAssigned,
 				CorrelationID: dep.ID,
 				AgentID:       dep.AssignedAgentID,
 				Payload: WFTaskAssignedPayload{
-					WorkflowID: dep.WorkflowID,
-					TaskID:     dep.ID,
-					TaskName:   dep.Name,
-					Task:       dep.Description,
-					Channel:    channel,
+					WorkflowID:  dep.WorkflowID,
+					TaskID:      dep.ID,
+					TaskName:    dep.Name,
+					Task:        dep.Description,
+					Attachments: attachments,
+					Channel:     channel,
 				},
 			}
 		}
@@ -327,6 +337,7 @@ func (e *Engine) fireTaskAssigned(taskDef *WFTaskDefinition, workflowID string) 
 			TaskID:          taskDef.ID,
 			TaskName:        taskDef.Name,
 			Task:            taskDef.Description,
+			Attachments:     taskDef.Attachments,
 			Channel:         taskDef.Channel,
 			OriginalMessage: taskDef.OriginalMessage,
 		},
@@ -364,6 +375,12 @@ func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *sto
 		channelJSON = []byte("{}")
 	}
 
+	attachmentsJSON, err := json.Marshal(def.Attachments)
+	if err != nil {
+		e.logger.Warn("failed to marshal attachments", "error", err)
+		attachmentsJSON = []byte("[]")
+	}
+
 	return &storage.WFTask{
 		ID:              def.ID,
 		WorkflowID:      workflowID,
@@ -372,6 +389,7 @@ func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *sto
 		Type:            storage.WFTaskType(def.Type),
 		DependsOn:       string(depsJSON),
 		ChannelJSON:     string(channelJSON),
+		Attachments:     string(attachmentsJSON),
 		Payload:         string(payloadJSON),
 		Status:          storage.WFTaskStatusPending,
 		AssignedAgentID: def.AssignedAgentID,

@@ -236,6 +236,7 @@ type WFTask struct {
 	DependsOn            string         `db:"depends_on"`            // JSON array
 	RequiredCapabilities string         `db:"required_capabilities"` // JSON array
 	Payload              string         `db:"payload"`               // JSON
+	Attachments          string         `db:"attachments"`           // JSON array
 	Status               WFTaskStatus   `db:"status"`
 	Result               []byte         `db:"result"`
 	Error                sql.NullString `db:"error"`

@@ -85,6 +85,7 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 			Message:     payload.Task,
 			MessageType: core.MessageTypeDelegation,
 			Channel:     payload.Channel,
+			Attachments: payload.Attachments,
 			Delegation: &core.DelegationMetadata{
 				DelegationID:       payload.DelegationID,
 				SendDirectlyToUser: payload.SendDirectlyToUser,
@@ -143,6 +144,7 @@ func (k *Kernel) handleAgentMessage(evt core.Event) {
 		Payload: core.AgentExecutePayload{
 			Message:     payload.Content,
 			MessageType: core.MessageTypeAgentMessage,
+			Attachments: payload.Attachments,
 			Agent: &core.AgentMetadata{
 				FromAgent: payload.FromAgent,
 			},

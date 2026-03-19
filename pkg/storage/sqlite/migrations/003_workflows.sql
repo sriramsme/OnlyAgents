@@ -18,6 +18,7 @@ CREATE TABLE wf_tasks (
     description TEXT,
     type TEXT NOT NULL,
     channel_json TEXT NOT NULL,
+    attachments TEXT,
     depends_on TEXT,
     payload TEXT,
     status TEXT NOT NULL,

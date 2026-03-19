@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 )
 
 // WorkflowDefinition represents a workflow at submission time (before storage)
@@ -36,6 +37,7 @@ type WFTaskDefinition struct {
 	Channel         *core.ChannelMetadata `json:"channel,omitempty"`
 	OriginalMessage string                `json:"original_message,omitempty"`
 	Metadata        map[string]string     `json:"metadata,omitempty"`
+	Attachments     []*media.Attachment   `json:"attachments,omitempty"`
 }
 
 // WorkflowPayload: Submit workflow for execution
@@ -53,6 +55,7 @@ type WorkflowResultPayload struct {
 	Channel         *core.ChannelMetadata      `json:"channel"`
 	OriginalMessage string                     `json:"original_message"`
 	Metadata        map[string]string          `json:"metadata"`
+	Attachments     []*media.Attachment        `json:"attachments,omitempty"`
 }
 
 // TaskAssignedPayload: Workflow engine assigns task to agent
@@ -62,6 +65,7 @@ type WFTaskAssignedPayload struct {
 	TaskName        string                `json:"task_name"`
 	Task            string                `json:"task"` // Task description
 	Context         map[string]any        `json:"context,omitempty"`
+	Attachments     []*media.Attachment   `json:"attachments,omitempty"`
 	Channel         *core.ChannelMetadata `json:"channel,omitempty"`
 	OriginalMessage string                `json:"original_message,omitempty"`
 }

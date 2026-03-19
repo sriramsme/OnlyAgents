@@ -28,6 +28,7 @@ type Paths struct {
 	UserPath    string
 	VaultPath   string
 	SkillCache  string
+	Media       string
 }
 
 // Init ensures the home directory exists, creates subdirectories,
@@ -56,6 +57,7 @@ func Init() (*Paths, error) {
 		UserPath:    filepath.Join(root, "user.yaml"),
 		VaultPath:   filepath.Join(root, "vault.yaml"),
 		SkillCache:  filepath.Join(root, "cache", "skills"),
+		Media:       filepath.Join(root, "media"),
 	}
 
 	// Create directories
@@ -68,6 +70,7 @@ func Init() (*Paths, error) {
 		paths.Logs,
 		paths.Cache,
 		paths.Marketplace,
+		paths.Media,
 	}
 
 	for _, dir := range dirs {

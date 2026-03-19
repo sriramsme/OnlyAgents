@@ -102,6 +102,7 @@ func (k *Kernel) handleWorkflowCompleted(evt core.Event) {
 			Message:     message,
 			MessageType: core.MessageTypeWorkflowCompleted,
 			Channel:     payload.Channel,
+			Attachments: payload.Attachments,
 		},
 	}
 
@@ -151,6 +152,7 @@ func (k *Kernel) handleTaskAssigned(evt core.Event) {
 		Payload: core.AgentExecutePayload{
 			Message:     payload.Task,
 			MessageType: core.MessageTypeWorkflowTask,
+			Attachments: payload.Attachments,
 			Workflow: &core.WorkflowMetadata{
 				WorkflowID: payload.WorkflowID,
 				TaskID:     payload.TaskID,
