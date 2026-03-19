@@ -26,3 +26,6 @@ func ExecErr(err error) ToolExecution {
 func ExecDone(msg string) ToolExecution {
 	return ToolExecution{DirectMessage: msg, Control: ExecHalt}
 }
+
+func (t ToolExecution) IsHalt() bool { return t.Control == ExecHalt }
+func (t ToolExecution) IsErr() bool  { return t.Err != nil }

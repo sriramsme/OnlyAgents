@@ -50,7 +50,7 @@ func (a *Agent) processToolCalls(
 		var exec tools.ToolExecution
 
 		if a.isExecutive && isExecutiveMetaTool(tc.Function.Name) {
-			exec = a.handleExecutiveMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel)
+			exec = a.handleExecutiveMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel, payload.Attachments)
 		} else if a.isGeneral && isGeneralMetaTool(tc.Function.Name) {
 			exec = a.handleGeneralMetaTool(ctx, correlationID, tc)
 		} else {

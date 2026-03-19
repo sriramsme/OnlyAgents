@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
@@ -17,17 +18,24 @@ import (
 // They're called from the agent's execute() loop when LLM calls meta-tools
 
 // handleMetaTool routes meta-tool calls to appropriate handlers
-func (a *Agent) handleExecutiveMetaTool(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channelMetadata *core.ChannelMetadata) tools.ToolExecution {
+func (a *Agent) handleExecutiveMetaTool(
+	ctx context.Context,
+	correlationID string,
+	tc tools.ToolCall,
+	originalMessage string,
+	channelMetadata *core.ChannelMetadata,
+	attachments []*media.Attachment,
+) tools.ToolExecution {
 	a.logger.Debug("handling meta-tool",
 		"tool", tc.Function.Name,
 		"correlation_id", correlationID)
 
 	switch tc.Function.Name {
 	case "delegate_to_agent":
-		return a.requestDelegation(ctx, correlationID, tc, channelMetadata)
+		return a.requestDelegation(ctx, correlationID, tc, channelMetadata, attachments)
 
 	case "create_workflow":
-		return a.requestWorkflow(ctx, correlationID, tc, originalMessage, channelMetadata)
+		return a.requestWorkflow(ctx, correlationID, tc, originalMessage, channelMetadata, attachments)
 
 	default:
 		return tools.ExecErr(fmt.Errorf("unknown meta-tool: %s", tc.Function.Name))
@@ -37,6 +45,7 @@ func (a *Agent) handleExecutiveMetaTool(ctx context.Context, correlationID strin
 // requestDelegation delegates a task to another agent and waits for result
 func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 	tc tools.ToolCall, channelMetadata *core.ChannelMetadata,
+	attachments []*media.Attachment,
 ) tools.ToolExecution {
 	var input tools.DelegateInput
 	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
@@ -67,7 +76,7 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 			AgentID:            input.AgentID, // ← Executive specifies target agent
 			Task:               input.Task,
 			Context:            input.Context,
-			Attachments:        input.Attachments,
+			Attachments:        attachments,
 			SendDirectlyToUser: input.SendDirectlyToUser,
 			Timeout:            300,             // 5 minutes default
 			Channel:            channelMetadata, // In case is sending directly to user, sub-agent needs chatID, channelName etc
@@ -136,7 +145,11 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 }
 
 // requestWorkflow - pass original message and channel
-func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc tools.ToolCall, originalMessage string, channel *core.ChannelMetadata) tools.ToolExecution {
+func (a *Agent) requestWorkflow(ctx context.Context, correlationID string,
+	tc tools.ToolCall, originalMessage string,
+	channel *core.ChannelMetadata,
+	attachments []*media.Attachment,
+) tools.ToolExecution {
 	logger.Timing.StartPhase(correlationID, "workflow_creation")
 	wf, err := a.parseWorkflow(correlationID, tc, originalMessage, channel)
 	if err != nil {
@@ -144,7 +157,7 @@ func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc to
 	}
 	logger.Timing.EndPhase(correlationID, "workflow_creation")
 
-	if err := a.submitWorkflow(ctx, correlationID, wf); err != nil {
+	if err := a.submitWorkflow(ctx, correlationID, wf, attachments); err != nil {
 		return tools.ExecErr(err)
 	}
 
@@ -152,13 +165,17 @@ func (a *Agent) requestWorkflow(ctx context.Context, correlationID string, tc to
 }
 
 // submitWorkflow sends workflow to kernel (non-blocking)
-func (a *Agent) submitWorkflow(ctx context.Context, correlationID string, wf *workflow.WorkflowDefinition) error {
+func (a *Agent) submitWorkflow(ctx context.Context, correlationID string,
+	wf *workflow.WorkflowDefinition,
+	attachments []*media.Attachment,
+) error {
 	event := core.Event{
 		Type:          core.WorkflowSubmitted,
 		CorrelationID: correlationID,
 		AgentID:       a.id,
 		Payload: workflow.WorkflowPayload{
-			Workflow: *wf,
+			Workflow:    *wf,
+			Attachments: attachments,
 		},
 	}
 

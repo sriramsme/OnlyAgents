@@ -42,7 +42,8 @@ type WFTaskDefinition struct {
 
 // WorkflowPayload: Submit workflow for execution
 type WorkflowPayload struct {
-	Workflow WorkflowDefinition `json:"workflow"` // *workflow.Workflow (avoid import cycle)
+	Workflow    WorkflowDefinition  `json:"workflow"` // *workflow.Workflow (avoid import cycle)
+	Attachments []*media.Attachment `json:"attachments,omitempty"`
 }
 
 // WorkflowResultPayload: Workflow execution completed

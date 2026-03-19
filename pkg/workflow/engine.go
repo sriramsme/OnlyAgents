@@ -47,7 +47,9 @@ func (e *Engine) Stop() error {
 }
 
 // SubmitWorkflow submits a new workflow and assigns agents to tasks
-func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinition) error {
+func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinition,
+	attachments []*media.Attachment,
+) error {
 	// Validate
 	if err := workflow.Validate(); err != nil {
 		return fmt.Errorf("invalid workflow: %w", err)
@@ -92,6 +94,7 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 	for _, taskDef := range workflow.Tasks {
 
 		taskDef.Channel = workflow.Channel
+		taskDef.Attachments = attachments // TODO: We are passing all attachments to all tasks, might need optimization
 		task := e.taskDefToStorage(taskDef, workflow.ID)
 
 		if err := e.store.CreateWFTask(ctx, task); err != nil {

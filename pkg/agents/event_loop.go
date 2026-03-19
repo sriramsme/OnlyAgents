@@ -81,7 +81,8 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 	a.logger.Debug("processing agent execute event",
 		"correlation_id", evt.CorrelationID,
 		"message_type", payload.MessageType,
-		"message_length", len(payload.Message))
+		"message_length", len(payload.Message),
+		"attachments", len(payload.Attachments))
 
 	var response string
 	var err error

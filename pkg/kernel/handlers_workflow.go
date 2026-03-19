@@ -34,7 +34,7 @@ func (k *Kernel) handleWorkflowSubmitted(evt core.Event) {
 
 	// Submit to workflow engine
 	// Engine handles the DAG internally - no executive roundtrips per task
-	if err := k.workflow.SubmitWorkflow(k.ctx, &payload.Workflow); err != nil {
+	if err := k.workflow.SubmitWorkflow(k.ctx, &payload.Workflow, payload.Attachments); err != nil {
 		logger.Timing.EndPhase(evt.CorrelationID, workflowPhase)
 		k.logger.Error("workflow submission failed",
 			"workflow_id", payload.Workflow.ID,
