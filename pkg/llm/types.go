@@ -59,6 +59,11 @@ type Message struct {
 	Role    Role   `json:"role"`
 	Content string `json:"content,omitempty"`
 
+	// Parts carries multimodal content (text + images + documents).
+	// When Parts is non-nil, providers use it instead of Content.
+	// Text-only messages continue to use Content — no migration needed.
+	Parts []ContentPart `json:"parts,omitempty"`
+
 	// For extended thinking models (Sonnet 4.5, Opus 4.6)
 	ReasoningContent string `json:"reasoning_content,omitempty"`
 
