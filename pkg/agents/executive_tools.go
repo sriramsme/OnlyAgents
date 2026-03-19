@@ -67,6 +67,7 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 			AgentID:            input.AgentID, // ← Executive specifies target agent
 			Task:               input.Task,
 			Context:            input.Context,
+			Attachments:        input.Attachments,
 			SendDirectlyToUser: input.SendDirectlyToUser,
 			Timeout:            300,             // 5 minutes default
 			Channel:            channelMetadata, // In case is sending directly to user, sub-agent needs chatID, channelName etc

@@ -9,6 +9,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
@@ -16,6 +17,7 @@ import (
 // processToolCalls executes all tool calls from a single LLM turn.
 // Appends the assistant message and all tool results to messages.
 // Returns updated messages, whether to halt, and any error.
+// nolint:gocyclo
 func (a *Agent) processToolCalls(
 	ctx context.Context,
 	sessionID string,
@@ -23,7 +25,7 @@ func (a *Agent) processToolCalls(
 	payload core.AgentExecutePayload,
 	messages []llm.Message,
 	resp *llm.Response,
-) (updated []llm.Message, halt bool, err error) {
+) (updated []llm.Message, produced []*media.Attachment, halt bool, err error) {
 	// Persist assistant turn with tool calls
 	if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
 		a.logger.Warn("failed to save assistant tool-call message", "err", err, "correlation_id", correlationID)
@@ -53,6 +55,25 @@ func (a *Agent) processToolCalls(
 			exec = a.handleGeneralMetaTool(ctx, correlationID, tc)
 		} else {
 			exec = a.requestToolCall(ctx, sessionID, correlationID, tc)
+		}
+
+		// Collect any files the skill wrote to disk this round.
+		if len(exec.ProducedFiles) > 0 {
+			for _, path := range exec.ProducedFiles {
+				att, err := media.AttachmentFromPath(path)
+				if err != nil {
+					a.logger.Warn("could not resolve produced file",
+						"path", path,
+						"tool", tc.Function.Name,
+						"err", err)
+					continue
+				}
+				produced = append(produced, att)
+				a.logger.Debug("skill produced file",
+					"tool", tc.Function.Name,
+					"path", path,
+					"mime_type", att.MIMEType)
+			}
 		}
 
 		a.emitUI(core.UIEvent{
@@ -106,12 +127,12 @@ func (a *Agent) processToolCalls(
 					},
 				}, "delegation ack")
 			}
-			return messages, true, nil
+			return messages, nil, true, nil
 
 		default:
 			resultJSON, err := json.Marshal(exec.Result)
 			if err != nil {
-				return nil, false, fmt.Errorf("marshal tool result: %w", err)
+				return nil, nil, false, fmt.Errorf("marshal tool result: %w", err)
 			}
 			resultStr := string(resultJSON)
 			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
@@ -121,7 +142,7 @@ func (a *Agent) processToolCalls(
 		}
 	}
 
-	return messages, false, nil
+	return messages, produced, false, nil
 }
 
 func (a *Agent) requestToolCall(

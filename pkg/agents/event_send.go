@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 )
 
 // Helper methods for sending different types of responses
@@ -88,7 +89,12 @@ func (a *Agent) sendSyncResponse(replyCh chan<- core.Event, correlationID string
 	a.safeReply(replyCh, evt, "sync response")
 }
 
-func (a *Agent) sendOutboundMessage(payload core.AgentExecutePayload, correlationID string, response string) {
+func (a *Agent) sendOutboundMessage(
+	payload core.AgentExecutePayload,
+	correlationID string,
+	response string,
+	attachments []*media.Attachment,
+) {
 	if payload.Channel == nil {
 		a.logger.Error("no channel metadata available for outbound message",
 			"correlation_id", correlationID)
@@ -98,8 +104,9 @@ func (a *Agent) sendOutboundMessage(payload core.AgentExecutePayload, correlatio
 		Type:          core.OutboundMessage,
 		CorrelationID: correlationID,
 		Payload: core.OutboundMessagePayload{
-			Channel: payload.Channel,
-			Content: response,
+			Channel:     payload.Channel,
+			Content:     response,
+			Attachments: attachments,
 		},
 	}
 

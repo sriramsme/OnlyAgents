@@ -11,7 +11,8 @@ type ToolExecution struct {
 	Result        any
 	Err           error
 	Control       ExecControl
-	DirectMessage string // only populated on ExecHalt
+	DirectMessage string   // only populated on ExecHalt
+	ProducedFiles []string // local paths of files written to disk
 }
 
 func ExecOK(result any) ToolExecution {

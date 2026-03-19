@@ -1,15 +1,17 @@
 package tools
 
+import "github.com/sriramsme/OnlyAgents/pkg/media"
+
 // ====================
 // Input Types
 // ====================
 
 // DelegateInput is the input schema for the delegate_to_agent tool.
 type DelegateInput struct {
-	AgentID string         `json:"agent_id" desc:"ID of the agent to delegate to — use the 'id' field from the Available Sub-Agents & Their Capabilities section"`
-	Task    string         `json:"task" desc:"Clear description of the task to delegate"`
-	Context map[string]any `json:"context,omitempty" desc:"Additional context for the delegated task (optional)"`
-
+	AgentID     string              `json:"agent_id" desc:"ID of the agent to delegate to — use the 'id' field from the Available Sub-Agents & Their Capabilities section"`
+	Task        string              `json:"task" desc:"Clear description of the task to delegate"`
+	Context     map[string]any      `json:"context,omitempty" desc:"Additional context for the delegated task (optional)"`
+	Attachments []*media.Attachment `json:"attachments,omitempty" desc:"Attachments to send with the task (optional)"`
 	// SendDirectlyToUser controls response routing:
 	// - true: Sub-agent sends response directly to user (faster, for simple requests)
 	// - false (default): Sub-agent returns to executive for synthesis/further processing

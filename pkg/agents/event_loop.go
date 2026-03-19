@@ -7,6 +7,7 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 )
 
 // Inbox returns the channel kernel sends events to.
@@ -84,10 +85,12 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 
 	var response string
 	var err error
+	var producedFiles []*media.Attachment
+
 	if a.shouldStream(payload) {
-		response, err = a.executeStream(requestCtx, payload, evt.CorrelationID)
+		response, producedFiles, err = a.executeStream(requestCtx, payload, evt.CorrelationID)
 	} else {
-		response, err = a.execute(requestCtx, payload, evt.CorrelationID)
+		response, producedFiles, err = a.execute(requestCtx, payload, evt.CorrelationID)
 	}
 	if err != nil {
 		a.logger.Error("execute failed", "error", err, "correlation_id", evt.CorrelationID)
@@ -95,17 +98,22 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 		return
 	}
 
-	a.routeResponse(evt, payload, response)
+	a.routeResponse(evt, payload, response, producedFiles)
 }
 
 // HELPER METHODS
 
 // routeResponse dispatches the agent's response based on how the message arrived.
-func (a *Agent) routeResponse(evt core.Event, payload core.AgentExecutePayload, response string) {
+func (a *Agent) routeResponse(
+	evt core.Event,
+	payload core.AgentExecutePayload,
+	response string,
+	attachments []*media.Attachment,
+) {
 	switch payload.MessageType {
 	case core.MessageTypeDelegation:
 		if payload.Delegation != nil && payload.Delegation.SendDirectlyToUser {
-			a.handleDirectDelegationResponse(payload, evt.CorrelationID, response)
+			a.handleDirectDelegationResponse(payload, evt.CorrelationID, response, attachments)
 		} else {
 			a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response)
 		}
@@ -115,15 +123,20 @@ func (a *Agent) routeResponse(evt core.Event, payload core.AgentExecutePayload, 
 		if evt.ReplyTo != nil {
 			a.sendSyncResponse(evt.ReplyTo, evt.CorrelationID, response)
 		} else {
-			a.sendOutboundMessage(payload, evt.CorrelationID, response)
+			a.sendOutboundMessage(payload, evt.CorrelationID, response, attachments)
 		}
 	}
 }
 
 // handleDirectDelegationResponse sends the sub-agent's response directly to the
 // user and injects it into the executive's history for continuity.
-func (a *Agent) handleDirectDelegationResponse(payload core.AgentExecutePayload, correlationID, response string) {
-	a.sendOutboundMessage(payload, correlationID, response)
+func (a *Agent) handleDirectDelegationResponse(
+	payload core.AgentExecutePayload,
+	correlationID,
+	response string,
+	attachments []*media.Attachment,
+) {
+	a.sendOutboundMessage(payload, correlationID, response, attachments)
 
 	if payload.Delegation.FromAgentID == "" {
 		return

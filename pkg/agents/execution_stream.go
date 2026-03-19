@@ -8,6 +8,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -17,7 +18,7 @@ func (a *Agent) executeStream(
 	ctx context.Context,
 	payload core.AgentExecutePayload,
 	correlationID string,
-) (string, error) {
+) (string, []*media.Attachment, error) {
 	return a.runExecutionLoop(ctx, payload, correlationID, a.callLLMStream)
 }
 
