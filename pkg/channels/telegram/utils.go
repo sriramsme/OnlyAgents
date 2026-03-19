@@ -10,6 +10,7 @@ import (
 
 	"github.com/mymmrac/telego"
 	tu "github.com/mymmrac/telego/telegoutil"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 )
 
 // ParseChatID converts a string chatID into int64 for Telego API usage.
@@ -226,6 +227,33 @@ func (c *TelegramChannel) sendAsFile(ctx context.Context, chatID int64, chatIDSt
 	}()
 
 	_, err = c.bot.SendDocument(ctx, tu.Document(tu.ID(chatID), tu.File(f)))
+	return err
+}
+
+func (c *TelegramChannel) sendAttachment(ctx context.Context, chatID int64, att *media.Attachment) error {
+	file, err := os.Open(att.LocalPath)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", att.LocalPath, err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			fmt.Printf("failed to close file %s", err)
+		}
+	}()
+
+	inputFile := tu.File(file)
+
+	if att.IsImage() {
+		_, err = c.bot.SendPhoto(ctx, tu.Photo(
+			telego.ChatID{ID: chatID},
+			inputFile,
+		).WithCaption(att.Filename))
+	} else {
+		_, err = c.bot.SendDocument(ctx, tu.Document(
+			telego.ChatID{ID: chatID},
+			inputFile,
+		).WithCaption(att.Filename))
+	}
 	return err
 }
 

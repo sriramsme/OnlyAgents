@@ -83,6 +83,22 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 		"chat_id", chatID,
 		"preview", truncate(content, 50))
 
+	// Download any attached files before firing the event.
+	// By the time the event reaches the kernel, all attachments are on disk.
+	attachments, err := c.extractAttachments(ctx.Context(), message)
+	if err != nil {
+		// extractAttachments only returns a hard error on unexpected conditions;
+		// individual file failures are already logged and skipped inside it.
+		c.logger.Warn("attachment extraction failed", "err", err)
+		// Continue with whatever attachments we managed to save (may be nil).
+	}
+
+	if len(attachments) > 0 {
+		c.logger.Debug("attachments resolved",
+			"count", len(attachments),
+			"chat_id", chatID)
+	}
+
 	// Determine target agent from channel config (default if not set)
 	agentID := c.config.DefaultAgent
 
@@ -109,7 +125,8 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 				UserID:    userID,
 				Username:  message.From.Username,
 			},
-			Content: content,
+			Content:     content,
+			Attachments: attachments,
 			Metadata: map[string]string{
 				"target_agent": agentID,
 			},
@@ -171,6 +188,16 @@ func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage
 	}
 
 	htmlContent := markdownToTelegramHTML(msg.Content)
+	// Send any agent-produced file attachments.
+	for _, att := range msg.Attachments {
+		if err := c.sendAttachment(ctx, chatID, att); err != nil {
+			c.logger.Warn("failed to send attachment",
+				"attachment_id", att.ID,
+				"filename", att.Filename,
+				"err", err)
+			// Continue — don't fail the whole send for one attachment.
+		}
+	}
 
 	switch {
 	case len(htmlContent) <= 4096:
