@@ -14,12 +14,13 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/skills"
 )
 
 // CLIExecutor executes shell commands securely
 // This is NOT a connector - it's a command execution engine
 type CLIExecutor struct {
-	config      *config.Executor
+	config      *skills.ExecutorConfig
 	ctx         context.Context
 	requiredEnv []string
 	cancel      context.CancelFunc
@@ -35,7 +36,7 @@ type ExecutionResult struct {
 }
 
 // NewCLIExecutor creates a CLI executor
-func NewCLIExecutor(ctx context.Context, cfg *config.Executor,
+func NewCLIExecutor(ctx context.Context, cfg *skills.ExecutorConfig,
 	security config.SecurityConfig, requiredEnv []string,
 ) *CLIExecutor {
 	execCtx, cancel := context.WithCancel(ctx)

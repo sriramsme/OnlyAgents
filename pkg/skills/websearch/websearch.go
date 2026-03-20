@@ -11,7 +11,6 @@ import (
 
 	"golang.org/x/net/html"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
@@ -57,9 +56,8 @@ func New(ctx context.Context, conn connectors.WebSearchConnector) (*WebSearchSki
 func init() {
 	skills.Register("websearch", func(
 		ctx context.Context,
-		cfg config.Skill,
+		cfg skills.Config,
 		conn connectors.Connector,
-		security config.SecurityConfig,
 	) (skills.Skill, error) {
 		webSearchConn, ok := conn.(connectors.WebSearchConnector)
 		if !ok {

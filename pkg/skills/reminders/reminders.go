@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
@@ -41,8 +40,8 @@ func New(ctx context.Context, conn connectors.RemindersConnector) (*RemindersSki
 
 // internal path — config drives everything, never touches New()
 func init() {
-	skills.Register("reminders", func(ctx context.Context, cfg config.Skill,
-		conn connectors.Connector, security config.SecurityConfig,
+	skills.Register("reminders", func(ctx context.Context, cfg skills.Config,
+		conn connectors.Connector,
 	) (skills.Skill, error) {
 		remindersConn, ok := conn.(connectors.RemindersConnector)
 		if !ok {

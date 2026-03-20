@@ -10,35 +10,35 @@ import (
 
 	"github.com/charmbracelet/huh"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/pkg/skills"
 )
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 // SkillRegistry loads all skill configs from the skills dir.
-func SkillRegistry(skillsDir string) ([]config.Skill, error) {
+func SkillRegistry(skillsDir string) ([]skills.Config, error) {
 	entries, err := filepath.Glob(filepath.Join(skillsDir, "*.yaml"))
 	if err != nil {
 		return nil, fmt.Errorf("glob %s: %w", skillsDir, err)
 	}
-	var skills []config.Skill
+	var cfgs []skills.Config
 	for _, path := range entries {
-		s, err := config.LoadSkillConfig(path)
+		s, err := skills.LoadConfig(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, StyleYellow.Render("  ! could not parse %s: %v\n"), path, err)
 			continue
 		}
-		skills = append(skills, *s)
+		cfgs = append(cfgs, *s)
 	}
-	return skills, nil
+	return cfgs, nil
 }
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // EnabledSkills returns only skills with Enabled = true.
-func EnabledSkills(skills []config.Skill) []config.Skill {
-	var out []config.Skill
-	for _, s := range skills {
+func EnabledSkills(cfgs []skills.Config) []skills.Config {
+	var out []skills.Config
+	for _, s := range cfgs {
 		if s.Enabled {
 			out = append(out, s)
 		}
@@ -47,13 +47,13 @@ func EnabledSkills(skills []config.Skill) []config.Skill {
 }
 
 // FindSkill returns the first skill matching name.
-func FindSkill(skills []config.Skill, name string) (config.Skill, error) {
-	for _, s := range skills {
+func FindSkill(cfgs []skills.Config, name string) (skills.Config, error) {
+	for _, s := range cfgs {
 		if s.Name == name {
 			return s, nil
 		}
 	}
-	return config.Skill{}, fmt.Errorf("skill %q not found", name)
+	return skills.Config{}, fmt.Errorf("skill %q not found", name)
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
@@ -81,11 +81,11 @@ func SkillSetEnabled(skillsDir, name string, enabled bool) error {
 // ── Validation ────────────────────────────────────────────────────────────────
 
 // ValidateSkills checks for common skill config problems.
-func ValidateSkills(skills []config.Skill) []string {
+func ValidateSkills(cfgs []skills.Config) []string {
 	var issues []string
 	seenNames := map[string]int{}
 
-	for i, s := range skills {
+	for i, s := range cfgs {
 		prefix := fmt.Sprintf("skill[%d] %q", i, s.Name)
 
 		if s.Name == "" {
@@ -118,7 +118,7 @@ func SkillSetAccessLevel(skillsDir, name, level string) error {
 }
 
 // nolint:gocyclo
-func SkillInstallRequirements(s config.Skill, envPath string) error {
+func SkillInstallRequirements(s skills.Config, envPath string) error {
 	if len(s.Requires.Bins) == 0 && len(s.Requires.Env) == 0 {
 		fmt.Printf("  %s %s — no requirements\n",
 			StyleDim.Render("—"),
@@ -246,7 +246,7 @@ func SkillInstallRequirements(s config.Skill, envPath string) error {
 // ── Display ───────────────────────────────────────────────────────────────────
 
 // SkillSummaryLine returns a single-line summary for table output.
-func SkillSummaryLine(s config.Skill) string {
+func SkillSummaryLine(s skills.Config) string {
 	return fmt.Sprintf("%-20s %s", s.Name, EnabledLabel(s.Enabled))
 }
 
@@ -256,11 +256,11 @@ func SkillConfigPath(skillsDir, name string) string {
 
 // SkillWithTools holds frontmatter metadata plus parsed commands.
 type SkillWithTools struct {
-	config.Skill
-	Commands []*config.SkillToolEntry
+	skills.Config
+	Commands []*skills.ToolEntry
 }
 
-func PrintSkillValidation(s config.Skill) (failed bool, noRequirements bool) {
+func PrintSkillValidation(s skills.Config) (failed bool, noRequirements bool) {
 	// Check bins
 	if len(s.Requires.Bins) == 0 && len(s.Requires.Env) == 0 {
 		return false, true
@@ -330,7 +330,7 @@ func indent(s, prefix string) string {
 	return strings.Join(lines, "\n")
 }
 
-func formatInstallHint(bin config.BinRequirement) string {
+func formatInstallHint(bin skills.BinRequirement) string {
 	for _, pm := range []string{"brew", "apt", "apt-get", "yum", "pacman", "scoop"} {
 		if _, err := exec.LookPath(pm); err == nil {
 			if cmd, ok := bin.Install[pm]; ok {

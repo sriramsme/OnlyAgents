@@ -5,7 +5,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
+	skillsPkg "github.com/sriramsme/OnlyAgents/pkg/skills"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -321,7 +321,7 @@ var skillValidateCmd = &cobra.Command{
 		}
 
 		// Determine which skills to validate
-		var toValidate []config.Skill
+		var toValidate []skillsPkg.Config
 		if all || len(args) == 0 {
 			toValidate = skills
 		} else {
@@ -329,7 +329,7 @@ var skillValidateCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			toValidate = []config.Skill{s}
+			toValidate = []skillsPkg.Config{s}
 		}
 
 		noRequirementSkills := []string{}
@@ -379,7 +379,7 @@ var skillInstallCmd = &cobra.Command{
 			return err
 		}
 
-		var toInstall []config.Skill
+		var toInstall []skillsPkg.Config
 		if all {
 			toInstall = skills
 		} else {
@@ -390,7 +390,7 @@ var skillInstallCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			toInstall = []config.Skill{s}
+			toInstall = []skillsPkg.Config{s}
 		}
 
 		anyFailed := false

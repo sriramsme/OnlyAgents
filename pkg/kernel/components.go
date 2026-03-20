@@ -98,7 +98,7 @@ func loadComponents(
 	if err != nil {
 		return c, fmt.Errorf("load channels: %w", err)
 	}
-	c.skills, err = loadSkills()
+	c.skills, err = loadSkills(cfg.Security)
 	if err != nil {
 		return c, fmt.Errorf("load skills: %w", err)
 	}
@@ -184,9 +184,9 @@ func loadChannels(
 	return registry, nil
 }
 
-func loadSkills() (*skills.Registry, error) {
+func loadSkills(security config.SecurityConfig) (*skills.Registry, error) {
 	// Create connector registr
-	registry, err := skills.NewRegistry()
+	registry, err := skills.NewRegistry("", security)
 	if err != nil {
 		return nil, fmt.Errorf("create skills registry: %w", err)
 	}

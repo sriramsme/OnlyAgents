@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
 
 // Factory creates a skill from a config.
 type Factory func(
 	ctx context.Context,
-	cfg config.Skill,
+	cfg Config,
 	conn connectors.Connector,
-	security config.SecurityConfig,
 ) (Skill, error)
 
 var (
@@ -37,7 +35,7 @@ func Register(key string, factory Factory) {
 	factories[key] = factory
 }
 
-func getFactory(cfg config.Skill) (Factory, error) {
+func getFactory(cfg Config) (Factory, error) {
 	factoryMu.RLock()
 	defer factoryMu.RUnlock()
 	switch cfg.Type {

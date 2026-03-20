@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
@@ -29,7 +28,7 @@ type CLISkill struct {
 
 	ctx      context.Context
 	cancel   context.CancelFunc
-	commands map[string]*config.SkillToolEntry // toolName → command
+	commands map[string]*skills.ToolEntry // toolName → command
 
 	executor *CLIExecutor
 }
@@ -39,17 +38,16 @@ type CLISkill struct {
 // ──────────────────────────────────────────────────────────────
 
 // NewCLISkill creates a CLISkill from a ParsedSkill definition.
-func NewCLISkill(ctx context.Context, cfg config.Skill, conn connectors.Connector,
-	security config.SecurityConfig,
+func NewCLISkill(ctx context.Context, cfg skills.Config, conn connectors.Connector,
 ) (skills.Skill, error) {
 	// cli doesnt need a connector, check if its empty
 	if conn != nil {
 		return nil, fmt.Errorf("cli skill: connector is not empty")
 	}
-	executor := NewCLIExecutor(ctx, &cfg.Executor, security, cfg.Requires.Env)
+	executor := NewCLIExecutor(ctx, &cfg.Executor, cfg.Security, cfg.Requires.Env)
 
 	toolDefs := make([]tools.ToolDef, 0, len(cfg.Tools))
-	commandMap := make(map[string]*config.SkillToolEntry, len(cfg.Tools))
+	commandMap := make(map[string]*skills.ToolEntry, len(cfg.Tools))
 
 	logger.Log.Info("initializing cli skill",
 		"skill", cfg.Name,
@@ -185,7 +183,7 @@ func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) to
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-func checkRequiredBins(requires config.SkillRequirements) (missing []string, err error) {
+func checkRequiredBins(requires skills.Requirements) (missing []string, err error) {
 	for _, bin := range requires.Bins {
 		if _, err := exec.LookPath(bin.Name); err != nil {
 			missing = append(missing, bin.Name)
@@ -233,7 +231,7 @@ func scanOutputDir(dir string) ([]string, error) {
 }
 
 // validateCommand checks against skill-defined rules and hardcoded dangerous patterns.
-func validateCommand(command string, rules *config.SkillValidation) error {
+func validateCommand(command string, rules *skills.Validation) error {
 	if rules != nil {
 		if len(rules.AllowedCommands) > 0 {
 			allowed := false
@@ -274,7 +272,7 @@ func validateCommand(command string, rules *config.SkillValidation) error {
 	return nil
 }
 
-func buildParamProps(defs []config.SkillParamDef) map[string]tools.Property {
+func buildParamProps(defs []skills.ParamDef) map[string]tools.Property {
 	props := make(map[string]tools.Property, len(defs))
 	for _, d := range defs {
 		props[d.Name] = paramDefToProperty(d)
@@ -282,7 +280,7 @@ func buildParamProps(defs []config.SkillParamDef) map[string]tools.Property {
 	return props
 }
 
-func paramDefToProperty(d config.SkillParamDef) tools.Property {
+func paramDefToProperty(d skills.ParamDef) tools.Property {
 	desc := d.Description
 	if desc == "" {
 		desc = fmt.Sprintf("Parameter: %s", d.Name)

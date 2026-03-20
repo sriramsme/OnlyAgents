@@ -1,7 +1,6 @@
 package skills
 
 import (
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -54,7 +53,7 @@ func NewBaseSkill(info BaseSkillInfo, t SkillType) *BaseSkill {
 
 // newBaseSkillFromConfig is used internally by factory adapters only.
 func NewBaseSkillFromConfig(
-	cfg config.Skill,
+	cfg Config,
 	t SkillType,
 	toolDefs []tools.ToolDef,
 	groups map[tools.ToolGroup]string,

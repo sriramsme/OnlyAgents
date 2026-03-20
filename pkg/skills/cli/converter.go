@@ -8,9 +8,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/skills"
 )
 
 // ConvertOptions controls how the conversion is performed.
@@ -23,7 +23,7 @@ type ConvertResult struct {
 	// Content is the fully-formatted YAML ready to be written to disk.
 	Content string
 	// Parsed is the validated in-memory representation of Content.
-	Parsed *config.Skill
+	Parsed *skills.Config
 }
 
 // ConvertSKILL takes arbitrary skill content and uses the LLM to rewrite
@@ -69,8 +69,8 @@ func ConvertSKILL(ctx context.Context, client llm.Client, raw string, opts Conve
 	}, nil
 }
 
-// ParseSkillFile converts a loaded SkillFile into a config.Skill.
-func ParseSkillFile(sf *config.Skill) (*config.Skill, error) {
+// ParseSkillFile converts a loaded SkillFile into a skills.Config.
+func ParseSkillFile(sf *skills.Config) (*skills.Config, error) {
 	if len(sf.Tools) == 0 {
 		return nil, fmt.Errorf("skill %q has no tools defined", sf.Name)
 	}
@@ -92,7 +92,7 @@ func ParseSkillFile(sf *config.Skill) (*config.Skill, error) {
 }
 
 // validateYAMLOutput parses and validates the LLM's YAML output.
-func validateYAMLOutput(content string) (*config.Skill, error) {
+func validateYAMLOutput(content string) (*skills.Config, error) {
 	sf, err := parseYAMLString(content)
 	if err != nil {
 		return nil, err
@@ -117,10 +117,10 @@ func validateYAMLOutput(content string) (*config.Skill, error) {
 	return sf, nil
 }
 
-func parseYAMLString(content string) (*config.Skill, error) {
+func parseYAMLString(content string) (*skills.Config, error) {
 	// Strip yaml fences if model wrapped output
 	content = stripYAMLFence(content)
-	var sf config.Skill
+	var sf skills.Config
 	if err := yaml.Unmarshal([]byte(content), &sf); err != nil {
 		return nil, fmt.Errorf("invalid YAML: %w", err)
 	}
@@ -182,11 +182,6 @@ requires:
         manual: <https://install-url>
   env:
     - ENV_VAR_NAME
-
-security:
-  sanitized: true
-  sanitized_at: <RFC3339 timestamp>
-  sanitized_by: converter
 
 groups:
   <skill>_<capability>: "<one-line description of what tools in this group do>"
@@ -275,7 +270,6 @@ RULES:
 - Each parameter needs name, type, and description.
   Valid types: string, number, integer, boolean, array
 - Include validation block only if there are meaningful restrictions.
-- Set security.sanitized_at to current UTC time in RFC3339 format.
 - Set access_level on the skill to the highest access level of any of its tools.
 - For each tool, set access:
   - read: only retrieves or lists data, no side effects

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
@@ -49,9 +48,8 @@ func New(ctx context.Context, client llm.Client) (*SummarizeSkill, error) {
 func init() {
 	skills.Register("summarize", func(
 		ctx context.Context,
-		cfg config.Skill,
+		cfg skills.Config,
 		conn connectors.Connector,
-		security config.SecurityConfig,
 	) (skills.Skill, error) {
 		if conn != nil {
 			return nil, fmt.Errorf("summarize: connector should be nil")
@@ -61,7 +59,7 @@ func init() {
 			return nil, fmt.Errorf("summarize: llm config required")
 		}
 
-		client, err := llm.NewFromConfig(*cfg.LLM)
+		client, err := llm.New(*cfg.LLM)
 		if err != nil {
 			return nil, fmt.Errorf("summarize: llm init: %w", err)
 		}

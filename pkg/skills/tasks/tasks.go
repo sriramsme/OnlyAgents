@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
@@ -45,9 +44,8 @@ func New(ctx context.Context, conn connectors.TasksConnector) (*TasksSkill, erro
 func init() {
 	skills.Register("tasks", func(
 		ctx context.Context,
-		cfg config.Skill,
+		cfg skills.Config,
 		conn connectors.Connector,
-		security config.SecurityConfig,
 	) (skills.Skill, error) {
 		tasksConn, ok := conn.(connectors.TasksConnector)
 		if !ok {

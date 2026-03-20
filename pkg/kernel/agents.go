@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
@@ -228,7 +227,7 @@ func (k *Kernel) findSkill(ctx context.Context, skillName string) (skills.Skill,
 	// 1. Check local registry
 	if cfg, ok := k.skills.Get(skillName); ok {
 		logger.Log.Info("found skill locally", "skill", cfg.Name)
-		return k.skills.Instantiate(k.ctx, cfg.Name, nil, k.cfg.Security)
+		return k.skills.Instantiate(k.ctx, cfg.Name, nil)
 	}
 
 	// 2. Search marketplace
@@ -250,7 +249,7 @@ func (k *Kernel) findSkill(ctx context.Context, skillName string) (skills.Skill,
 	}
 
 	// 4. Load config
-	skillCfg, err := config.LoadSkillConfig(skillPath)
+	skillCfg, err := skills.LoadConfig(skillPath)
 	if err != nil {
 		return nil, fmt.Errorf("load skill config %q: %w", skillPath, err)
 	}
@@ -260,7 +259,7 @@ func (k *Kernel) findSkill(ctx context.Context, skillName string) (skills.Skill,
 	logger.Log.Info("skill registered", "skill", skillCfg.Name)
 
 	// 6. Instantiate
-	return k.skills.Instantiate(k.ctx, skillCfg.Name, nil, k.cfg.Security)
+	return k.skills.Instantiate(k.ctx, skillCfg.Name, nil)
 }
 
 // find_skill execution in kernel
@@ -312,7 +311,7 @@ func (k *Kernel) resolveConnector(skillName string, connectorName string) (conne
 
 // instantiateSkill instantiates a skill and returns its tools; logs warnings on failure
 func (k *Kernel) instantiateSkill(agentID string, skillName string, connector connectors.Connector) skills.Skill {
-	skill, err := k.skills.Instantiate(k.ctx, skillName, connector, k.cfg.Security)
+	skill, err := k.skills.Instantiate(k.ctx, skillName, connector)
 	if err != nil {
 		k.logger.Warn("failed to instantiate skill",
 			"agent", agentID,

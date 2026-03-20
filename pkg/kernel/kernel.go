@@ -123,7 +123,7 @@ func (k *Kernel) RegisterAgent(a agents.RuntimeAgent) {
 	k.agents.Register(a)
 }
 
-func (k *Kernel) RegisterSkill(s config.Skill) {
+func (k *Kernel) RegisterSkill(s skills.Config) {
 	k.skills.Register(s)
 }
 

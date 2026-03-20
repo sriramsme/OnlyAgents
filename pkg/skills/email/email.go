@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
@@ -51,9 +50,8 @@ func New(ctx context.Context, conn connectors.EmailConnector) (*EmailSkill, erro
 func init() {
 	skills.Register("email", func(
 		ctx context.Context,
-		cfg config.Skill,
+		cfg skills.Config,
 		conn connectors.Connector,
-		security config.SecurityConfig,
 	) (skills.Skill, error) {
 		emailConn, ok := conn.(connectors.EmailConnector)
 		if !ok {
