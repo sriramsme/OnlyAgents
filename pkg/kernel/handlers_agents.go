@@ -74,7 +74,8 @@ func (k *Kernel) handleAgentDelegate(evt core.Event) {
 	k.logger.Info("delegating task",
 		"from_agent", evt.AgentID,
 		"to_agent", targetAgent.ID(),
-		"correlation_id", evt.CorrelationID)
+		"correlation_id", evt.CorrelationID,
+		"attachments", len(payload.Attachments))
 
 	// Create execution event for target agent
 	delegateEvent := core.Event{

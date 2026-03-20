@@ -6,6 +6,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -129,8 +130,6 @@ func (c *OpenAIClient) parseResponse(completion *openai.ChatCompletion) *llm.Res
 // OpenAI wire format. Multimodal messages (msg.IsMultimodal() == true) are
 // expanded into typed content parts; plain text messages continue to use the
 // simple string helpers, identical to the existing behaviour.
-//
-// Drop-in replacement for the existing toOpenAIMessages in client.go.
 func (c *OpenAIClient) toOpenAIMessages(messages []llm.Message) []openai.ChatCompletionMessageParamUnion {
 	result := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages))
 
@@ -188,25 +187,42 @@ func (c *OpenAIClient) toOpenAIUserMultimodal(msg llm.Message) openai.ChatComple
 
 		case llm.ContentPartTypeImage:
 			if !c.capabilities.SupportsVision {
-				// Model can't see images — substitute a text note.
 				parts = append(parts, openai.TextContentPart(
-					fmt.Sprintf("[Image attached (%s) — this model does not support vision]", part.MIMEType),
+					fmt.Sprintf("[Image attached: %s — this model does not support vision]", part.Filename),
 				))
 				continue
 			}
-			dataURL := toDataURL(part.MIMEType, part.Data)
-			parts = append(parts, openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
-				URL: dataURL,
-			}))
+			parts = append(parts, openai.ImageContentPart(
+				openai.ChatCompletionContentPartImageImageURLParam{
+					URL: toDataURL(part.MIMEType, part.Data),
+				},
+			))
 
 		case llm.ContentPartTypeDocument:
-			// OpenAI does not have a native PDF content part in the chat
-			// completions API. For now we note the file inline so the model
-			// is aware of it. Full PDF support (via Assistants / file upload)
-			// is a future concern.
-			parts = append(parts, openai.TextContentPart(
-				fmt.Sprintf("[Document attached: %s (%s)]", "", part.MIMEType),
-			))
+			if part.MIMEType == "application/pdf" {
+				// PDFs sent natively — model handles layout, tables, diagrams.
+				// All vision-capable models from OpenAI, Anthropic, and Gemini
+				// support this. Costs vision tokens per page.
+				filePart := openai.ChatCompletionContentPartFileParam{
+					File: openai.ChatCompletionContentPartFileFileParam{
+						FileData: openai.String(toDataURL(part.MIMEType, part.Data)),
+						Filename: openai.String(part.Filename),
+					},
+				}
+				parts = append(parts, openai.ChatCompletionContentPartUnionParam{
+					OfFile: &filePart,
+				})
+			} else if text, ok := media.ExtractText(part.Data); ok {
+				// All text-based formats: source code, JSON, YAML, CSV,
+				// Markdown, config files etc. — inline as text.
+				parts = append(parts, openai.TextContentPart(text))
+			} else {
+				// Truly binary and not an image or PDF.
+				parts = append(parts, openai.TextContentPart(
+					fmt.Sprintf("[Attached file: %s (%s) — binary format not supported]",
+						part.Filename, part.MIMEType),
+				))
+			}
 		}
 	}
 
@@ -218,7 +234,7 @@ func (c *OpenAIClient) toOpenAIUserMultimodal(msg llm.Message) openai.ChatComple
 	return openai.ChatCompletionMessageParamUnion{OfUser: &user}
 }
 
-// toDataURL encodes raw bytes as a data URI suitable for OpenAI's image_url field.
+// toDataURL encodes raw bytes as a data URI.
 // Format: "data:<mimeType>;base64,<base64data>"
 func toDataURL(mimeType string, data []byte) string {
 	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data))

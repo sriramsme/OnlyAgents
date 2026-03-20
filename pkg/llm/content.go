@@ -15,6 +15,7 @@ const (
 type ContentPart struct {
 	Type     ContentPartType
 	Text     string // set when Type == ContentPartTypeText
+	Filename string // original filename — used by providers for file parts
 	MIMEType string // set when Type == ContentPartTypeImage or ContentPartTypeDocument
 	Data     []byte // raw file bytes; provider base64-encodes as needed
 }
@@ -28,18 +29,20 @@ func TextPart(text string) ContentPart {
 }
 
 // ImagePart is a convenience constructor for an image content part.
-func ImagePart(mimeType string, data []byte) ContentPart {
+func ImagePart(filename, mimeType string, data []byte) ContentPart {
 	return ContentPart{
 		Type:     ContentPartTypeImage,
+		Filename: filename,
 		MIMEType: mimeType,
 		Data:     data,
 	}
 }
 
 // DocumentPart is a convenience constructor for a document content part.
-func DocumentPart(mimeType string, data []byte) ContentPart {
+func DocumentPart(filename, mimeType string, data []byte) ContentPart {
 	return ContentPart{
 		Type:     ContentPartTypeDocument,
+		Filename: filename,
 		MIMEType: mimeType,
 		Data:     data,
 	}

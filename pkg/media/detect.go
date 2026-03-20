@@ -12,6 +12,16 @@ import (
 // Falls back to extension-based detection, then "application/octet-stream".
 // Never trusts the MIME type claimed by the platform.
 func DetectMIMEType(data []byte, filename string) string {
+	raw := detectRaw(data, filename)
+	// Strip parameters — store "text/plain" not "text/plain; charset=utf-8"
+	mediaType, _, err := mime.ParseMediaType(raw)
+	if err != nil || mediaType == "" {
+		return raw
+	}
+	return mediaType
+}
+
+func detectRaw(data []byte, filename string) string {
 	// Sniff from content — most reliable
 	if len(data) > 0 {
 		sniffBuf := data

@@ -238,9 +238,9 @@ func buildUserMessage(text string, attachments []*media.Attachment) (llm.Message
 
 		switch {
 		case att.IsImage():
-			parts = append(parts, llm.ImagePart(att.MIMEType, data))
+			parts = append(parts, llm.ImagePart(att.Filename, att.MIMEType, data))
 		case att.IsDocument():
-			parts = append(parts, llm.DocumentPart(att.MIMEType, data))
+			parts = append(parts, llm.DocumentPart(att.Filename, att.MIMEType, data))
 		}
 	}
 
