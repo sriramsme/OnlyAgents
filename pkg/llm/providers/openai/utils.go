@@ -13,7 +13,7 @@ import (
 // buildChatParams creates the parameters for both streaming and non-streaming
 func (c *OpenAIClient) buildChatParams(req *llm.Request) openai.ChatCompletionNewParams {
 	messages := c.toOpenAIMessages(req.Messages)
-	toolParams := c.toOpenAITools(req.Tools)
+	toolParams := toOpenAITools(req.Tools)
 
 	params := openai.ChatCompletionNewParams{
 		Model:    c.model,
@@ -60,7 +60,7 @@ func (c *OpenAIClient) buildChatParams(req *llm.Request) openai.ChatCompletionNe
 }
 
 // toOpenAITools converts tools to OpenAI format
-func (c *OpenAIClient) toOpenAITools(tools []tools.ToolDef) []openai.ChatCompletionToolUnionParam {
+func toOpenAITools(tools []tools.ToolDef) []openai.ChatCompletionToolUnionParam {
 	if len(tools) == 0 {
 		return nil
 	}
@@ -79,7 +79,7 @@ func (c *OpenAIClient) toOpenAITools(tools []tools.ToolDef) []openai.ChatComplet
 }
 
 // parseResponse extracts content and tool calls
-func (c *OpenAIClient) parseResponse(completion *openai.ChatCompletion) *llm.Response {
+func parseResponse(completion *openai.ChatCompletion) *llm.Response {
 	if len(completion.Choices) == 0 {
 		return &llm.Response{
 			Content:   "",
