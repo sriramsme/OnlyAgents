@@ -5,29 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
-
-type Config struct {
-	Provider string
-	Model    string
-
-	// authentication sources (choose one)
-	APIKey string // direct key value
-
-	APIKeyName string // e.g. "OPENAI_API_KEY"
-
-	Vault   vault.Vault
-	KeyPath string
-
-	EnvPath string // optional .env path
-	// optional runtime settings
-	BaseURL string
-
-	Options *config.LLMOptions
-}
 
 // New creates an LLM client for the given provider configuration.
 //
@@ -108,22 +88,6 @@ func New(cfg Config) (Client, error) {
 	return reg.Constructor(providerCfg)
 }
 
-func NewFromConfig(c config.LLM) (Client, error) {
-	return New(toRuntimeConfig(c))
-}
-
-func toRuntimeConfig(c config.LLM) Config {
-	cfg := Config{
-		Provider: c.Provider,
-		Model:    c.Model,
-		KeyPath:  c.APIKeyPath,
-		BaseURL:  c.BaseURL,
-		Options:  c.Options,
-	}
-
-	return cfg
-}
-
 func resolveAPIKey(cfg Config) (string, error) {
 	// 1️⃣ Direct key (highest priority)
 	if cfg.APIKey != "" {
@@ -136,8 +100,8 @@ func resolveAPIKey(cfg Config) (string, error) {
 	}
 
 	// 2️⃣ Vault (internal)
-	if cfg.Vault != nil && cfg.KeyPath != "" {
-		return cfg.Vault.GetSecret(context.Background(), cfg.KeyPath)
+	if cfg.Vault != nil && cfg.APIKeyPath != "" {
+		return cfg.Vault.GetSecret(context.Background(), cfg.APIKeyPath)
 	}
 
 	// 3️⃣ Environment

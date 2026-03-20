@@ -3,7 +3,6 @@ package llm
 import (
 	"context"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -111,7 +110,7 @@ type ProviderConfig struct {
 	Model   string
 	APIKey  string
 	BaseURL string
-	Options *config.LLMOptions
+	Options *Options
 }
 
 // ProviderConstructor creates a new provider client

@@ -5,14 +5,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
+	agentsPkg "github.com/sriramsme/OnlyAgents/pkg/agents"
 )
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 // AgentRegistry loads all agent configs from the agents dir.
-func AgentRegistry(agentsDir string) ([]config.Agent, error) {
-	agents, err := LoadDir[config.Agent](agentsDir)
+func AgentRegistry(agentsDir string) ([]agentsPkg.Config, error) {
+	agents, err := LoadDir[agentsPkg.Config](agentsDir)
 	if err != nil {
 		return nil, fmt.Errorf("agent registry: %w", err)
 	}
@@ -22,8 +22,8 @@ func AgentRegistry(agentsDir string) ([]config.Agent, error) {
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // EnabledAgents returns only agents with Enabled = true.
-func EnabledAgents(agents []config.Agent) []config.Agent {
-	var out []config.Agent
+func EnabledAgents(agents []agentsPkg.Config) []agentsPkg.Config {
+	var out []agentsPkg.Config
 	for _, a := range agents {
 		if a.Enabled {
 			out = append(out, a)
@@ -33,13 +33,13 @@ func EnabledAgents(agents []config.Agent) []config.Agent {
 }
 
 // FindAgent returns the first agent with the given ID, or an error.
-func FindAgent(agents []config.Agent, id string) (config.Agent, error) {
+func FindAgent(agents []agentsPkg.Config, id string) (agentsPkg.Config, error) {
 	for _, a := range agents {
 		if a.ID == id {
 			return a, nil
 		}
 	}
-	return config.Agent{}, fmt.Errorf("agent %q not found", id)
+	return agentsPkg.Config{}, fmt.Errorf("agent %q not found", id)
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ func AgentSetLLM(agentsDir, id, provider, model, vaultPath string) error {
 // ValidateAgents checks for common config problems.
 // Returns a slice of human-readable error strings (not Go errors — these are
 // display messages for the sanitize command).
-func ValidateAgents(agents []config.Agent) []string {
+func ValidateAgents(agents []agentsPkg.Config) []string {
 	var issues []string
 	seenIDs := map[string]int{}
 	executiveCount := 0
@@ -129,7 +129,7 @@ func ValidateAgents(agents []config.Agent) []string {
 // ── Display ───────────────────────────────────────────────────────────────────
 
 // AgentSummaryLine returns a single-line summary of an agent for table output.
-func AgentSummaryLine(a config.Agent) string {
+func AgentSummaryLine(a agentsPkg.Config) string {
 	role := "sub-agent"
 	if a.IsExecutive {
 		role = "executive"

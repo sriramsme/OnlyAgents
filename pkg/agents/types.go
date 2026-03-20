@@ -5,14 +5,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 // public agent interface
-type RuntimeAgent interface {
+type Instance interface {
 	ID() string
 	Name() string
 	Description() string
@@ -32,7 +31,7 @@ type RuntimeAgent interface {
 	AddSkill(skill skills.Skill)
 	GetSkillNames() []string
 	ListToolNames() []string
-	GetSkillBindings() []config.SkillBinding
+	GetSkillBindings() []SkillBinding
 
 	SetHandleFindSkill(fn handleFindSkillFunc)
 	SetResolveAgentName(fn AgentNameResolver)
@@ -52,7 +51,7 @@ type AgentInfo struct {
 
 // AgentRegistry holds all running agents. Lives in kernel.
 type Registry struct {
-	agents    map[string]RuntimeAgent
+	agents    map[string]Instance
 	executive *Agent
 	general   *Agent
 	mu        sync.RWMutex
@@ -104,6 +103,6 @@ type toolCallBuilder struct {
 	Args strings.Builder
 }
 type (
-	handleFindSkillFunc func(ctx context.Context, a RuntimeAgent, skillName string) (any, error)
+	handleFindSkillFunc func(ctx context.Context, a Instance, skillName string) (any, error)
 	AgentNameResolver   func(agentID string) string
 )

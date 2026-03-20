@@ -3,12 +3,11 @@ package agents
 import (
 	"fmt"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-func (a *Agent) GetSkillBindings() []config.SkillBinding {
+func (a *Agent) GetSkillBindings() []SkillBinding {
 	return a.skillsBindings
 }
 

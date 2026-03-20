@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 
@@ -22,18 +21,18 @@ func NewRegistry(
 	cm *memory.ConversationManager,
 	mm *memory.MemoryManager,
 ) (*Registry, error) {
-	configs, err := config.LoadAllAgentsConfig()
+	configs, err := LoadAllConfigs("")
 	if err != nil {
 		return nil, fmt.Errorf("load agent configs: %w", err)
 	}
 
 	r := &Registry{
-		agents: make(map[string]RuntimeAgent),
+		agents: make(map[string]Instance),
 	}
 
 	// Create all agents (but don't start them yet - let caller control that)
 	for _, cfg := range configs {
-		llmClient, err := llm.NewFromConfig(cfg.LLM)
+		llmClient, err := llm.New(cfg.LLM)
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: llm init: %w", cfg.ID, err)
 		}
@@ -77,13 +76,13 @@ func NewRegistry(
 	return r, nil
 }
 
-func (r *Registry) Register(a RuntimeAgent) {
+func (r *Registry) Register(a Instance) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.agents[a.ID()] = a
 }
 
-func (r *Registry) Get(id string) (RuntimeAgent, error) {
+func (r *Registry) Get(id string) (Instance, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -94,15 +93,15 @@ func (r *Registry) Get(id string) (RuntimeAgent, error) {
 	return agent, nil
 }
 
-func (r *Registry) GetExecutive() RuntimeAgent { return r.executive }
+func (r *Registry) GetExecutive() Instance { return r.executive }
 
-func (r *Registry) GetGeneral() RuntimeAgent { return r.general }
+func (r *Registry) GetGeneral() Instance { return r.general }
 
-func (r *Registry) All() []RuntimeAgent {
+func (r *Registry) All() []Instance {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	out := make([]RuntimeAgent, 0, len(r.agents))
+	out := make([]Instance, 0, len(r.agents))
 	for _, a := range r.agents {
 		out = append(out, a)
 	}
@@ -124,7 +123,7 @@ func (r *Registry) ListAll() []string {
 func (r *Registry) StartAll() error {
 	// Get snapshot without holding lock during I/O
 	r.mu.RLock()
-	agents := make([]RuntimeAgent, 0, len(r.agents))
+	agents := make([]Instance, 0, len(r.agents))
 	for _, agent := range r.agents {
 		agents = append(agents, agent)
 	}
@@ -141,7 +140,7 @@ func (r *Registry) StartAll() error {
 
 	for _, agent := range agents {
 		wg.Add(1)
-		go func(a RuntimeAgent) {
+		go func(a Instance) {
 			defer wg.Done()
 			if err := a.Start(); err != nil {
 				resultCh <- result{agentID: a.ID(), err: err}
@@ -165,7 +164,7 @@ func (r *Registry) StartAll() error {
 func (r *Registry) StopAll(ctx context.Context) error {
 	// Get snapshot without holding lock during I/O
 	r.mu.RLock()
-	agents := make([]RuntimeAgent, 0, len(r.agents))
+	agents := make([]Instance, 0, len(r.agents))
 	for _, agent := range r.agents {
 		agents = append(agents, agent)
 	}

@@ -125,10 +125,10 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	}
 
 	cfg := llm.Config{
-		Provider: provider,
-		Model:    model,
-		Vault:    v,
-		KeyPath:  vaultKey,
+		Provider:   provider,
+		Model:      model,
+		Vault:      v,
+		APIKeyPath: vaultKey,
 	}
 	// ── 4. Build client ───────────────────────────────────────────────────────
 	client, err := llm.New(cfg)

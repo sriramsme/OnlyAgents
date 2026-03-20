@@ -18,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
@@ -42,7 +41,7 @@ type Agent struct {
 
 	// Core capabilities
 	llmClient      llm.Client
-	skillsBindings []config.SkillBinding
+	skillsBindings []SkillBinding
 	skills         map[string]skills.Skill // owns lifecycle
 
 	// Tool definitions given to LLM (schema only, no implementation)
@@ -85,7 +84,7 @@ type Agent struct {
 // NewAgent creates an agent. Kernel calls this and injects the shared bus + tool definitions.
 func NewAgent(
 	ctx context.Context, // ← Parent context (kernel's context)
-	cfg config.Agent,
+	cfg Config,
 	llmClient llm.Client,
 	outbox chan<- core.Event,
 	uiBus core.UIBus,

@@ -1,4 +1,4 @@
-package config
+package agents
 
 import (
 	"fmt"
@@ -8,10 +8,12 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
+	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/pkg/llm"
 )
 
 // Config represents the complete agent configuration.
-type Agent struct {
+type Config struct {
 	ID               string         `mapstructure:"id"`
 	Name             string         `mapstructure:"name"`
 	Description      string         `mapstructure:"description"`
@@ -22,7 +24,7 @@ type Agent struct {
 	StreamingEnabled bool           `mapstructure:"streaming_enabled"`
 	MaxConcurrency   int            `mapstructure:"max_concurrency"`
 	BufferSize       int            `mapstructure:"buffer_size"`
-	LLM              LLM            `mapstructure:"llm"`
+	LLM              llm.Config     `mapstructure:"llm"`
 	Skills           []SkillBinding `mapstructure:"skills"`
 	Channels         []string       `mapstructure:"channels"`
 	Soul             Soul           `mapstructure:"soul"`
@@ -92,9 +94,14 @@ type Agent struct {
 	SimilarCallThreshold int `mapstructure:"similar_call_threshold"`
 }
 
+type SkillBinding struct {
+	Name        string `mapstructure:"name"`
+	ConnectorID string `mapstructure:"connector,omitempty"` // empty = use skill default
+}
+
 // load reads an agent config file into a Config struct.
 // It does not validate or attach a vault — callers do that.
-func load(configPath string) (*Agent, error) {
+func LoadConfig(configPath string) (*Config, error) {
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
 	}
@@ -104,7 +111,7 @@ func load(configPath string) (*Agent, error) {
 
 	v := viper.New()
 	v.SetConfigFile(configPath)
-	setAgentDefaults(v)
+	setDefaults(v)
 	v.SetEnvPrefix("ONLYAGENTS")
 	v.AutomaticEnv()
 
@@ -112,7 +119,7 @@ func load(configPath string) (*Agent, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg Agent
+	var cfg Config
 	if err := v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
 		dc.TagName = "mapstructure"
 		dc.WeaklyTypedInput = true
@@ -129,8 +136,10 @@ func load(configPath string) (*Agent, error) {
 // LoadAllAgentsConfig loads every *.yaml under dir, sharing a single vault
 // instance across all of them. Returns the configs and the vault so the
 // caller owns its lifecycle.
-func LoadAllAgentsConfig() ([]*Agent, error) {
-	dir := AgentsDir()
+func LoadAllConfigs(dir string) ([]*Config, error) {
+	if dir == "" {
+		dir = config.AgentsDir()
+	}
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read agents dir: %w", err)
@@ -138,13 +147,13 @@ func LoadAllAgentsConfig() ([]*Agent, error) {
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no agents found in %s", dir)
 	}
-	var configs []*Agent
+	var configs []*Config
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
 			continue
 		}
 
-		cfg, err := load(filepath.Join(dir, f.Name()))
+		cfg, err := LoadConfig(filepath.Join(dir, f.Name()))
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", f.Name(), err)
 		}
@@ -162,7 +171,7 @@ func LoadAllAgentsConfig() ([]*Agent, error) {
 	return configs, nil
 }
 
-func setAgentDefaults(v *viper.Viper) {
+func setDefaults(v *viper.Viper) {
 	v.SetDefault("agent.max_concurrency", 10)
 	v.SetDefault("agent.buffer_size", 100)
 	v.SetDefault("agent.streaming_enabled", true)
@@ -181,4 +190,41 @@ func setAgentDefaults(v *viper.Viper) {
 	v.SetDefault("max_execution_time", 3*time.Minute)
 	v.SetDefault("enable_early_stopping", true)
 	v.SetDefault("similar_call_threshold", 3)
+}
+
+// Validate checks required fields are present.
+func (c *Config) Validate() error {
+	if c.ID == "" {
+		return fmt.Errorf("agent.id is required")
+	}
+	if c.LLM.Provider == "" {
+		return fmt.Errorf("llm.provider is required")
+	}
+	if c.LLM.APIKeyPath == "" {
+		return fmt.Errorf("llm.api_key_path is required (vault path to API key)")
+	}
+	if c.Name == "" {
+		return fmt.Errorf("agent name is required")
+	}
+
+	// Validate execution limits (optional - defaults will be applied)
+	if c.MaxIterations < 0 {
+		return fmt.Errorf("max_iterations cannot be negative")
+	}
+	if c.MaxToolCallsPerIteration < 0 {
+		return fmt.Errorf("max_tool_calls_per_iteration cannot be negative")
+	}
+	if c.MaxCumulativeToolCalls < 0 {
+		return fmt.Errorf("max_cumulative_tool_calls cannot be negative")
+	}
+	if c.MaxToolResultTokens < 0 {
+		return fmt.Errorf("max_tool_result_tokens cannot be negative")
+	}
+	if c.MaxExecutionTime < 0 {
+		return fmt.Errorf("max_execution_time cannot be negative")
+	}
+	if c.SimilarCallThreshold < 0 {
+		return fmt.Errorf("similar_call_threshold cannot be negative")
+	}
+	return nil
 }

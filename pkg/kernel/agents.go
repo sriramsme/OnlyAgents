@@ -20,7 +20,7 @@ func (k *Kernel) assignAgentSkills() error {
 	// Track which skills are claimed by specialized agents
 	claimedSkills := make(map[string]bool)
 
-	var generalAgent agents.RuntimeAgent
+	var generalAgent agents.Instance
 
 	// First pass: specialized agents + find the general agent
 	for _, agent := range k.agents.All() {
@@ -180,7 +180,7 @@ Values: %s`,
 	)
 }
 
-func (k *Kernel) validateSkillBindings(agent agents.RuntimeAgent) error {
+func (k *Kernel) validateSkillBindings(agent agents.Instance) error {
 	for _, binding := range agent.GetSkillBindings() {
 		tmpl, ok := k.skills.Get(binding.Name)
 		if !ok {
@@ -264,7 +264,7 @@ func (k *Kernel) findSkill(ctx context.Context, skillName string) (skills.Skill,
 
 // find_skill execution in kernel
 // plugged into general Agent as a meta-tool
-func (k *Kernel) handleFindSkill(ctx context.Context, agent agents.RuntimeAgent, skillName string) (any, error) {
+func (k *Kernel) handleFindSkill(ctx context.Context, agent agents.Instance, skillName string) (any, error) {
 	skill, err := k.findSkill(ctx, skillName)
 	if err != nil {
 		return nil, err

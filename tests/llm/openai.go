@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/llm/providers/openai"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
@@ -19,7 +18,7 @@ func TestOpenAIClientBasic(t *testing.T) {
 
 	client, err := openai.NewOpenAIClient(llm.ProviderConfig{
 		Model: "gpt-3.5-turbo",
-		Options: &config.LLMOptions{
+		Options: &llm.Options{
 			MaxTokens:   500,
 			Temperature: 0.7,
 		},
@@ -139,7 +138,7 @@ func TestOpenAIWithFactory(t *testing.T) {
 	// For now, create client directly
 	client, err := openai.NewOpenAIClient(llm.ProviderConfig{
 		Model: cfg.LLM.Model,
-		Options: &config.LLMOptions{
+		Options: &llm.Options{
 			MaxTokens:   500,
 			Temperature: 0.7,
 		},
