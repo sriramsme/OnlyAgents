@@ -1,0 +1,21 @@
+name: personal_productivity
+description: Daily life assistant for managing time, tasks, and information. Handles calendars, reminders, notes, and to-dos natively with no third-party integrations required.
+enabled: false
+
+agents:
+  - productivity # calendar, notes, reminders, tasks (Friday — ships by default)
+  - general
+
+skills:
+  - calendar
+  - reminders
+  - notes
+  - tasks
+  - web_search
+  - weather
+  - summarize
+
+connectors:
+  - duckduckgo
+  - brave
+  - perplexity

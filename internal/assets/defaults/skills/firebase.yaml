@@ -1,0 +1,318 @@
+name: firebase
+type: cli
+enabled: true
+access_level: admin
+has_groups: true
+description: >
+  Firebase project management — deploying hosting, functions, and rules,
+  managing preview channels, inspecting logs, and running the local emulator suite.
+capabilities:
+  - project_management
+  - hosting
+  - serverless_functions
+  - local_development
+version: 1.0.0
+instructions: |
+  firebase CLI must be installed and available on PATH.
+  Authenticate by setting FIREBASE_TOKEN in ~/.onlyagents/.env for non-interactive use,
+  or run firebase login interactively before use.
+  Most commands operate in a project directory containing a firebase.json file.
+  Pass working_dir to target a specific project root.
+  Set the active project with firebase_use before running deploy or emulator commands.
+requires:
+  bins:
+    - name: firebase
+      install:
+        brew: brew install firebase-cli
+        manual: https://firebase.google.com/docs/cli#install_the_firebase_cli
+  env:
+    - FIREBASE_TOKEN
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GROUPS
+# ─────────────────────────────────────────────────────────────────────────────
+groups:
+  firebase_project: "Manage projects and apps — list projects, switch active project, list registered apps"
+  firebase_deploy: "Deploy hosting, functions, rules, and indexes to Firebase — full or partial targets"
+  firebase_functions: "Inspect and manage deployed functions — list, stream logs, and delete"
+  firebase_hosting: "Manage hosting sites and preview channels — list, open, and delete channels"
+  firebase_emulators: "Run the local emulator suite — start, export, and import emulator data"
+  firebase_passthrough: "Escape hatch — run any firebase CLI command not covered by named tools"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VALIDATION ANCHORS
+# ─────────────────────────────────────────────────────────────────────────────
+_validation_defaults:
+  read: &read
+    allowed_commands: [firebase]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  write: &write
+    allowed_commands: [firebase]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  destructive: &destructive
+    allowed_commands: [firebase]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+    require_confirm: true
+
+_params:
+  working_dir: &working_dir
+    name: working_dir
+    type: string
+    description: Path to the project root containing firebase.json. Leave empty for current working directory.
+    default: ""
+  project: &project
+    name: project
+    type: string
+    description: Firebase project ID to target. Leave empty to use the currently active project.
+    default: ""
+
+tools:
+  # ── PROJECT ────────────────────────────────────────────────────────────────
+
+  - name: firebase_projects_list
+    description: List all Firebase projects in the authenticated account.
+    group: firebase_project
+    access: read
+    timeout: 15
+    command: "firebase projects:list {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+    validation: *read
+
+  - name: firebase_use
+    description: Set the active Firebase project for subsequent commands. Run this before deploying or starting emulators.
+    group: firebase_project
+    access: write
+    timeout: 10
+    command: "firebase use {{project}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - name: project
+        type: string
+        description: Firebase project ID or alias to activate (use firebase_projects_list to find IDs).
+    validation: *write
+
+  - name: firebase_apps_list
+    description: List all registered apps (web, iOS, Android) in a Firebase project with their app IDs.
+    group: firebase_project
+    access: read
+    timeout: 15
+    command: "firebase apps:list {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+    validation: *read
+
+  # ── DEPLOY ─────────────────────────────────────────────────────────────────
+
+  - name: firebase_deploy
+    description: Deploy to Firebase. Pass targets to deploy specific services — hosting, functions, firestore, storage, remoteconfig. Leave empty to deploy everything in firebase.json.
+    group: firebase_deploy
+    access: write
+    timeout: 300
+    command: "firebase deploy {{#if targets}}--only {{targets}}{{/if}} {{#if message}}--message '{{message}}'{{/if}} {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+      - name: targets
+        type: string
+        description: Comma-separated deploy targets (e.g. "hosting", "functions", "hosting,functions", "firestore:rules"). Leave empty to deploy all.
+        default: ""
+      - name: message
+        type: string
+        description: Optional deploy message shown in the Firebase console history.
+        default: ""
+    validation: *write
+
+  - name: firebase_deploy_preview
+    description: Deploy hosting to a named preview channel. Creates the channel if it does not exist. Useful for staging and PR previews.
+    group: firebase_deploy
+    access: write
+    timeout: 120
+    command: "firebase hosting:channel:deploy {{channel}} {{#if expires}}--expires {{expires}}{{/if}} {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+      - name: channel
+        type: string
+        description: Preview channel name to deploy to (e.g. staging or pr-123).
+      - name: expires
+        type: string
+        description: Channel expiry duration (e.g. 7d, 24h). Leave empty for no expiry.
+        default: ""
+    validation: *write
+
+  # ── FUNCTIONS ──────────────────────────────────────────────────────────────
+
+  - name: firebase_functions_list
+    description: List all deployed Cloud Functions with their region, runtime, and trigger type.
+    group: firebase_functions
+    access: read
+    timeout: 15
+    command: "firebase functions:list {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+    validation: *read
+
+  - name: firebase_functions_log
+    description: Fetch recent logs from a deployed Cloud Function. Pass name to filter to a specific function.
+    group: firebase_functions
+    access: read
+    timeout: 30
+    command: "firebase functions:log {{#if name}}--only {{name}}{{/if}} --lines {{lines}} {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+      - name: name
+        type: string
+        description: Function name to fetch logs for. Leave empty for logs from all functions.
+        default: ""
+      - name: lines
+        type: integer
+        description: Number of log lines to fetch.
+        default: 35
+    validation: *read
+
+  - name: firebase_functions_delete
+    description: Delete one or more deployed Cloud Functions. Irreversible.
+    group: firebase_functions
+    access: admin
+    timeout: 60
+    command: "firebase functions:delete {{names}} {{#if region}}--region {{region}}{{/if}} --force {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+      - name: names
+        type: string
+        description: Space-separated function names to delete (e.g. "sendWelcomeEmail onUserDelete").
+      - name: region
+        type: string
+        description: Region the functions are deployed in (e.g. us-central1). Leave empty for the default region.
+        default: ""
+    validation: *destructive
+
+  # ── HOSTING ────────────────────────────────────────────────────────────────
+
+  - name: firebase_hosting_sites_list
+    description: List all hosting sites in the project.
+    group: firebase_hosting
+    access: read
+    timeout: 15
+    command: "firebase hosting:sites:list {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+    validation: *read
+
+  - name: firebase_hosting_channel_list
+    description: List all preview channels for a hosting site with their URLs and expiry dates.
+    group: firebase_hosting
+    access: read
+    timeout: 15
+    command: "firebase hosting:channel:list {{#if site}}--site {{site}}{{/if}} {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+      - name: site
+        type: string
+        description: Hosting site ID to list channels for. Leave empty for the default site.
+        default: ""
+    validation: *read
+
+  - name: firebase_hosting_channel_delete
+    description: Delete a preview channel and its deployed content.
+    group: firebase_hosting
+    access: admin
+    timeout: 15
+    command: "firebase hosting:channel:delete {{channel}} --force {{#if site}}--site {{site}}{{/if}} {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+      - name: channel
+        type: string
+        description: Preview channel name to delete (use firebase_hosting_channel_list to list channels).
+      - name: site
+        type: string
+        description: Hosting site ID the channel belongs to. Leave empty for the default site.
+        default: ""
+    validation: *destructive
+
+  - name: firebase_open
+    description: Open a Firebase service URL in the browser — hosting, functions, firestore, auth, or the console.
+    group: firebase_hosting
+    access: read
+    timeout: 10
+    command: "firebase open {{service}} {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+      - name: service
+        type: string
+        description: Service to open — hosting, functions, firestore, auth, database, storage, or console.
+        default: "hosting"
+    validation: *read
+
+  # ── EMULATORS ──────────────────────────────────────────────────────────────
+
+  - name: firebase_emulators_start
+    description: Start the local Firebase emulator suite. Pass services to start only specific emulators. Optionally import previously exported data.
+    group: firebase_emulators
+    access: write
+    timeout: 600
+    command: "firebase emulators:start {{#if services}}--only {{services}}{{/if}} {{#if import_dir}}--import '{{import_dir}}'{{/if}} {{#if export_on_exit}}--export-on-exit '{{export_on_exit}}'{{/if}} {{#if project}}--project {{project}}{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - *project
+      - name: services
+        type: string
+        description: Comma-separated emulators to start (e.g. "firestore,auth,functions"). Leave empty for all emulators defined in firebase.json.
+        default: ""
+      - name: import_dir
+        type: string
+        description: Directory to import previously exported emulator data from on startup.
+        default: ""
+      - name: export_on_exit
+        type: string
+        description: Directory to export emulator data to when the emulators are stopped.
+        default: ""
+    validation: *write
+
+  - name: firebase_emulators_export
+    description: Export current emulator data (Firestore, Auth, Realtime Database) to a directory for later import.
+    group: firebase_emulators
+    access: write
+    timeout: 30
+    command: "firebase emulators:export '{{export_dir}}' {{#if force}}--force{{/if}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - name: export_dir
+        type: string
+        description: Absolute path to the directory to export data into.
+      - name: force
+        type: boolean
+        description: Overwrite the export directory if it already exists.
+        default: false
+    validation: *write
+
+  # ── PASSTHROUGH ────────────────────────────────────────────────────────────
+
+  - name: firebase_passthrough
+    description: Run any firebase CLI command not covered by named tools — for remoteconfig, appdistribution, or experimental commands.
+    group: firebase_passthrough
+    access: admin
+    timeout: 60
+    command: "firebase {{args}} {{#if working_dir}}--config {{working_dir}}/firebase.json{{/if}}"
+    parameters:
+      - *working_dir
+      - name: args
+        type: string
+        description: Full argument string to pass directly to the firebase CLI (e.g. "remoteconfig:get --project my-app").
+    validation:
+      allowed_commands: [firebase]
+      denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+      max_output_size: 102400
+      require_confirm: true

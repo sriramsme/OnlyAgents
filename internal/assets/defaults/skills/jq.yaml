@@ -1,0 +1,287 @@
+name: jq
+type: cli
+enabled: true
+access_level: read
+has_groups: true
+description: >
+  JSON querying and transformation — extract fields, filter and search arrays,
+  reshape objects, and format output for downstream tools.
+capabilities:
+  - json_processing
+  - data_extraction
+  - data_transformation
+version: 1.0.0
+instructions: |
+  jq must be installed and available on PATH.
+  All tools accept an input_file param. Leave empty to read from stdin.
+  Filters follow standard jq syntax — see https://jqlang.org/manual/ for reference.
+requires:
+  bins:
+    - name: jq
+      install:
+        brew: brew install jq
+        apt: sudo apt install jq
+        manual: https://jqlang.org/download/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GROUPS
+# ─────────────────────────────────────────────────────────────────────────────
+groups:
+  jq_inspect: "Read and explore JSON structure — pretty-print, list keys, check types, measure length"
+  jq_extract: "Extract fields by path, filter arrays by condition, and search by regex"
+  jq_transform: "Reshape JSON — map, pick fields, sort, group, and deduplicate arrays"
+  jq_format: "Format output for downstream use — CSV, TSV, and raw string extraction"
+  jq_passthrough: "Escape hatch — run any jq filter expression not covered by named tools"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VALIDATION ANCHOR
+# ─────────────────────────────────────────────────────────────────────────────
+_validation_defaults:
+  read: &read
+    allowed_commands: [jq]
+    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+
+_params:
+  input_file: &input_file
+    name: input_file
+    type: string
+    description: Path to a JSON file. Leave empty to read from stdin.
+    default: ""
+
+tools:
+  # ── INSPECT ────────────────────────────────────────────────────────────────
+
+  - name: jq_pretty
+    description: Pretty-print a JSON file or stdin with optional top-level filter. Useful for exploring unknown payloads or validating JSON.
+    group: jq_inspect
+    access: read
+    timeout: 10
+    command: "jq '{{filter}}' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: filter
+        type: string
+        description: jq filter to apply before pretty-printing. Use '.' for the full document.
+        default: "."
+    validation: *read
+
+  - name: jq_keys
+    description: List the keys of an object, or count the elements of an array. Pass path to inspect a nested object or array.
+    group: jq_inspect
+    access: read
+    timeout: 10
+    command: 'jq ''{{path}} | if type == "array" then length else keys end'' {{input_file}}'
+    parameters:
+      - *input_file
+      - name: path
+        type: string
+        description: Path to the target object or array (e.g. '.data' or '.results[0]'). Use '.' for the root.
+        default: "."
+    validation: *read
+
+  - name: jq_type
+    description: Show the JSON type (object, array, string, number, boolean, null) of the root or a nested path.
+    group: jq_inspect
+    access: read
+    timeout: 10
+    command: "jq '{{path}} | type' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: path
+        type: string
+        description: Path to inspect (e.g. '.user' or '.items[0]'). Use '.' for the root.
+        default: "."
+    validation: *read
+
+  # ── EXTRACT ────────────────────────────────────────────────────────────────
+
+  - name: jq_get
+    description: Extract a field or nested path from a JSON document. For arrays, iterates all elements and returns the field value from each.
+    group: jq_extract
+    access: read
+    timeout: 10
+    command: "jq '{{#if iterate}}[.[] | {{path}}]{{else}}{{path}}{{/if}}' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: path
+        type: string
+        description: jq path expression to extract (e.g. '.name', '.user.email', '.items[0].id').
+      - name: iterate
+        type: boolean
+        description: Set true when the root or target is an array and you want the field from every element.
+        default: false
+    validation: *read
+
+  - name: jq_select
+    description: Filter array elements that match a boolean condition. Returns a new array of matching items.
+    group: jq_extract
+    access: read
+    timeout: 10
+    command: "jq '[.{{#if array_path}}{{array_path}} | {{/if}}[] | select({{condition}})]' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: condition
+        type: string
+        description: Boolean jq expression used as the select predicate (e.g. '.status == "active"' or '.age > 30').
+      - name: array_path
+        type: string
+        description: Path to the array to filter if it is not the root (e.g. 'results' or 'data.items'). Leave empty if the root is the array.
+        default: ""
+    validation: *read
+
+  - name: jq_search
+    description: Filter array elements where a string field matches a regular expression.
+    group: jq_extract
+    access: read
+    timeout: 10
+    command: 'jq ''[.[] | select(.{{field}} | tostring | test("{{pattern}}"))]'' {{input_file}}'
+    parameters:
+      - *input_file
+      - name: field
+        type: string
+        description: Field name to match against (e.g. 'name' or 'email').
+      - name: pattern
+        type: string
+        description: Regular expression to test against the field value.
+    validation: *read
+
+  # ── TRANSFORM ──────────────────────────────────────────────────────────────
+
+  - name: jq_map
+    description: Apply a jq expression to every element of an array and return the results as a new array.
+    group: jq_transform
+    access: read
+    timeout: 10
+    command: "jq '[.[] | {{expr}}]' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: expr
+        type: string
+        description: "jq expression to apply to each element (e.g. '.price * 1.2' or {id: .id, upper: (.name | ascii_upcase)})."
+        validation: *read
+
+  - name: jq_pick
+    description: Extract a subset of fields from every object in an array — useful for slimming down large payloads before passing to another tool.
+    group: jq_transform
+    access: read
+    timeout: 10
+    command: "jq '[.[] | {{{fields}}}]' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: fields
+        type: string
+        description: "Comma-separated list of field names to keep, in jq object construction syntax (e.g. 'id, name, email' or 'id, total: .amount')."
+    validation: *read
+
+  - name: jq_sort
+    description: "Sort an array by a field expression. Pass reverse=true for descending order."
+    group: jq_transform
+    access: read
+    timeout: 10
+    command: "jq 'sort_by({{by}}){{#if reverse}} | reverse{{/if}}' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: by
+        type: string
+        description: jq expression to sort by (e.g. '.name' or '.created_at').
+      - name: reverse
+        type: boolean
+        description: Sort in descending order.
+        default: false
+    validation: *read
+
+  - name: jq_group
+    description: Group array elements by a field value. Returns an object keyed by the group value.
+    group: jq_transform
+    access: read
+    timeout: 10
+    command: "jq 'group_by(.{{field}}) | map({(.[0].{{field}} | tostring): .}) | add' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: field
+        type: string
+        description: Field name to group by (e.g. 'status' or 'category').
+    validation: *read
+
+  - name: jq_unique
+    description: Deduplicate array elements by a field value.
+    group: jq_transform
+    access: read
+    timeout: 10
+    command: "jq 'unique_by(.{{field}})' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: field
+        type: string
+        description: Field name to deduplicate by (e.g. 'id' or 'email').
+    validation: *read
+
+  # ── FORMAT ─────────────────────────────────────────────────────────────────
+
+  - name: jq_to_table
+    description: Convert an array of objects to CSV or TSV. Provide a fields filter that constructs the row from each element.
+    group: jq_format
+    access: read
+    timeout: 10
+    command: "jq -r '{{#if header}}({{header}}), {{/if}}(.[] | [{{row_fields}}] | @{{format}})' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: row_fields
+        type: string
+        description: Comma-separated jq expressions for each column (e.g. '.id, .name, .email').
+      - name: format
+        type: string
+        description: Output format — csv or tsv.
+        default: "csv"
+      - name: header
+        type: string
+        description: Header row as a jq array literal (e.g. '"id", "name", "email"'). Leave empty to omit the header.
+        default: ""
+    validation: *read
+
+  - name: jq_raw
+    description: Extract one or more values as plain strings with no JSON quoting. Useful for feeding values into shell variables or other CLI tools.
+    group: jq_format
+    access: read
+    timeout: 10
+    command: "jq -r '{{filter}}' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: filter
+        type: string
+        description: jq filter whose string output you want unquoted (e.g. '.token' or '.[] | .name').
+    validation: *read
+
+  - name: jq_compact
+    description: Output minified single-line JSON. Useful for piping into other tools or storing in environment variables.
+    group: jq_format
+    access: read
+    timeout: 10
+    command: "jq -c '{{filter}}' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: filter
+        type: string
+        description: jq filter to apply before compacting. Use '.' for the full document.
+        default: "."
+    validation: *read
+
+  # ── PASSTHROUGH ────────────────────────────────────────────────────────────
+
+  - name: jq_passthrough
+    description: Run any jq expression not covered by the named tools. Supports all jq flags and multi-file input.
+    group: jq_passthrough
+    access: read
+    timeout: 30
+    command: "jq {{options}} '{{filter}}' {{input_file}}"
+    parameters:
+      - *input_file
+      - name: filter
+        type: string
+        description: Full jq filter expression.
+      - name: options
+        type: string
+        description: Additional jq flags (e.g. '-r', '-c', '-s', '--arg key value'). Leave empty for none.
+        default: ""
+    validation: *read

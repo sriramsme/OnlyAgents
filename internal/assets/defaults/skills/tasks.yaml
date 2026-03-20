@@ -1,0 +1,19 @@
+# skills/tasks.yaml
+name: tasks
+type: native
+enabled: true
+access_level: write
+description: Create and manage to-do lists and tasks
+version: 1.0.0
+capabilities:
+  - task_management
+  - project_tracking
+  - to_do
+connector:
+  required: false # has a local tasks connector enabled by default. uses local db.
+
+  default: local_tasks
+  supported:
+    - local_tasks
+    # - todoist   (future)
+    # - linear    (future)

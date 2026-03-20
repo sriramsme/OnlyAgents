@@ -1,0 +1,49 @@
+# Telegram Bot Connector
+enabled: true # Set to true when ready
+priority: 1
+
+# Operation mode
+mode: polling # or "webhook" for production
+
+# Routing
+default_agent: executive
+
+# Optional: Whitelist users
+# allow_from:
+#   - "123456789"
+
+# Polling settings (mode: polling)
+polling:
+  timeout: 30
+  limit: 100
+  retry_delay: 5
+  max_retries: 3
+
+# Webhook settings (mode: webhook)
+webhook:
+  url: "https://your-domain.com/bot"
+  listen_addr: ":8443"
+  path: "/bot"
+  drop_pending_updates: false
+  max_connections: 40
+
+# DO NOT EDIT BELOW THIS LINE
+# -----------------------------
+platform: telegram
+
+name: Telegram
+
+description: >
+  Telegram is a messaging app that allows you to communicate with your friends and family.
+  It's very easy to get started with this channel.
+
+instructions: |
+  To get started, you'll need to create a bot and get your bot token.
+  1. Open Telegram and search for @BotFather
+  2. Send /newbot and follow the prompts
+  3. Copy the token BotFather gives you
+
+vault_paths:
+  bot_token:
+    path: telegram/bot_token
+    prompt: Bot token

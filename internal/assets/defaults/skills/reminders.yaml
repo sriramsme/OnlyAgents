@@ -1,0 +1,17 @@
+# skills/reminders.yaml
+name: reminders
+type: native
+enabled: true
+access_level: write
+description: Set, view, and manage reminders and alerts
+version: 1.0.0
+capabilities:
+  - reminders
+  - alerts
+  - follow_up
+connector:
+  required: false # has a local connector enabled by default. uses local db.
+  default: local_reminders
+  supported:
+    - local_reminders
+    # - apple_reminders  (future)

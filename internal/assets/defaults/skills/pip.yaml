@@ -1,0 +1,159 @@
+name: pip
+type: cli
+enabled: true
+access_level: write
+has_groups: true
+description: >
+  Python package management — install, remove, and inspect packages,
+  manage requirements files, and check environment health.
+capabilities:
+  - package_management
+  - dependency_management
+version: 1.0.0
+instructions: |
+  pip3 must be installed and available on PATH. It ships with Python 3.
+  Use virtual environments to isolate project dependencies — activate the venv
+  before running these tools, or pass the venv's pip path via pip_bin.
+  All tools use pip3 by default. Override with pip_bin for venv or pip paths.
+requires:
+  bins:
+    - name: pip3
+      install:
+        brew: brew install python
+        apt: sudo apt install python3-pip
+        manual: https://pip.pypa.io/en/stable/installation/
+
+groups:
+  pip_packages: "Install, upgrade, and remove packages"
+  pip_inspect: "List installed packages, show metadata, and check environment health"
+  pip_freeze: "Export and install from requirements files"
+  pip_passthrough: "Escape hatch — run any pip command not covered by named tools"
+
+_validation_defaults:
+  read: &read
+    allowed_commands: [pip3, pip]
+    denied_patterns: ["$(", "`", "&&", "||", ";"]
+    max_output_size: 102400
+  write: &write
+    allowed_commands: [pip3, pip]
+    denied_patterns: ["$(", "`", "&&", "||", ";"]
+    max_output_size: 102400
+
+_params:
+  pip_bin: &pip_bin
+    name: pip_bin
+    type: string
+    description: Path to pip binary to use. Leave empty to use pip3 from PATH.
+    default: "pip3"
+
+tools:
+  # ── PACKAGES ───────────────────────────────────────────────────────────────
+
+  - name: pip_install
+    description: Install one or more packages. Pass upgrade=true to upgrade already-installed packages.
+    group: pip_packages
+    access: write
+    timeout: 120
+    command: "{{pip_bin}} install {{#if upgrade}}--upgrade{{/if}} {{packages}}"
+    parameters:
+      - *pip_bin
+      - name: packages
+        type: string
+        description: Space-separated package names with optional version specifiers (e.g. "requests flask==3.0.0").
+    validation: *write
+
+  - name: pip_uninstall
+    description: Remove one or more installed packages.
+    group: pip_packages
+    access: write
+    timeout: 30
+    command: "{{pip_bin}} uninstall --yes {{packages}}"
+    parameters:
+      - *pip_bin
+      - name: packages
+        type: string
+        description: Space-separated package names to remove.
+    validation: *write
+
+  # ── INSPECT ────────────────────────────────────────────────────────────────
+
+  - name: pip_list
+    description: List all installed packages with their versions. Pass outdated=true to show only packages with newer versions available.
+    group: pip_inspect
+    access: read
+    timeout: 15
+    command: "{{pip_bin}} list {{#if outdated}}--outdated{{/if}}"
+    parameters:
+      - *pip_bin
+      - name: outdated
+        type: boolean
+        description: Show only packages that have newer versions available.
+        default: false
+    validation: *read
+
+  - name: pip_show
+    description: Show detailed metadata for an installed package — version, location, dependencies, and homepage.
+    group: pip_inspect
+    access: read
+    timeout: 10
+    command: "{{pip_bin}} show {{package}}"
+    parameters:
+      - *pip_bin
+      - name: package
+        type: string
+        description: Package name to inspect.
+    validation: *read
+
+  - name: pip_check
+    description: Verify installed packages have compatible dependencies. Reports broken or conflicting requirements.
+    group: pip_inspect
+    access: read
+    timeout: 15
+    command: "{{pip_bin}} check"
+    parameters:
+      - *pip_bin
+    validation: *read
+
+  # ── FREEZE ─────────────────────────────────────────────────────────────────
+
+  - name: pip_freeze
+    description: Output installed packages in requirements.txt format. Pipe the output to a file using fs_write to save it.
+    group: pip_freeze
+    access: read
+    timeout: 10
+    command: "{{pip_bin}} freeze"
+    parameters:
+      - *pip_bin
+    validation: *read
+
+  - name: pip_install_requirements
+    description: Install all packages listed in a requirements file.
+    group: pip_freeze
+    access: write
+    timeout: 120
+    command: "{{pip_bin}} install -r '{{requirements_file}}'"
+    parameters:
+      - *pip_bin
+      - name: requirements_file
+        type: string
+        description: Path to the requirements file (e.g. requirements.txt or requirements/prod.txt).
+    validation: *write
+
+  # ── PASSTHROUGH ────────────────────────────────────────────────────────────
+
+  - name: pip_passthrough
+    description: Run any pip command not covered by named tools — for download, wheel, or config commands.
+    group: pip_passthrough
+    access: write
+    timeout: 120
+    command: "{{pip_bin}} {{args}}"
+    parameters:
+      - *pip_bin
+      - name: args
+        type: string
+        description: Full argument string to pass directly to pip (e.g. "download requests -d ./wheels").
+    validation:
+      allowed_commands: [pip3, pip]
+      denied_patterns: ["$(", "`", "&&", "||", ";"]
+      max_output_size: 102400
+      require_confirm: true

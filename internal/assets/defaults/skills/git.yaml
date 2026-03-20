@@ -1,0 +1,513 @@
+name: git
+type: cli
+enabled: true
+access_level: readwrite
+has_groups: true
+description: >
+  Local git operations for the full development lifecycle — inspecting history,
+  branching, committing, syncing, and history rewriting. For GitHub-specific
+  operations (PRs, issues, Actions) use the github skill instead.
+capabilities:
+  - git
+  - version_control
+  - branching
+  - commit_history
+  - history_rewriting
+version: 2.0.0
+instructions: |
+  git must be installed and available on PATH.
+  Every tool accepts repo_path (default: current working directory).
+  OnlyAgents home dir is ~/.onlyagents/ — repos cloned there are in scope.
+  History-rewriting tools (git:history group) require confirmation before execution.
+requires:
+  bins:
+    - name: git
+      install:
+        brew: brew install git
+        apt: sudo apt install git
+        manual: https://git-scm.com/downloads
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GROUPS
+# Planning step receives this manifest only. Backend injects tools per selected
+# groups before the execution step.
+# ─────────────────────────────────────────────────────────────────────────────
+groups:
+  git_inspect: "Read repo state — status, log, diff, blame, show, stash list, remotes, tags"
+  git_branch: "Create, switch, and delete branches"
+  git_commit: "Stage, commit, restore, revert, cherry-pick, merge"
+  git_sync: "fetch, pull, push"
+  git_stash: "Save, apply, pop, and drop stash entries"
+  git_history: "Rebase, reset, amend — rewrites or discards history"
+  git_passthrough: "Escape hatch — run any git subcommand not covered by named tools"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VALIDATION ANCHORS
+# ─────────────────────────────────────────────────────────────────────────────
+_validation_defaults:
+  read: &read
+    allowed_commands: [git]
+    denied_patterns: ["rm -rf", "$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  write: &write
+    allowed_commands: [git]
+    denied_patterns: ["rm -rf", "$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+  destructive: &destructive
+    allowed_commands: [git]
+    denied_patterns: ["rm -rf", "$(", "`", "&&", "||", ";", ">", ">>"]
+    max_output_size: 102400
+    requires_confirmation: true
+
+_params:
+  repo_path: &repo_path
+    name: repo_path
+    type: string
+    description: Absolute path to repo root. Leave empty for current working directory.
+    default: "."
+
+tools:
+  # ── INSPECT ────────────────────────────────────────────────────────────────
+
+  - name: git_status
+    description: Show working tree status — staged, unstaged, and untracked files
+    group: git_inspect
+    access: read
+    timeout: 10
+    command: "git -C {{repo_path}} status --short --branch"
+    parameters:
+      - *repo_path
+    validation: *read
+
+  - name: git_log
+    description: Show commit history as a decorated graph. Scope by branch or file.
+    group: git_inspect
+    access: read
+    timeout: 10
+    command: "git -C {{repo_path}} log {{ref}} --oneline --decorate --graph --max-count={{limit}} -- {{path_filter}}"
+    parameters:
+      - *repo_path
+      - name: ref
+        type: string
+        description: Branch, tag, or commit to start from. Leave empty for HEAD.
+        default: ""
+      - name: limit
+        type: integer
+        default: 20
+      - name: path_filter
+        type: string
+        description: Limit history to a file or directory. Leave empty for whole repo.
+        default: ""
+    validation: *read
+
+  - name: git_diff
+    description: Show diffs — unstaged changes, staged changes, or between two refs
+    group: git_inspect
+    access: read
+    timeout: 10
+    command: "git -C {{repo_path}} diff {{ref_range}} -- {{path_filter}}"
+    parameters:
+      - *repo_path
+      - name: ref_range
+        type: string
+        description: >
+          Leave empty for unstaged changes. --cached for staged.
+          base...head to compare two refs (e.g. main...feature-branch).
+        default: ""
+      - name: path_filter
+        type: string
+        description: Limit to a file or directory. Leave empty for all.
+        default: ""
+    validation: *read
+
+  - name: git_show
+    description: Show diff and metadata for a specific commit
+    group: git_inspect
+    access: read
+    timeout: 10
+    command: "git -C {{repo_path}} show {{ref}} --stat"
+    parameters:
+      - *repo_path
+      - name: ref
+        type: string
+        default: HEAD
+    validation: *read
+
+  - name: git_blame
+    description: Show who last changed each line of a file and in which commit
+    group: git_inspect
+    access: read
+    timeout: 15
+    command: "git -C {{repo_path}} blame {{file}} --date=short"
+    parameters:
+      - *repo_path
+      - name: file
+        type: string
+        description: File path relative to repo root
+    validation: *read
+
+  - name: git_stash_list
+    description: List all stash entries with index, source branch, and message
+    group: git_inspect
+    access: read
+    timeout: 10
+    command: "git -C {{repo_path}} stash list"
+    parameters:
+      - *repo_path
+    validation: *read
+
+  - name: git_remote_list
+    description: List configured remotes with fetch and push URLs
+    group: git_inspect
+    access: read
+    timeout: 10
+    command: "git -C {{repo_path}} remote -v"
+    parameters:
+      - *repo_path
+    validation: *read
+
+  - name: git_tag_list
+    description: List all tags sorted by version descending
+    group: git_inspect
+    access: read
+    timeout: 10
+    command: "git -C {{repo_path}} tag --sort=-version:refname"
+    parameters:
+      - *repo_path
+    validation: *read
+
+  # ── BRANCH ─────────────────────────────────────────────────────────────────
+
+  - name: git_branch_list
+    description: List local branches sorted by most recent commit
+    group: git_branch
+    access: read
+    timeout: 10
+    command: "git -C {{repo_path}} branch {{flags}} --sort=-committerdate"
+    parameters:
+      - *repo_path
+      - name: flags
+        type: string
+        description: "Optional: --all (include remotes), --merged, --no-merged"
+        default: ""
+    validation: *read
+
+  - name: git_switch
+    description: Switch to an existing branch, or create and switch to a new one
+    group: git_branch
+    access: write
+    timeout: 10
+    command: "git -C {{repo_path}} switch {{flags}} {{branch}} {{start_point}}"
+    parameters:
+      - *repo_path
+      - name: flags
+        type: string
+        description: "Pass -c to create the branch. Leave empty to switch to an existing one."
+        default: ""
+      - name: branch
+        type: string
+        description: Branch name
+      - name: start_point
+        type: string
+        description: Base commit or branch when using -c. Leave empty otherwise.
+        default: ""
+    validation: *write
+
+  - name: git_branch_delete
+    description: Delete a local branch. Use flag -D to force-delete an unmerged branch.
+    group: git_branch
+    access: write
+    timeout: 10
+    command: "git -C {{repo_path}} branch {{flag}} {{branch_name}}"
+    parameters:
+      - *repo_path
+      - name: flag
+        type: string
+        description: "-d for merged, -D to force"
+        default: "-d"
+      - name: branch_name
+        type: string
+    validation: *write
+
+  # ── COMMIT ─────────────────────────────────────────────────────────────────
+
+  - name: git_add
+    description: Stage files for the next commit. Use '.' to stage all changes.
+    group: git_commit
+    access: write
+    timeout: 10
+    command: "git -C {{repo_path}} add -- {{paths}}"
+    parameters:
+      - *repo_path
+      - name: paths
+        type: string
+        description: Space-separated file paths, or '.' for everything
+    validation: *write
+
+  - name: git_restore
+    description: >
+      Discard unstaged changes in working tree (default), or unstage files with --staged.
+      Does not touch committed history.
+    group: git_commit
+    access: write
+    timeout: 10
+    command: "git -C {{repo_path}} restore {{flags}} -- {{paths}}"
+    parameters:
+      - *repo_path
+      - name: flags
+        type: string
+        description: "Leave empty to discard working tree changes. --staged to unstage only."
+        default: ""
+      - name: paths
+        type: string
+        description: Space-separated file paths
+    validation: *write
+
+  - name: git_commit
+    description: Create a commit from all staged changes
+    group: git_commit
+    access: write
+    timeout: 15
+    command: "git -C {{repo_path}} commit --message {{message}}"
+    parameters:
+      - *repo_path
+      - name: message
+        type: string
+        description: Commit message. First line is subject; blank line then body for detail.
+    validation: *write
+
+  - name: git_revert
+    description: >
+      Create a new commit that reverses a given commit. Safe — does not rewrite history.
+    group: git_commit
+    access: write
+    timeout: 15
+    command: "git -C {{repo_path}} revert {{ref}} --no-edit"
+    parameters:
+      - *repo_path
+      - name: ref
+        type: string
+        description: Commit SHA to revert
+    validation: *write
+
+  - name: git_cherry_pick
+    description: Apply the changes from a specific commit onto the current branch
+    group: git_commit
+    access: write
+    timeout: 15
+    command: "git -C {{repo_path}} cherry-pick {{ref}}"
+    parameters:
+      - *repo_path
+      - name: ref
+        type: string
+        description: Commit SHA to cherry-pick
+    validation: *write
+
+  - name: git_merge
+    description: Merge a branch into the current branch (always creates a merge commit)
+    group: git_commit
+    access: write
+    timeout: 15
+    command: "git -C {{repo_path}} merge {{branch}} --no-ff"
+    parameters:
+      - *repo_path
+      - name: git_branch
+        type: string
+        description: Branch or commit to merge in
+    validation: *write
+
+  # ── SYNC ───────────────────────────────────────────────────────────────────
+
+  - name: git_fetch
+    description: Download objects and refs from remote without merging. Prunes stale remote branches.
+    group: git_sync
+    access: write
+    timeout: 30
+    command: "git -C {{repo_path}} fetch {{remote}} --prune"
+    parameters:
+      - *repo_path
+      - name: remote
+        type: string
+        default: origin
+    validation: *write
+
+  - name: git_pull
+    description: Fetch and integrate remote changes into current branch
+    group: git_sync
+    access: write
+    timeout: 30
+    command: "git -C {{repo_path}} pull {{remote}} {{branch}} --rebase={{rebase}}"
+    parameters:
+      - *repo_path
+      - name: remote
+        type: string
+        default: origin
+      - name: branch
+        type: string
+        description: Remote branch. Leave empty to use tracking branch.
+        default: ""
+      - name: rebase
+        type: string
+        description: "true = rebase (default); false = merge commit"
+        default: "true"
+    validation: *write
+
+  - name: git_push
+    description: Push current branch to remote
+    group: git_sync
+    access: write
+    timeout: 30
+    command: "git -C {{repo_path}} push {{remote}} {{branch}} {{flags}}"
+    parameters:
+      - *repo_path
+      - name: remote
+        type: string
+        default: origin
+      - name: branch
+        type: string
+        description: Leave empty for current branch.
+        default: ""
+      - name: flags
+        type: string
+        description: "e.g. --set-upstream on first push"
+        default: ""
+    validation: *write
+
+  # ── STASH ──────────────────────────────────────────────────────────────────
+
+  - name: git_stash
+    description: >
+      Push, pop, apply, or drop stash entries. Combines all stash operations
+      into one tool since they share identical validation and the subcommand
+      is self-documenting.
+    group: git_stash
+    access: write
+    timeout: 10
+    command: "git -C {{repo_path}} stash {{subcommand}}"
+    parameters:
+      - *repo_path
+      - name: subcommand
+        type: string
+        description: >
+          Full stash subcommand and args. Examples:
+            push -m "wip: auth refactor"   — stash with message
+            pop                            — apply most recent and remove
+            apply stash@{1}               — apply without removing
+            drop stash@{0}               — delete an entry
+    validation: *write
+
+  # ── HISTORY ────────────────────────────────────────────────────────────────
+
+  - name: git_commit_amend
+    description: >
+      ⚠️ Rewrite the most recent commit. Updates message and/or staged changes.
+      Do not use on commits already pushed to a shared branch.
+    group: git_history
+    access: write
+    timeout: 15
+    command: "git -C {{repo_path}} commit --amend {{flags}} --message {{message}}"
+    parameters:
+      - *repo_path
+      - name: flags
+        type: string
+        description: "Pass --no-edit to keep the existing message unchanged"
+        default: ""
+      - name: message
+        type: string
+        description: New message (ignored when --no-edit is set)
+        default: ""
+    validation: *destructive
+
+  - name: git_rebase
+    description: >
+      ⚠️ Rebase current branch onto another ref. Pass -i for interactive mode
+      (squash, reorder, drop commits). Rewrites history — do not use on commits
+      already pushed to a shared branch without a follow-up force-with-lease push.
+    group: git_history
+    access: write
+    timeout: 60
+    command: "git -C {{repo_path}} rebase {{flags}} {{onto}}"
+    parameters:
+      - *repo_path
+      - name: flags
+        type: string
+        description: "e.g. -i, --autosquash. Leave empty for a standard rebase."
+        default: ""
+      - name: onto
+        type: string
+        description: Branch or commit to rebase onto (e.g. main, origin/main, HEAD~3)
+    validation: *destructive
+
+  - name: git_rebase_control
+    description: Continue, skip, or abort an in-progress rebase
+    group: git_history
+    access: write
+    timeout: 10
+    command: "git -C {{repo_path}} rebase {{action}}"
+    parameters:
+      - *repo_path
+      - name: action
+        type: string
+        description: "--continue | --skip | --abort"
+    validation: *write
+
+  - name: git_reset
+    description: >
+      ⚠️ Move HEAD to an earlier commit.
+      --soft  keeps changes staged.
+      --mixed unstages changes but keeps them in working tree (default).
+      --hard  DISCARDS all changes permanently. Unrecoverable without reflog.
+    group: git_history
+    access: write
+    timeout: 10
+    danger: true
+    command: "git -C {{repo_path}} reset {{mode}} {{ref}}"
+    parameters:
+      - *repo_path
+      - name: mode
+        type: string
+        description: "--soft | --mixed | --hard"
+        default: "--mixed"
+      - name: ref
+        type: string
+        description: Target commit (e.g. HEAD~1, abc1234)
+    validation: *destructive
+
+  - name: git_push_force
+    description: >
+      ⚠️ Force-push with lease. Only succeeds if no teammate has pushed since
+      your last fetch. Rewrites remote history — coordinate before using on
+      shared branches.
+    group: git_history
+    access: write
+    timeout: 30
+    command: "git -C {{repo_path}} push {{remote}} {{branch}} --force-with-lease"
+    parameters:
+      - *repo_path
+      - name: remote
+        type: string
+        default: origin
+      - name: branch
+        type: string
+        description: Leave empty for current branch.
+        default: ""
+    validation: *destructive
+
+  # ── PASSTHROUGH ────────────────────────────────────────────────────────────
+
+  - name: git_run
+    description: >
+      Run any git subcommand not covered by the named tools. Use only when
+      no named tool fits. Must start with a valid git subcommand.
+    group: git_passthrough
+    access: write
+    timeout: 30
+    command: "git -C {{repo_path}} {{subcommand}}"
+    parameters:
+      - *repo_path
+      - name: subcommand
+        type: string
+        description: >
+          Full subcommand and args — do not include the leading "git".
+          Examples: "bisect start", "worktree list", "submodule update --init"
+    validation: *write
