@@ -4,11 +4,9 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/sriramsme/OnlyAgents/internal/bootstrap"
-	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
+	"github.com/sriramsme/OnlyAgents/internal/paths"
 )
 
 var (
@@ -41,23 +39,12 @@ func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }
 
-func resolvePaths() (*cmdutil.Paths, error) {
-	p, err := bootstrap.Init()
+func resolvePaths() (*paths.Paths, error) {
+	p, err := paths.Init()
 	if err != nil {
 		return nil, fmt.Errorf("resolve paths: %w", err)
 	}
-	return &cmdutil.Paths{
-		Home:       p.Home,
-		Agents:     p.Agents,
-		Channels:   p.Channels,
-		Connectors: p.Connectors,
-		Skills:     p.Skills,
-		Councils:   p.Councils,
-		DBPath:     p.DBPath,
-		UserPath:   p.UserPath,
-		VaultPath:  p.VaultPath,
-		EnvPath:    filepath.Join(p.Home, ".env"),
-	}, nil
+	return p, nil
 }
 
 // # Run server

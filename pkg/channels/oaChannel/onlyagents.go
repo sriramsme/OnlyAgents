@@ -22,7 +22,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/google/uuid"
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -60,12 +59,12 @@ type OAChannel struct {
 // NewChannel satisfies the channels.ChannelConstructor signature.
 func NewChannel(
 	ctx context.Context,
-	cfg config.Channel,
+	cfg channels.Config,
 	v vault.Vault,
 	eventBus chan<- core.Event,
 ) (channels.Channel, error) {
 	oaCfg := &Config{
-		Channel: cfg,
+		Config: &cfg,
 	}
 
 	// Decode RawConfig on top for telegram-specific fields only
@@ -81,7 +80,7 @@ func NewChannel(
 	if err != nil {
 		return nil, fmt.Errorf("create decoder: %w", err)
 	}
-	if err := decoder.Decode(cfg.RawConfig); err != nil {
+	if err := decoder.Decode(cfg.Config); err != nil {
 		return nil, fmt.Errorf("decode oaChannel config: %w", err)
 	}
 	chanCtx, cancel := context.WithCancel(ctx)

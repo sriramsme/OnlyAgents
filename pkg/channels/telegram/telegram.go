@@ -13,7 +13,6 @@ import (
 	"github.com/mymmrac/telego"
 	th "github.com/mymmrac/telego/telegohandler"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -57,14 +56,14 @@ type TelegramChannel struct {
 // NewChannel creates a new Telegram channel
 func NewChannel(
 	ctx context.Context,
-	cfg config.Channel,
+	cfg channels.Config,
 	vault vault.Vault,
 	eventBus chan<- core.Event,
 ) (channels.Channel, error) {
 	// Decode RawConfig into telegram-specific fields only
 	// Start with base fields already decoded — VaultPaths, Enabled, etc. all present
 	telegramCfg := &Config{
-		Channel: cfg,
+		Config: cfg, // #nosec G101 -- RawConfig is not user-controlled
 	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
@@ -79,7 +78,7 @@ func NewChannel(
 	if err != nil {
 		return nil, fmt.Errorf("create decoder: %w", err)
 	}
-	if err := decoder.Decode(cfg.RawConfig); err != nil {
+	if err := decoder.Decode(cfg.Config); err != nil {
 		return nil, fmt.Errorf("decode telegram config: %w", err)
 	}
 

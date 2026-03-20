@@ -7,12 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/sriramsme/OnlyAgents/internal/config"
 )
 
 func init() {
-	registerProvider(ProviderEnv, func(cfg config.Vault) (Vault, error) {
+	registerProvider(ProviderEnv, func(cfg Config) (Vault, error) {
 		return NewEnvVault(cfg)
 	})
 }
@@ -23,7 +21,7 @@ type EnvVault struct {
 }
 
 // NewEnvVault creates a new environment variable vault
-func NewEnvVault(cfg config.Vault) (*EnvVault, error) {
+func NewEnvVault(cfg Config) (*EnvVault, error) {
 	// .env loading is optional — only for local dev convenience.
 	// In production, env vars are set by the runtime directly.
 	if cfg.DotEnvPath != "" {

@@ -1,4 +1,4 @@
-package config
+package channels
 
 import (
 	"fmt"
@@ -7,10 +7,30 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
+
+	"github.com/sriramsme/OnlyAgents/internal/paths"
+	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 )
 
+// Channel represents a loaded channel config file
+type Config struct {
+	Name         string                     `mapstructure:"name"`
+	Description  string                     `mapstructure:"description"`
+	Instructions string                     `mapstructure:"instructions"`
+	Priority     int                        `mapstructure:"priority"`
+	Platform     string                     `mapstructure:"platform"`
+	Enabled      bool                       `mapstructure:"enabled"`
+	VaultPaths   map[string]vault.PathEntry `mapstructure:"vault_paths"`
+	AllowFrom    []string                   `mapstructure:"allow_from,omitempty"`
+
+	// Config is the entire config for platform-specific unmarshaling
+	Config map[string]interface{} `mapstructure:",remain"` // the entire config for platform-specific unmarshaling
+
+	// defaultAgent string
+}
+
 // LoadConnectorConfig loads a single connector config file
-func loadChannelConfig(configPath string) (*Channel, error) {
+func LoadConfig(configPath string) (*Config, error) {
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
 	}
@@ -24,7 +44,7 @@ func loadChannelConfig(configPath string) (*Channel, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg Channel
+	var cfg Config
 	if err := v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
 		dc.TagName = "mapstructure"
 		dc.WeaklyTypedInput = true
@@ -43,22 +63,24 @@ func loadChannelConfig(configPath string) (*Channel, error) {
 	return &cfg, nil
 }
 
-// LoadAllConnectorConfigs loads all connector configs from a directory
-func LoadAllChannelConfigs() (map[string]*Channel, error) {
-	dir := ChannelsDir()
+// LoadAllConfigs loads all channel configs from a directory
+func LoadAllConfigs(dir string) (map[string]*Config, error) {
+	if dir == "" {
+		dir = paths.ChannelsDir()
+	}
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read connectors dir: %w", err)
 	}
 
-	configs := make(map[string]*Channel)
+	configs := make(map[string]*Config)
 
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
 			continue
 		}
 
-		cfg, err := loadChannelConfig(filepath.Join(dir, f.Name()))
+		cfg, err := LoadConfig(filepath.Join(dir, f.Name()))
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", f.Name(), err)
 		}

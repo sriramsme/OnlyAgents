@@ -21,8 +21,9 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/sriramsme/OnlyAgents/internal/bootstrap"
+	"github.com/sriramsme/OnlyAgents/internal/assets"
 	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/internal/paths"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
@@ -69,9 +70,14 @@ type Kernel struct {
 }
 
 func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus) (*Kernel, error) {
-	paths, err := bootstrap.Init()
+	paths, err := paths.Init()
 	if err != nil {
 		return nil, fmt.Errorf("init paths: %w", err)
+	}
+
+	err = assets.Seed(paths)
+	if err != nil {
+		return nil, fmt.Errorf("seed assets: %w", err)
 	}
 
 	err = media.Init(paths.Media)

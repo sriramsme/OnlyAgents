@@ -1,18 +1,17 @@
 package telegram
 
-import "github.com/sriramsme/OnlyAgents/internal/config"
+import "github.com/sriramsme/OnlyAgents/pkg/channels"
 
 // Config holds Telegram-specific configuration
 type Config struct {
-	config.Channel `mapstructure:",squash"`
-	Mode           string `mapstructure:"mode"` // "polling" or "webhook"
+	channels.Config `mapstructure:",squash"`
+	Mode            string `mapstructure:"mode"` // "polling" or "webhook"
 
 	// Routing
 	DefaultAgent string `mapstructure:"default_agent"` // Usually "executive"
 
 	// Security
-	AllowFrom []string `mapstructure:"allow_from,omitempty"`
-	Proxy     string   `mapstructure:"proxy,omitempty"`
+	Proxy string `mapstructure:"proxy,omitempty"`
 
 	// Mode-specific
 	Webhook *WebhookConfig `mapstructure:"webhook,omitempty"`

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sriramsme/OnlyAgents/internal/bootstrap"
 	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/internal/paths"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
@@ -37,7 +37,7 @@ type kernelComponents struct {
 
 func loadComponents(
 	ctx context.Context,
-	paths *bootstrap.Paths,
+	paths *paths.Paths,
 	cfg *config.AppConfig,
 	kernelBus chan core.Event,
 	uiBus core.UIBus,
@@ -60,7 +60,7 @@ func loadComponents(
 		return c, fmt.Errorf("load memory manager: %w", err)
 	}
 
-	v, err := vault.Load()
+	v, err := vault.Load(paths.VaultPath)
 	if err != nil {
 		return c, fmt.Errorf("load vault: %w", err)
 	}

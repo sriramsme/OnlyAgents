@@ -8,6 +8,7 @@ import (
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/internal/paths"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 )
 
@@ -104,7 +105,7 @@ type ExecutorConfig struct {
 // LoadAllConfigs loads all *.yaml files from the skills config dir.
 func LoadAllConfigs(dir string) (map[string]*Config, error) {
 	if dir == "" {
-		dir = config.SkillsDir()
+		dir = paths.SkillsDir()
 	}
 	files, err := os.ReadDir(dir)
 	if err != nil {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
@@ -17,7 +16,7 @@ func NewRegistry(
 	bus chan<- core.Event,
 ) (*Registry, error) {
 	// Load all channel configs
-	configs, err := config.LoadAllChannelConfigs()
+	configs, err := LoadAllConfigs("")
 	if err != nil {
 		return nil, fmt.Errorf("load channel configs: %w", err)
 	}

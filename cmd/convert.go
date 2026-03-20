@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
-	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/internal/paths"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
@@ -62,7 +62,7 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	}
 
 	// ── 2. Load vault ─────────────────────────────────────────────────────────
-	v, err := vault.Load()
+	v, err := vault.Load("")
 	if err != nil {
 		return fmt.Errorf("load vault: %w", err)
 	}
@@ -158,7 +158,7 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	if outName == "" {
 		outName = string(result.Parsed.Name)
 	}
-	outPath := filepath.Join(config.SkillsDir(), outName+".yaml")
+	outPath := filepath.Join(paths.SkillsDir(), outName+".yaml")
 	if err := os.WriteFile(outPath, []byte(result.Content), 0o600); err != nil { //nolint:gosec
 		return fmt.Errorf("write output: %w", err)
 	}

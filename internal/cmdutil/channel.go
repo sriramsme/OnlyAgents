@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/huh"
-	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/pkg/channels"
 )
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 // ChannelRegistry loads all channel configs from the channels dir.
-func ChannelRegistry(channelsDir string) ([]config.Channel, error) {
-	channels, err := LoadDir[config.Channel](channelsDir)
+func ChannelRegistry(channelsDir string) ([]channels.Config, error) {
+	channels, err := LoadDir[channels.Config](channelsDir)
 	if err != nil {
 		return nil, fmt.Errorf("channel registry: %w", err)
 	}
@@ -22,9 +22,9 @@ func ChannelRegistry(channelsDir string) ([]config.Channel, error) {
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // EnabledChannels returns only channels with Enabled = true.
-func EnabledChannels(channels []config.Channel) []config.Channel {
-	var out []config.Channel
-	for _, c := range channels {
+func EnabledChannels(channelList []channels.Config) []channels.Config {
+	var out []channels.Config
+	for _, c := range channelList {
 		if c.Enabled {
 			out = append(out, c)
 		}
@@ -32,16 +32,16 @@ func EnabledChannels(channels []config.Channel) []config.Channel {
 	return out
 }
 
-func FindChannelByPlatform(channels []config.Channel, platform string) (config.Channel, error) {
-	for _, c := range channels {
+func FindChannelByPlatform(channelList []channels.Config, platform string) (channels.Config, error) {
+	for _, c := range channelList {
 		if c.Platform == platform {
 			return c, nil
 		}
 	}
-	return config.Channel{}, fmt.Errorf("channel with platform %q not found", platform)
+	return channels.Config{}, fmt.Errorf("channel with platform %q not found", platform)
 }
 
-func SetupChannel(cfg config.Channel, envPath, channelsDir string) error {
+func SetupChannel(cfg channels.Config, envPath, channelsDir string) error {
 	if cfg.Instructions != "" {
 		Hint(cfg.Instructions)
 	}
@@ -89,7 +89,7 @@ func ChannelSetVaultKey(channelsDir, name, keyField, vaultPath string) error {
 	return nil
 }
 
-func ChannelEnable(channelsDir string, cfg config.Channel, enabled bool) error {
+func ChannelEnable(channelsDir string, cfg channels.Config, enabled bool) error {
 	path := ChannelConfigPath(channelsDir, cfg.Platform)
 	var raw map[string]any
 	if err := ReadYAML(path, &raw); err != nil {
@@ -102,7 +102,7 @@ func ChannelEnable(channelsDir string, cfg config.Channel, enabled bool) error {
 // ── Validation ────────────────────────────────────────────────────────────────
 
 // ValidateChannels checks for common channel config problems.
-func ValidateChannels(channels []config.Channel) []string {
+func ValidateChannels(channels []channels.Config) []string {
 	var issues []string
 	seenNames := map[string]int{}
 
@@ -132,7 +132,7 @@ func ValidateChannels(channels []config.Channel) []string {
 // ── Display ───────────────────────────────────────────────────────────────────
 
 // ChannelSummaryLine returns a single-line summary for table output.
-func ChannelSummaryLine(c config.Channel) string {
+func ChannelSummaryLine(c channels.Config) string {
 	return fmt.Sprintf("%-16s %-12s %s",
 		c.Name,
 		c.Platform,

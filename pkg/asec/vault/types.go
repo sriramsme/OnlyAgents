@@ -39,6 +39,13 @@ type Vault interface {
 	Name() string
 }
 
+// VaultPathEntry is shared across channels, connectors, or any resource
+// that needs to collect secrets from the user.
+type PathEntry struct {
+	Path   string `mapstructure:"path"`   // e.g. brave/api_key
+	Prompt string `mapstructure:"prompt"` // shown to user
+}
+
 // Secret represents a secret with metadata
 type Secret struct {
 	Key       string

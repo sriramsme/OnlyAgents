@@ -20,7 +20,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/internal/api"
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
 	"github.com/sriramsme/OnlyAgents/internal/auth"
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/internal/ui"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	_ "github.com/sriramsme/OnlyAgents/pkg/channels/bootstrap"
@@ -152,7 +151,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		wsHandler = oaCh.WSHandler
 	}
 
-	v, err := vault.Load()
+	v, err := vault.Load("")
 	if err != nil {
 		return fmt.Errorf("load vault: %w", err)
 	}
@@ -216,8 +215,8 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 // ── Shared helpers (used by start.go and auth.go) ─────────────────────────────
 
-func loadServerConfig() (*config.Server, error) {
-	return config.LoadServerConfig()
+func loadServerConfig() (*api.Config, error) {
+	return api.LoadConfig()
 }
 
 func dataDir() string {

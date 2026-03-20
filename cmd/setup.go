@@ -10,9 +10,10 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 	"github.com/sriramsme/OnlyAgents/internal/auth"
-	"github.com/sriramsme/OnlyAgents/internal/bootstrap"
 	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
 	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/internal/paths"
+	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"gopkg.in/yaml.v3"
 )
 
@@ -61,20 +62,11 @@ func (s *bootstrapStep) IsDone(ctx *cmdutil.SetupContext) bool {
 }
 
 func (s *bootstrapStep) Run(ctx *cmdutil.SetupContext) error {
-	paths, err := bootstrap.Init()
+	paths, err := paths.Init()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
-	ctx.Paths = &cmdutil.Paths{
-		Home:      paths.Home,
-		Agents:    paths.Agents,
-		Channels:  paths.Channels,
-		Skills:    paths.Skills,
-		DBPath:    paths.DBPath,
-		UserPath:  paths.UserPath,
-		VaultPath: paths.VaultPath,
-		EnvPath:   filepath.Join(paths.Home, ".env"),
-	}
+	ctx.Paths = paths
 	cmdutil.Success("created %s", paths.Home)
 	return nil
 }
@@ -372,7 +364,7 @@ func (s *channelStep) Run(ctx *cmdutil.SetupContext) error {
 	}
 
 	// Exclude oachannel from the list — it needs no setup
-	var setupable []config.Channel
+	var setupable []channels.Config
 	for _, c := range configs {
 		if c.Platform != "oachannel" {
 			setupable = append(setupable, c)

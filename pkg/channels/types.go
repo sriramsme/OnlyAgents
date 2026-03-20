@@ -37,19 +37,6 @@ type TokenStreamer interface {
 	SendToken(ctx context.Context, channel *core.ChannelMetadata, token, accumulated string) error
 }
 
-// BaseConfig is the minimal config all connectors must have
-// Platform-specific fields live in their own packages
-type Config struct {
-	Platform string `yaml:"platform"` // "telegram", "discord", etc.
-	Enabled  bool   `yaml:"enabled"`  // Only load if true
-
-	// Routing
-	DefaultAgent string `yaml:"default_agent"` // Usually "executive"
-
-	// Security
-	AllowFrom []string `yaml:"allow_from,omitempty"`
-}
-
 // IncomingMessage represents a message from a platform
 type IncomingMessage struct {
 	MessageID   string                `json:"message_id"`
