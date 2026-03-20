@@ -19,10 +19,6 @@ requires:
         apt: sudo apt install curl
         manual: https://curl.se/download.html
   env:
-security:
-  sanitized: true
-  sanitized_at: 2026-03-13T00:00:00Z
-  sanitized_by: converter
 
 groups:
   weather: "Get current weather, forecasts, and historical weather data"

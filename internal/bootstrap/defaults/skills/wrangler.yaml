@@ -26,10 +26,6 @@ requires:
         manual: https://developers.cloudflare.com/workers/wrangler/install-and-update/
   env:
     - CLOUDFLARE_API_TOKEN
-security:
-  sanitized: true
-  sanitized_at: 2026-03-18T00:00:00Z
-  sanitized_by: onlyagents
 
 groups:
   wrangler_workers: "Deploy and manage Cloudflare Workers — dev, deploy, delete, tail logs"

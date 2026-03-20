@@ -22,10 +22,6 @@ requires:
         brew: brew install python
         apt: sudo apt install python3-pip
         manual: https://pip.pypa.io/en/stable/installation/
-security:
-  sanitized: true
-  sanitized_at: 2026-03-18T00:00:00Z
-  sanitized_by: onlyagents
 
 groups:
   pip_packages: "Install, upgrade, and remove packages"

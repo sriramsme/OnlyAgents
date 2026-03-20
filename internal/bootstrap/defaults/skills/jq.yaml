@@ -22,10 +22,6 @@ requires:
         brew: brew install jq
         apt: sudo apt install jq
         manual: https://jqlang.org/download/
-security:
-  sanitized: true
-  sanitized_at: 2026-03-18T00:00:00Z
-  sanitized_by: onlyagents
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GROUPS

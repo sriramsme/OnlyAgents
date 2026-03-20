@@ -25,10 +25,6 @@ requires:
         brew: brew install --cask docker
         apt: sudo apt install docker.io
         manual: https://docs.docker.com/get-docker/
-security:
-  sanitized: true
-  sanitized_at: 2026-03-18T00:00:00Z
-  sanitized_by: onlyagents
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GROUPS

@@ -22,10 +22,6 @@ requires:
         brew: brew install node
         apt: sudo apt install nodejs npm
         manual: https://nodejs.org/en/download/
-security:
-  sanitized: true
-  sanitized_at: 2026-03-18T00:00:00Z
-  sanitized_by: onlyagents
 
 groups:
   npm_project: "Initialize and inspect the project — init, list installed packages, and view package info"

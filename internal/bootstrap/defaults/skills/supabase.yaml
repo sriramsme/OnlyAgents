@@ -27,10 +27,6 @@ requires:
         manual: https://supabase.com/docs/guides/cli/getting-started
   env:
     - SUPABASE_ACCESS_TOKEN
-security:
-  sanitized: true
-  sanitized_at: 2026-03-18T00:00:00Z
-  sanitized_by: onlyagents
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GROUPS
