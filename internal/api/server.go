@@ -8,20 +8,19 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/internal/api/handlers"
 	"github.com/sriramsme/OnlyAgents/internal/auth"
-	"github.com/sriramsme/OnlyAgents/internal/config"
 )
 
 // Server is the OnlyAgents HTTP server.
 type Server struct {
 	httpServer *http.Server
-	config     config.Server
+	config     Config
 	logger     *slog.Logger
 }
 
 // NewServer creates a new API server.
 // deps holds all the dependencies handlers need.
 func NewServer(
-	cfg config.Server,
+	cfg Config,
 	deps handlers.Deps,
 	a *auth.Auth,
 	apiKey string,

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/internal/auth"
-	"github.com/sriramsme/OnlyAgents/internal/config"
 )
 
 type (
@@ -19,13 +18,13 @@ type (
 
 // Middleware holds the server config needed to build middleware chains
 type Middleware struct {
-	cfg    config.Server
+	cfg    Config
 	auth   *auth.Auth
 	apiKey string
 	logger *slog.Logger
 }
 
-func NewMiddleware(cfg config.Server, a *auth.Auth, apiKey string, logger *slog.Logger) *Middleware {
+func NewMiddleware(cfg Config, a *auth.Auth, apiKey string, logger *slog.Logger) *Middleware {
 	return &Middleware{cfg: cfg, auth: a, apiKey: apiKey, logger: logger}
 }
 
