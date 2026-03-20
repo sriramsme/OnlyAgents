@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"github.com/spf13/viper"
+
+	"github.com/sriramsme/OnlyAgents/internal/paths"
 )
 
 type User struct {
@@ -46,7 +48,7 @@ type UserPreferences struct {
 
 // LoadUserConfig loads the user profile
 func LoadUserConfig() (*User, error) {
-	configPath := UserConfigPath()
+	configPath := paths.UserConfigPath()
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("user config not found: %s", configPath)
 	}
@@ -68,7 +70,7 @@ func LoadUserConfig() (*User, error) {
 
 func SaveUserConfig(cfg *User) error {
 	v := viper.New()
-	path := UserConfigPath()
+	path := paths.UserConfigPath()
 	v.SetConfigFile(path)
 
 	// Marshal the config to map for viper

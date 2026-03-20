@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/internal/paths"
 )
 
 // CouncilRegistry loads all council configs from the councils dir.
@@ -38,7 +39,7 @@ func EnabledCouncils(councils []config.CouncilConfig) []config.CouncilConfig {
 
 // EnableCouncil activates all agents, skills, and connectors in the council.
 // Returns warnings for components that couldn't be found.
-func EnableCouncil(cfg config.CouncilConfig, paths *Paths) []string {
+func EnableCouncil(cfg config.CouncilConfig, paths *paths.Paths) []string {
 	var warnings []string
 
 	for _, name := range cfg.Agents {
@@ -73,7 +74,7 @@ func EnableCouncil(cfg config.CouncilConfig, paths *Paths) []string {
 
 // DisableCouncil deactivates resources that are not claimed by any other
 // active council. Resources shared with another active council are left alone.
-func DisableCouncil(cfg config.CouncilConfig, paths *Paths) []string {
+func DisableCouncil(cfg config.CouncilConfig, paths *paths.Paths) []string {
 	var warnings []string
 
 	// Load all councils to compute what other active councils need
@@ -185,7 +186,7 @@ type ResourceStatus struct {
 	Enabled bool
 }
 
-func CouncilInfo(cfg config.CouncilConfig, paths *Paths) CouncilStatus {
+func CouncilInfo(cfg config.CouncilConfig, paths *paths.Paths) CouncilStatus {
 	status := CouncilStatus{
 		Name:   cfg.Name,
 		Active: cfg.Enabled,

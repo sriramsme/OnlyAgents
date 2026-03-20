@@ -8,6 +8,8 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/sriramsme/OnlyAgents/internal/paths"
 )
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -31,7 +33,7 @@ var (
 // collected data to subsequent steps).
 type SetupContext struct {
 	// Populated by BootstrapStep
-	Paths *Paths
+	Paths *paths.Paths
 
 	// Populated by UserIdentityStep
 	UserName          string
@@ -63,21 +65,6 @@ type LLMChoice struct {
 	Model      string
 	APIKeyPath string // vault path, e.g. "anthropic/api_key"
 	EnvVarName string // e.g. "ANTHROPIC_API_KEY"
-}
-
-// Paths mirrors bootstrap.Paths — defined here to avoid circular imports.
-// The bootstrap step populates this from the real bootstrap.Init() result.
-type Paths struct {
-	Home       string
-	Agents     string
-	Channels   string
-	Connectors string
-	Skills     string
-	Councils   string
-	DBPath     string
-	UserPath   string
-	VaultPath  string
-	EnvPath    string
 }
 
 func NewSetupContext() *SetupContext {

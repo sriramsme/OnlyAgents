@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+
+	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 )
 
 type AppConfig struct {
@@ -24,10 +26,10 @@ type SecurityConfig struct {
 }
 
 type MarketplaceConfig struct {
-	Name       string                    `mapstructure:"name"`
-	Enabled    bool                      `mapstructure:"enabled"`
-	URL        string                    `mapstructure:"url"`
-	VaultPaths map[string]VaultPathEntry `mapstructure:"vault_paths"`
+	Name       string                     `mapstructure:"name"`
+	Enabled    bool                       `mapstructure:"enabled"`
+	URL        string                     `mapstructure:"url"`
+	VaultPaths map[string]vault.PathEntry `mapstructure:"vault_paths"`
 }
 
 func setAppDefaults(v *viper.Viper) {
