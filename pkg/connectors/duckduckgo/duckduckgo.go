@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
 
@@ -60,7 +59,7 @@ func New(ctx context.Context, cfg Config) (*DuckDuckGoConnector, error) {
 func init() {
 	connectors.Register("duckduckgo", func(
 		ctx context.Context,
-		cfg config.Connector,
+		cfg connectors.Config,
 	) (connectors.Connector, error) {
 		ddgCfg := Config{
 			MaxResults: 5,

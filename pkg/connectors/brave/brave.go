@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
@@ -65,7 +64,7 @@ func New(
 func init() {
 	connectors.Register("brave", func(
 		ctx context.Context,
-		cfg config.Connector,
+		cfg connectors.Config,
 	) (connectors.Connector, error) {
 		var braveCfg Config
 
@@ -82,7 +81,7 @@ func init() {
 			return nil, fmt.Errorf("decode brave config: %w", err)
 		}
 
-		v, err := vault.Load()
+		v, err := vault.Load("")
 		if err != nil {
 			return nil, fmt.Errorf("brave: vault: %w", err)
 		}

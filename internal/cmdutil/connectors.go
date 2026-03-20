@@ -5,14 +5,14 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/huh"
-	"github.com/sriramsme/OnlyAgents/internal/config"
+	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 // ConnectorRegistry loads all connector configs from the connectors dir.
-func ConnectorRegistry(connectorsDir string) ([]config.Connector, error) {
-	connectors, err := LoadDir[config.Connector](connectorsDir)
+func ConnectorRegistry(connectorsDir string) ([]connectors.Config, error) {
+	connectors, err := LoadDir[connectors.Config](connectorsDir)
 	if err != nil {
 		return nil, fmt.Errorf("connector registry: %w", err)
 	}
@@ -22,9 +22,9 @@ func ConnectorRegistry(connectorsDir string) ([]config.Connector, error) {
 // ── Queries ───────────────────────────────────────────────────────────────────
 
 // EnabledConnectors returns only connectors with Enabled = true.
-func EnabledConnectors(connectors []config.Connector) []config.Connector {
-	var out []config.Connector
-	for _, c := range connectors {
+func EnabledConnectors(connectorList []connectors.Config) []connectors.Config {
+	var out []connectors.Config
+	for _, c := range connectorList {
 		if c.Enabled {
 			out = append(out, c)
 		}
@@ -33,16 +33,16 @@ func EnabledConnectors(connectors []config.Connector) []config.Connector {
 }
 
 // FindConnector returns the first connector matching name.
-func FindConnector(connectors []config.Connector, name string) (config.Connector, error) {
-	for _, c := range connectors {
+func FindConnector(connectorList []connectors.Config, name string) (connectors.Config, error) {
+	for _, c := range connectorList {
 		if c.Name == name {
 			return c, nil
 		}
 	}
-	return config.Connector{}, fmt.Errorf("connector %q not found", name)
+	return connectors.Config{}, fmt.Errorf("connector %q not found", name)
 }
 
-func SetupConnector(cfg config.Connector, envPath, connectorsDir string) error {
+func SetupConnector(cfg connectors.Config, envPath, connectorsDir string) error {
 	if cfg.Instructions != "" {
 		Hint(cfg.Instructions)
 	}
@@ -77,7 +77,7 @@ func ConnectorSetEnabled(connectorsDir, name string, enabled bool) error {
 // ── Validation ────────────────────────────────────────────────────────────────
 
 // ValidateConnectors checks for common connector config problems.
-func ValidateConnectors(connectors []config.Connector) []string {
+func ValidateConnectors(connectors []connectors.Config) []string {
 	var issues []string
 	seenNames := map[string]int{}
 
@@ -101,7 +101,7 @@ func ValidateConnectors(connectors []config.Connector) []string {
 // ── Display ───────────────────────────────────────────────────────────────────
 
 // ConnectorSummaryLine returns a single-line summary for table output.
-func ConnectorSummaryLine(c config.Connector) string {
+func ConnectorSummaryLine(c connectors.Config) string {
 	return fmt.Sprintf("%-20s %-12s %s",
 		c.Name,
 		c.Type,

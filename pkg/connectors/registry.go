@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-
-	"github.com/sriramsme/OnlyAgents/internal/config"
 )
 
 // Registry holds all connectors. Lives in kernel.
@@ -15,7 +13,7 @@ type Registry struct {
 }
 
 func NewRegistry(ctx context.Context) (*Registry, error) {
-	configs, err := config.LoadAllConnectorConfigs()
+	configs, err := LoadAllConfigs("")
 	if err != nil {
 		return nil, fmt.Errorf("load connector configs: %w", err)
 	}

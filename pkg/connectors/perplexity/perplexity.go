@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
@@ -67,9 +66,9 @@ func New(ctx context.Context, cfg Config) (*PerplexityConnector, error) {
 func init() {
 	connectors.Register("perplexity", func(
 		ctx context.Context,
-		cfg config.Connector,
+		cfg connectors.Config,
 	) (connectors.Connector, error) {
-		v, err := vault.Load()
+		v, err := vault.Load("")
 		if err != nil {
 			return nil, fmt.Errorf("perplexity: vault: %w", err)
 		}

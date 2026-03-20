@@ -1,4 +1,4 @@
-package config
+package connectors
 
 import (
 	"fmt"
@@ -6,21 +6,24 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/viper"
+
+	"github.com/sriramsme/OnlyAgents/internal/paths"
+	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 )
 
-type Connector struct {
-	ID           string                    `mapstructure:"id"`
-	Name         string                    `mapstructure:"name"`
-	Description  string                    `mapstructure:"description"`
-	Instructions string                    `mapstructure:"instructions"`
-	Type         string                    `mapstructure:"type"`
-	Enabled      bool                      `mapstructure:"enabled"`
-	VaultPaths   map[string]VaultPathEntry `mapstructure:"vault_paths"`
-	RawConfig    map[string]any            `mapstructure:",remain"`
+type Config struct {
+	ID           string                     `mapstructure:"id"`
+	Name         string                     `mapstructure:"name"`
+	Description  string                     `mapstructure:"description"`
+	Instructions string                     `mapstructure:"instructions"`
+	Type         string                     `mapstructure:"type"`
+	Enabled      bool                       `mapstructure:"enabled"`
+	VaultPaths   map[string]vault.PathEntry `mapstructure:"vault_paths"`
+	RawConfig    map[string]any             `mapstructure:",remain"`
 }
 
 // LoadConnectorConfig loads a single connector config file
-func loadConnectorConfig(configPath string) (*Connector, error) {
+func LoadConfig(configPath string) (*Config, error) {
 	if configPath == "" {
 		return nil, fmt.Errorf("config path empty")
 	}
@@ -36,7 +39,7 @@ func loadConnectorConfig(configPath string) (*Connector, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg Connector
+	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
@@ -52,21 +55,23 @@ func loadConnectorConfig(configPath string) (*Connector, error) {
 }
 
 // LoadAllConnectorConfigs loads all connector configs from a directory
-func LoadAllConnectorConfigs() (map[string]*Connector, error) {
-	dir := ConnectorsDir()
+func LoadAllConfigs(dir string) (map[string]*Config, error) {
+	if dir == "" {
+		dir = paths.ConnectorsDir()
+	}
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read connectors dir: %w", err)
 	}
 
-	configs := make(map[string]*Connector)
+	configs := make(map[string]*Config)
 
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
 			continue
 		}
 
-		cfg, err := loadConnectorConfig(filepath.Join(dir, f.Name()))
+		cfg, err := LoadConfig(filepath.Join(dir, f.Name()))
 		if err != nil {
 			return nil, fmt.Errorf("load %s: %w", f.Name(), err)
 		}

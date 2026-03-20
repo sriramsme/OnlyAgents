@@ -13,7 +13,6 @@ import (
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
 
-	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
@@ -65,8 +64,8 @@ func New(ctx context.Context, cfg Config) (*GmailConnector, error) {
 // init registers the Gmail connector factory
 // Kernel will call this factory to create instances
 func init() {
-	connectors.Register("gmail", func(ctx context.Context, cfg config.Connector) (connectors.Connector, error) {
-		v, err := vault.Load()
+	connectors.Register("gmail", func(ctx context.Context, cfg connectors.Config) (connectors.Connector, error) {
+		v, err := vault.Load("")
 		if err != nil {
 			return nil, fmt.Errorf("gmail: vault: %w", err)
 		}

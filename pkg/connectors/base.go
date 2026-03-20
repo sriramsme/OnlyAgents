@@ -1,7 +1,5 @@
 package connectors
 
-import "github.com/sriramsme/OnlyAgents/internal/config"
-
 // BaseConnectorInfo holds identity info for a connector.
 // Used by native connectors to self-describe without config dependency.
 type BaseConnectorInfo struct {
@@ -37,7 +35,7 @@ func NewBaseConnector(info BaseConnectorInfo) *BaseConnector {
 }
 
 // NewBaseConnectorFromConfig is used internally by factory adapters.
-func NewBaseConnectorFromConfig(cfg config.Connector) *BaseConnector {
+func NewBaseConnectorFromConfig(cfg Config) *BaseConnector {
 	return NewBaseConnector(BaseConnectorInfo{
 		ID:           cfg.ID,
 		Name:         cfg.Name,
