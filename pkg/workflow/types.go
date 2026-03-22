@@ -13,6 +13,8 @@ import (
 // WorkflowDefinition represents a workflow at submission time (before storage)
 type WorkflowDefinition struct {
 	ID              string                `json:"id"`
+	IsTemplate      bool                  `json:"is_template"`
+	TriggeredBy     string                `json:"triggered_by"`
 	Name            string                `json:"name"`
 	Description     string                `json:"description"`
 	Tasks           []*WFTaskDefinition   `json:"tasks"`

@@ -16,7 +16,7 @@ type Storage interface {
 	NoteStore
 	ReminderStore
 	WorkflowStore
-	JobRunStore
+	CronJobStore
 	TaskStore
 	Close() error
 }
@@ -132,7 +132,10 @@ type TaskStore interface {
 
 // JobRunStore tracks the last successful execution of each scheduled background job.
 // Used by the memory scheduler for catch-up on startup. Reusable for any cron job.
-type JobRunStore interface {
-	GetJobRun(ctx context.Context, jobName string) (*JobRun, error)
-	SaveJobRun(ctx context.Context, run *JobRun) error
+type CronJobStore interface {
+	GetCronJob(ctx context.Context, id string) (*CronJob, error)
+	SaveCronJob(ctx context.Context, job *CronJob) error
+	DeleteCronJob(ctx context.Context, id string) error
+	ListCronJobs(ctx context.Context) ([]*CronJob, error)
+	UpdateCronJobRun(ctx context.Context, id, status, lastError string) error
 }

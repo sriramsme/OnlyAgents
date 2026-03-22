@@ -1,6 +1,8 @@
 package core
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/media"
@@ -77,6 +79,7 @@ const (
 	// Flow: Kernel → Agent
 	SessionGet EventType = "session_get"
 
+	CronJobScheduled EventType = "cron_job_scheduled"
 	// =====================================
 	// Future: Agent-to-Agent Communication
 	// =====================================
@@ -108,6 +111,13 @@ type Event struct {
 // =====================================
 // Event Payloads
 // =====================================
+
+type CronJobScheduledPayload struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Schedule string `json:"schedule"`
+	Event    Event  `json:"event"` // the full event to re-emit on schedule}
+}
 
 // MessageReceivedPayload: User message from channel
 type MessageReceivedPayload struct {
@@ -217,4 +227,21 @@ type SessionEndPayload struct {
 // ErrorPayload: Error response
 type ErrorPayload struct {
 	Error string `json:"error"`
+}
+
+// unmarshalPayload handles both paths:
+// - direct type assertion (normal in-process events)
+// - json.RawMessage (cron-fired events)
+func UnmarshalEventPayload[T any](raw any, v *T) error {
+	switch p := raw.(type) {
+	case T:
+		*v = p
+		return nil
+	case json.RawMessage:
+		return json.Unmarshal(p, v)
+	case []byte:
+		return json.Unmarshal(p, v)
+	default:
+		return fmt.Errorf("unexpected payload type: %T", raw)
+	}
 }

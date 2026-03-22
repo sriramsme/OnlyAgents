@@ -7,6 +7,14 @@ security:
   allow_network: true # cli tools can make network calls
   allow_system_bins: true # can use /usr/bin etc
 
+
+# memory
+memory:
+  llm:  # llm used for memory summarization
+    provider: openai
+    model: gpt-5-nano
+    api_key_path: openai/api_key
+
 # skill marketplaces
 marketplaces:
   - name: clawhub

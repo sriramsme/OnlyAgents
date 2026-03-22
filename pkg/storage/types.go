@@ -171,13 +171,19 @@ type TaskFilter struct {
 	DueTo     *time.Time // inclusive upper bound on due_at
 }
 
-// JobRun records the last execution of a named background job.
-// Stored with job_name as primary key — one row per job, upserted on each run.
-type JobRun struct {
-	JobName    string `db:"job_name"`
-	LastRun    DBTime `db:"last_run"`
-	LastStatus string `db:"last_status"` // "ok" | "error"
-	LastError  string `db:"last_error"`  // "" when ok
+type CronJob struct {
+	ID           string  `db:"id"`
+	Name         string  `db:"name"`
+	Description  string  `db:"description"`
+	Schedule     string  `db:"schedule"`
+	Enabled      bool    `db:"enabled"`
+	EventType    string  `db:"event_type"`
+	EventPayload string  `db:"event_payload"`
+	LastRun      *DBTime `db:"last_run"` // pointer — nil means never ran
+	LastStatus   string  `db:"last_status"`
+	LastError    string  `db:"last_error"`
+	CreatedAt    DBTime  `db:"created_at"`
+	UpdatedAt    DBTime  `db:"updated_at"`
 }
 
 // Workflow types
@@ -193,6 +199,8 @@ const (
 
 type Workflow struct {
 	ID              string         `db:"id"`
+	IsTemplate      bool           `db:"is_template"`
+	TriggeredBy     string         `db:"triggered_by"` // FK to cron_jobs.id, NULL if user-initiated
 	Name            string         `db:"name"`
 	Description     string         `db:"description"`
 	CreatedBy       string         `db:"created_by"`

@@ -1,0 +1,50 @@
+package kernel
+
+import (
+	"encoding/json"
+	"time"
+
+	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/storage"
+)
+
+func (k *Kernel) handleCronJobScheduled(evt core.Event) {
+	payload, ok := evt.Payload.(core.CronJobScheduledPayload)
+	if !ok {
+		k.logger.Error("invalid cron job payload", "correlation_id", evt.CorrelationID)
+		return
+	}
+
+	// Marshal the inner event to JSON for storage.
+	eventJSON, err := json.Marshal(payload.Event)
+	if err != nil {
+		k.logger.Error("failed to marshal cron event",
+			"job", payload.Name,
+			"err", err)
+		return
+	}
+
+	job := &storage.CronJob{
+		ID:           payload.ID,
+		Name:         payload.Name,
+		Schedule:     payload.Schedule,
+		Enabled:      true,
+		EventType:    string(payload.Event.Type),
+		EventPayload: string(eventJSON),
+		CreatedAt:    storage.DBTime{Time: time.Now()},
+		UpdatedAt:    storage.DBTime{Time: time.Now()},
+	}
+
+	if err := k.store.SaveCronJob(k.ctx, job); err != nil {
+		k.logger.Error("failed to save cron job",
+			"job", payload.Name,
+			"err", err)
+		return
+	}
+
+	k.scheduler.RegisterDynamic(job)
+	k.logger.Info("cron job scheduled",
+		"job", payload.Name,
+		"schedule", payload.Schedule,
+		"event_type", payload.Event.Type)
+}

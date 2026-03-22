@@ -12,11 +12,13 @@ import (
 
 // handleWorkflowSubmitted: Executive creates a multi-task workflow
 func (k *Kernel) handleWorkflowSubmitted(evt core.Event) {
-	payload, ok := evt.Payload.(workflow.WorkflowPayload)
-	if !ok {
+	var payload workflow.WorkflowPayload
+	err := core.UnmarshalEventPayload(evt.Payload, &payload)
+	if err != nil {
 		k.logger.Error("invalid WorkflowSubmitted payload")
 		return
 	}
+
 	workflowPhase := fmt.Sprintf("workflow_%s", payload.Workflow.ID)
 	logger.Timing.StartPhase(evt.CorrelationID, workflowPhase)
 

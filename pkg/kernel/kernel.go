@@ -31,6 +31,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/media"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
+	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
@@ -54,6 +55,7 @@ type Kernel struct {
 	mm                      *memory.MemoryManager
 	store                   storage.Storage
 
+	scheduler *scheduler.Scheduler
 	// helperClient is used for skill installation
 	helperClient llm.Client
 
@@ -114,6 +116,7 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus)
 		cm:                      components.cm,
 		mm:                      components.mm,
 		store:                   components.store,
+		scheduler:               components.scheduler,
 		// helperClient:            components.helperClient,
 		cfg:    cfg,
 		ctx:    ctx,

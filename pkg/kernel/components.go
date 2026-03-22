@@ -11,8 +11,10 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
+	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
@@ -33,6 +35,7 @@ type kernelComponents struct {
 	mm                      *memory.MemoryManager
 	workflow                *workflow.Engine
 	store                   storage.Storage
+	scheduler               *scheduler.Scheduler
 }
 
 func loadComponents(
@@ -50,12 +53,14 @@ func loadComponents(
 		return c, fmt.Errorf("load store: %w", err)
 	}
 
+	c.scheduler = scheduler.New(kernelBus)
+
 	c.cm, err = loadConversationManager(ctx, c.store)
 	if err != nil {
 		return c, fmt.Errorf("load conversation manager: %w", err)
 	}
 
-	c.mm, err = loadMemoryManager(ctx, c.store)
+	c.mm, err = loadMemoryManager(cfg.Memory, c.store)
 	if err != nil {
 		return c, fmt.Errorf("load memory manager: %w", err)
 	}
@@ -116,8 +121,12 @@ func loadComponents(
 }
 
 // loadMemoryManager loads the MemoryManager.
-func loadMemoryManager(ctx context.Context, store storage.Storage) (*memory.MemoryManager, error) {
-	mm := memory.NewMemoryManager(store, nil) // TODO: llmClient for summarizer
+func loadMemoryManager(cfg config.Memory, store storage.Storage) (*memory.MemoryManager, error) {
+	llmClient, err := llm.New(cfg.LLM)
+	if err != nil {
+		return nil, fmt.Errorf("create llm client for memory manager: %w", err)
+	}
+	mm := memory.NewMemoryManager(store, llmClient)
 	return mm, nil
 }
 

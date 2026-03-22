@@ -6,227 +6,179 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robfig/cron/v3"
+	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
-// Job name constants — used as primary keys in the job_runs table.
-const (
-	jobDaily       = "daily_summary"
-	jobWeekly      = "weekly_summary"
-	jobMonthly     = "monthly_summary"
-	jobYearly      = "yearly_archive"
-	jobDailyDigest = "daily_digest"
-)
-
-// DigestDeliverer delivers the daily digest message to the user.
-// The kernel implements this by routing through the active channel (Telegram etc.).
-// Keeping it as an interface means MemoryManager has no import dependency on
-// pkg/channels or pkg/kernel.
-type DigestDeliverer interface {
-	Deliver(ctx context.Context, message string) error
-}
-
-// MemoryManager owns the background summarisation scheduler.
-// One instance lives in the kernel alongside ConversationManager.
+// MemoryManager builds the memory jobs and registers them with the shared
+// scheduler. It no longer owns a cron instance.
 type MemoryManager struct {
 	store      storage.Storage
 	summarizer *Summarizer
-	scheduler  *cron.Cron
-	deliverer  DigestDeliverer // may be nil — digest skipped if not set
+	deliverer  channels.Channel
 }
 
-// NewMemoryManager creates a MemoryManager. llmClient should be the kernel's
-// dedicated summarizer client (can be a cheaper/faster model than the agent's).
 func NewMemoryManager(store storage.Storage, llmClient llm.Client) *MemoryManager {
 	return &MemoryManager{
 		store:      store,
 		summarizer: newSummarizer(store, llmClient),
-		scheduler:  cron.New(),
 	}
 }
 
-// Start runs catch-up for any missed jobs then launches the cron scheduler.
-// Call this once during kernel startup after the storage layer is ready.
-func (mm *MemoryManager) Start(ctx context.Context) {
-	mm.runCatchUp(ctx)
-	mm.registerJobs(ctx)
-	mm.scheduler.Start()
-	logger.Log.Info("memory: scheduler started")
+// RegisterJobs registers all memory-related jobs with the provided scheduler.
+// Call this during kernel boot, before scheduler.Start.
+func (mm *MemoryManager) RegisterJobs(s *scheduler.Scheduler) {
+	s.Register(&dailySummaryJob{summarizer: mm.summarizer})
+	s.Register(&weeklySummaryJob{summarizer: mm.summarizer})
+	s.Register(&monthlySummaryJob{summarizer: mm.summarizer})
+	s.Register(&yearlySummaryJob{summarizer: mm.summarizer})
+	s.Register(&dailyDigestJob{store: mm.store, deliverer: mm.deliverer})
 }
 
-// Stop shuts down the cron scheduler gracefully.
-func (mm *MemoryManager) Stop() {
-	mm.scheduler.Stop()
-	logger.Log.Info("memory: scheduler stopped")
+// SetDeliverer wires up the digest delivery channel (Telegram etc.).
+// Must be called before RegisterJobs if you want digest delivery.
+func (mm *MemoryManager) SetDeliverer(d channels.Channel) {
+	mm.deliverer = d
 }
 
-func (mm *MemoryManager) registerJobs(ctx context.Context) {
-	// Daily at 23:59 — summarise today's messages.
-	mm.mustAddFunc("59 23 * * *", jobDaily, func() {
-		mm.runJob(ctx, jobDaily, func() error {
-			return mm.summarizer.SummarizeDay(ctx, time.Now())
-		})
-	})
+// ── Daily summary ─────────────────────────────────────────────────────────────
 
-	// Weekly on Sunday at 00:00 — summarise the past week's daily summaries.
-	mm.mustAddFunc("0 0 * * 0", jobWeekly, func() {
-		mm.runJob(ctx, jobWeekly, func() error {
-			// Sunday 00:00: week just ended is the 7 days prior.
-			weekEnd := truncateToDay(time.Now()).Add(-time.Second)
-			return mm.summarizer.SummarizeWeek(ctx, weekEnd)
-		})
-	})
-
-	// Monthly on 1st at 00:00 — summarise last month's weekly summaries.
-	mm.mustAddFunc("0 0 1 * *", jobMonthly, func() {
-		mm.runJob(ctx, jobMonthly, func() error {
-			last := time.Now().AddDate(0, -1, 0)
-			return mm.summarizer.SummarizeMonth(ctx, last.Year(), int(last.Month()))
-		})
-	})
-
-	// Yearly on Dec 31 at 23:30 — summarise this year's monthly summaries.
-	mm.mustAddFunc("30 23 31 12 *", jobYearly, func() {
-		mm.runJob(ctx, jobYearly, func() error {
-			return mm.summarizer.SummarizeYear(ctx, time.Now().Year())
-		})
-	})
-
-	// Daily digest at 8pm: fetch tomorrow's tasks + reminders and deliver.
-	mm.mustAddFunc("0 20 * * *", jobDailyDigest, func() {
-		mm.runJob(ctx, jobDailyDigest, func() error {
-			return mm.deliverDailyDigest(ctx)
-		})
-	})
+type dailySummaryJob struct {
+	summarizer *Summarizer
 }
 
-// runJob executes a job function and records the outcome in job_runs.
-func (mm *MemoryManager) runJob(ctx context.Context, name string, fn func() error) {
-	logger.Log.Info("memory: running job", "job", name)
-	err := fn()
-	run := &storage.JobRun{
-		JobName: name,
-		LastRun: storage.DBTime{Time: time.Now()},
+func (j *dailySummaryJob) Name() string     { return "daily_summary" }
+func (j *dailySummaryJob) Schedule() string { return "59 23 * * *" }
+
+func (j *dailySummaryJob) Run(ctx context.Context) error {
+	return j.summarizer.SummarizeDay(ctx, time.Now())
+}
+
+// CatchUp runs if the last daily summary is not from today.
+func (j *dailySummaryJob) CatchUp(ctx context.Context) error {
+	yesterday := time.Now().AddDate(0, 0, -1)
+	_, err := j.summarizer.store.GetDailySummary(ctx, sessionAgentID, yesterday)
+	if err == nil {
+		return nil // already summarized yesterday
 	}
+	logger.Log.Info("memory: catch-up daily", "date", yesterday.Format("2006-01-02"))
+	return j.summarizer.SummarizeDay(ctx, yesterday)
+}
+
+// ── Weekly summary ────────────────────────────────────────────────────────────
+
+type weeklySummaryJob struct {
+	summarizer *Summarizer
+}
+
+func (j *weeklySummaryJob) Name() string     { return "weekly_summary" }
+func (j *weeklySummaryJob) Schedule() string { return "0 0 * * 0" }
+
+func (j *weeklySummaryJob) Run(ctx context.Context) error {
+	weekEnd := truncateToDay(time.Now()).Add(-time.Second)
+	return j.summarizer.SummarizeWeek(ctx, weekEnd)
+}
+
+func (j *weeklySummaryJob) CatchUp(ctx context.Context) error {
+	lastSunday := lastWeekday(time.Now(), time.Sunday)
+	from := lastSunday.AddDate(0, 0, -6)
+	weeklies, err := j.summarizer.store.GetWeeklySummaries(ctx, sessionAgentID, from, lastSunday)
 	if err != nil {
-		run.LastStatus = "error"
-		run.LastError = err.Error()
-		logger.Log.Error("memory: job failed", "job", name, "err", err)
-	} else {
-		run.LastStatus = "ok"
-		logger.Log.Info("memory: job completed", "job", name)
+		return fmt.Errorf("weekly catch-up check: %w", err)
 	}
-	if saveErr := mm.store.SaveJobRun(ctx, run); saveErr != nil {
-		logger.Log.Warn("memory: failed to record job run", "job", name, "err", saveErr)
+	if len(weeklies) > 0 {
+		return nil // already have this week
 	}
+	logger.Log.Info("memory: catch-up weekly", "week_end", lastSunday.Format("2006-01-02"))
+	return j.summarizer.SummarizeWeek(ctx, lastSunday.Add(-time.Second))
 }
 
-// Catch-up
+// ── Monthly summary ───────────────────────────────────────────────────────────
 
-// runCatchUp checks each job on startup and runs any that were missed
-// (e.g. the machine was off at the scheduled time).
-func (mm *MemoryManager) runCatchUp(ctx context.Context) {
-	now := time.Now()
-	logger.Log.Info("memory: running catch-up check")
-
-	// Daily: missed if last_run date is before today.
-	if mm.missedSince(ctx, jobDaily, truncateToDay(now)) {
-		logger.Log.Info("memory: catch-up daily", "date", now.AddDate(0, 0, -1).Format("2006-01-02"))
-		mm.runJob(ctx, jobDaily, func() error {
-			return mm.summarizer.SummarizeDay(ctx, now.AddDate(0, 0, -1))
-		})
-	}
-
-	// Weekly: missed if last_run is before the most recent Sunday 00:00.
-	lastSunday := lastWeekday(now, time.Sunday)
-	if mm.missedSince(ctx, jobWeekly, lastSunday) {
-		logger.Log.Info("memory: catch-up weekly", "week_end", lastSunday.Format("2006-01-02"))
-		mm.runJob(ctx, jobWeekly, func() error {
-			return mm.summarizer.SummarizeWeek(ctx, lastSunday.Add(-time.Second))
-		})
-	}
-
-	// Monthly: missed if last_run is before the 1st of this month.
-	firstOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	if mm.missedSince(ctx, jobMonthly, firstOfMonth) {
-		last := now.AddDate(0, -1, 0)
-		logger.Log.Info("memory: catch-up monthly", "year", last.Year(), "month", last.Month())
-		mm.runJob(ctx, jobMonthly, func() error {
-			return mm.summarizer.SummarizeMonth(ctx, last.Year(), int(last.Month()))
-		})
-	}
-
-	// Yearly: missed if last_run is before Jan 1 of this year.
-	firstOfYear := time.Date(now.Year(), 1, 1, 0, 0, 0, 0, time.UTC)
-	if mm.missedSince(ctx, jobYearly, firstOfYear) {
-		logger.Log.Info("memory: catch-up yearly", "year", now.Year()-1)
-		mm.runJob(ctx, jobYearly, func() error {
-			return mm.summarizer.SummarizeYear(ctx, now.Year()-1)
-		})
-	}
+type monthlySummaryJob struct {
+	summarizer *Summarizer
 }
 
-// missedSince returns true if the job has never run or last ran before threshold.
-func (mm *MemoryManager) missedSince(ctx context.Context, jobName string, threshold time.Time) bool {
-	run, err := mm.store.GetJobRun(ctx, jobName)
+func (j *monthlySummaryJob) Name() string     { return "monthly_summary" }
+func (j *monthlySummaryJob) Schedule() string { return "0 0 1 * *" }
+
+func (j *monthlySummaryJob) Run(ctx context.Context) error {
+	last := time.Now().AddDate(0, -1, 0)
+	return j.summarizer.SummarizeMonth(ctx, last.Year(), int(last.Month()))
+}
+
+func (j *monthlySummaryJob) CatchUp(ctx context.Context) error {
+	last := time.Now().AddDate(0, -1, 0)
+	monthlies, err := j.summarizer.store.GetMonthlySummaries(ctx, sessionAgentID, last.Year())
 	if err != nil {
-		logger.Log.Warn("memory: catch-up check failed", "job", jobName, "err", err)
-		return false
+		return fmt.Errorf("monthly catch-up check: %w", err)
 	}
-	if run == nil {
-		return true // never ran
+	for _, m := range monthlies {
+		if m.Month == int(last.Month()) {
+			return nil // already have last month
+		}
 	}
-	return run.LastRun.Before(threshold)
+	logger.Log.Info("memory: catch-up monthly", "year", last.Year(), "month", last.Month())
+	return j.summarizer.SummarizeMonth(ctx, last.Year(), int(last.Month()))
 }
 
-// lastWeekday returns the most recent occurrence of the given weekday at 00:00 UTC.
-// If today is that weekday, returns today's 00:00.
-func lastWeekday(t time.Time, wd time.Weekday) time.Time {
-	day := truncateToDay(t)
-	offset := int(day.Weekday()) - int(wd)
-	if offset < 0 {
-		offset += 7
-	}
-	return day.AddDate(0, 0, -offset)
+// ── Yearly archive ────────────────────────────────────────────────────────────
+
+type yearlySummaryJob struct {
+	summarizer *Summarizer
 }
 
-func (mm *MemoryManager) mustAddFunc(spec string, name string, fn func()) {
-	if _, err := mm.scheduler.AddFunc(spec, fn); err != nil {
-		logger.Log.Error("memory: failed to register job",
-			"job", name,
-			"spec", spec,
-			"err", err,
-		)
+func (j *yearlySummaryJob) Name() string     { return "yearly_summary" }
+func (j *yearlySummaryJob) Schedule() string { return "30 23 31 12 *" }
+
+func (j *yearlySummaryJob) Run(ctx context.Context) error {
+	return j.summarizer.SummarizeYear(ctx, time.Now().Year())
+}
+
+func (j *yearlySummaryJob) CatchUp(ctx context.Context) error {
+	lastYear := time.Now().Year() - 1
+	_, err := j.summarizer.store.GetYearlyArchive(ctx, sessionAgentID, lastYear)
+	if err == nil {
+		return nil // already have last year
 	}
+	logger.Log.Info("memory: catch-up yearly", "year", lastYear)
+	return j.summarizer.SummarizeYear(ctx, lastYear)
 }
 
 // ── Daily digest ──────────────────────────────────────────────────────────────
 
-func (mm *MemoryManager) deliverDailyDigest(ctx context.Context) error {
-	if mm.deliverer == nil {
+type dailyDigestJob struct {
+	store     storage.Storage
+	deliverer channels.Channel
+}
+
+func (j *dailyDigestJob) Name() string     { return "daily_digest" }
+func (j *dailyDigestJob) Schedule() string { return "0 20 * * *" }
+
+// Digest has no catch-up — a missed evening digest is just skipped.
+func (j *dailyDigestJob) Run(ctx context.Context) error {
+	if j.deliverer == nil {
 		logger.Log.Info("memory: digest deliverer not set, skipping")
 		return nil
 	}
 
 	tomorrow := time.Now().AddDate(0, 0, 1)
 
-	// Tasks due tomorrow.
-	tasks, err := mm.store.GetTasksDueOn(ctx, tomorrow)
+	tasks, err := j.store.GetTasksDueOn(ctx, tomorrow)
 	if err != nil {
 		return fmt.Errorf("digest: tasks: %w", err)
 	}
 
-	// Standalone reminders due tomorrow (before end of day).
 	tomorrowStart := truncateToDay(tomorrow)
 	tomorrowEnd := tomorrowStart.Add(24*time.Hour - time.Second)
-	reminders, err := mm.store.GetDueReminders(ctx, tomorrowEnd)
+	reminders, err := j.store.GetDueReminders(ctx, tomorrowEnd)
 	if err != nil {
 		return fmt.Errorf("digest: reminders: %w", err)
 	}
-	// Filter to only tomorrow's reminders (GetDueReminders returns everything up to the time).
+
 	var tomorrowReminders []*storage.Reminder
 	for _, r := range reminders {
 		if !r.DueAt.Before(tomorrowStart) {
@@ -240,7 +192,21 @@ func (mm *MemoryManager) deliverDailyDigest(ctx context.Context) error {
 		return nil
 	}
 
-	return mm.deliverer.Deliver(ctx, msg)
+	message := channels.OutgoingMessage{
+		Content: msg,
+	}
+	return j.deliverer.Send(ctx, message)
+}
+
+// lastWeekday returns the most recent occurrence of the given weekday at 00:00 UTC.
+// If today is that weekday, returns today's 00:00.
+func lastWeekday(t time.Time, wd time.Weekday) time.Time {
+	day := truncateToDay(t)
+	offset := int(day.Weekday()) - int(wd)
+	if offset < 0 {
+		offset += 7
+	}
+	return day.AddDate(0, 0, -offset)
 }
 
 // formatDigest builds the digest message string.

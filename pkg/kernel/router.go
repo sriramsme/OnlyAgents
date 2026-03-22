@@ -56,6 +56,9 @@ func (k *Kernel) route(evt core.Event) {
 	case core.SessionEnd:
 		k.handleSessionEnd(evt)
 
+	case core.CronJobScheduled:
+		k.handleCronJobScheduled(evt)
+
 	// Future
 	case core.AgentMessage:
 		k.handleAgentMessage(evt)

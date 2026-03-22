@@ -107,6 +107,12 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 			"channel", taskDef.Channel)
 	}
 
+	// Don't execute template workflows — they're stored but only run when instantiated.
+	if workflow.IsTemplate {
+		// just persist, don't fire TaskAssigned events
+		return nil
+	}
+
 	// Fire TaskAssigned events for root tasks (no dependencies)
 	for _, taskDef := range workflow.GetRootTasks() {
 		e.fireTaskAssigned(taskDef, workflow.ID)

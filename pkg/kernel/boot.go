@@ -5,6 +5,7 @@ func kernelInitializers() []Initializer {
 		connectorsInitializer{},
 		agentsInitializer{},  // assigns skills, deps, user context, available agents
 		promptsInitializer{}, // always last — all data must be set before this
+		memoryInitializer{},
 	}
 }
 

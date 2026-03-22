@@ -12,6 +12,7 @@ type (
 	connectorsInitializer struct{}
 	agentsInitializer     struct{}
 	promptsInitializer    struct{}
+	memoryInitializer     struct{}
 )
 
 func (i connectorsInitializer) Init(ctx context.Context, k *Kernel) error {
@@ -44,5 +45,12 @@ func (i promptsInitializer) Init(ctx context.Context, k *Kernel) error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+// memoryInitializer is the last initializer — it must be the last one to run.
+func (i memoryInitializer) Init(ctx context.Context, k *Kernel) error {
+	k.mm.SetDeliverer(*k.channels.GetActive())
+	k.mm.RegisterJobs(k.scheduler)
 	return nil
 }

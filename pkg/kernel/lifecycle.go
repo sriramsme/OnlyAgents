@@ -41,6 +41,11 @@ func (k *Kernel) Run() error {
 		}
 	}
 
+	// start scheduler
+	if err := k.scheduler.Start(k.ctx); err != nil {
+		return fmt.Errorf("failed to start scheduler: %w", err)
+	}
+
 	// Start event router
 	k.wg.Add(1)
 	go k.run()
@@ -111,6 +116,12 @@ func (k *Kernel) Shutdown() error {
 				"connector", c.Name(),
 				"error", err)
 		}
+	}
+
+	// Step 7: Stop scheduler
+	k.logger.Info("stopping scheduler")
+	if err := k.scheduler.Stop(); err != nil {
+		k.logger.Error("failed to stop scheduler", "error", err)
 	}
 
 	defer func() {
