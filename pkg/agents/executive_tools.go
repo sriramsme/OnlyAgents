@@ -98,6 +98,22 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		return tools.ExecErr(fmt.Errorf("failed to send delegation request"))
 	}
 
+	// Schedule recurring delegation
+	if input.Schedule != "" {
+		err := a.submitCronJob(ctx, input.Task, input.Schedule, core.Event{
+			Type:    core.AgentExecute,
+			AgentID: input.AgentID,
+			Payload: core.AgentExecutePayload{
+				Message:     input.Task,
+				Channel:     channelMetadata,
+				Attachments: attachments,
+			},
+		})
+		if err != nil {
+			return tools.ExecErr(err)
+		}
+	}
+
 	// If sending directly to user, return immediately
 	// Executive doesn't wait for response
 	if input.SendDirectlyToUser {
@@ -151,7 +167,7 @@ func (a *Agent) requestWorkflow(ctx context.Context, correlationID string,
 	attachments []*media.Attachment,
 ) tools.ToolExecution {
 	logger.Timing.StartPhase(correlationID, "workflow_creation")
-	wf, err := a.parseWorkflow(correlationID, tc, originalMessage, channel)
+	wf, schedule, err := a.parseWorkflow(correlationID, tc, originalMessage, channel)
 	if err != nil {
 		return tools.ExecErr(err)
 	}
@@ -161,6 +177,19 @@ func (a *Agent) requestWorkflow(ctx context.Context, correlationID string,
 		return tools.ExecErr(err)
 	}
 
+	if schedule != "" {
+		err := a.submitCronJob(ctx, wf.Name, schedule, core.Event{
+			Type:    core.WorkflowSubmitted,
+			AgentID: a.id,
+			Payload: workflow.WorkflowPayload{
+				Workflow:    *wf,
+				Attachments: attachments,
+			},
+		})
+		if err != nil {
+			return tools.ExecErr(err)
+		}
+	}
 	return tools.ExecDone(workflowAck(wf))
 }
 
@@ -193,10 +222,10 @@ func (a *Agent) submitWorkflow(ctx context.Context, correlationID string,
 }
 
 // parseWorkflow - capture original user query and context
-func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalMessage string, channel *core.ChannelMetadata) (*workflow.WorkflowDefinition, error) {
+func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalMessage string, channel *core.ChannelMetadata) (*workflow.WorkflowDefinition, string, error) {
 	var input tools.CreateWorkflowInput
 	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
-		return nil, fmt.Errorf("invalid workflow args: %w", err)
+		return nil, "", fmt.Errorf("invalid workflow args: %w", err)
 	}
 
 	a.logger.Info("creating workflow",
@@ -246,6 +275,7 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 	return &workflow.WorkflowDefinition{
 		ID:              uuid.NewString(),
 		Name:            input.Name,
+		IsTemplate:      input.Schedule != "",
 		Description:     fmt.Sprintf("Workflow created by executive for: %s", input.Name),
 		Tasks:           tasks,
 		CreatedBy:       a.id,
@@ -253,7 +283,30 @@ func (a *Agent) parseWorkflow(correlationID string, tc tools.ToolCall, originalM
 		Channel:         channel,
 		OriginalMessage: originalMessage,
 		Metadata:        metadata,
-	}, nil
+	}, input.Schedule, nil
+}
+
+func (a *Agent) submitCronJob(ctx context.Context, name, schedule string, event core.Event) error {
+	cronEvent := core.Event{
+		Type:    core.CronJobScheduled,
+		AgentID: a.id,
+		Payload: core.CronJobScheduledPayload{
+			ID:       uuid.NewString(),
+			Name:     name,
+			Schedule: schedule,
+			Event:    event, // full event
+		},
+	}
+	select {
+	case a.outbox <- cronEvent:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("request cancelled")
+	case <-a.ctx.Done():
+		return fmt.Errorf("agent shutting down")
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("failed to submit cron job")
+	}
 }
 
 // Executive uses this to resolve agent names

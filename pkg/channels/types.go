@@ -30,7 +30,7 @@ type Registry struct {
 	mu       sync.RWMutex
 	channels map[string]Channel
 
-	active Channel
+	active Channel // highest priority
 }
 
 type TokenStreamer interface {

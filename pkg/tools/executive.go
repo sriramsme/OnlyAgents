@@ -20,14 +20,16 @@ type DelegateInput struct {
 	//   - Executive needs the response for multi-step orchestration
 	//   - Response will be used as context for next delegation
 	//   - Executive needs to synthesize results from multiple agents
-	SendDirectlyToUser bool `json:"send_directly_to_user,omitempty" desc:"If true, sub-agent sends response directly to user. If false (default), returns to executive for synthesis."`
+	SendDirectlyToUser bool   `json:"send_directly_to_user,omitempty" desc:"If true, sub-agent sends response directly to user. If false (default), returns to executive for synthesis."`
+	Schedule           string `json:"schedule,omitempty" desc:"Cron expression for recurring tasks. '0 8 * * *' = daily 8am, '0 9 * * 1' = every Monday 9am, '0 20 * * 0' = every Sunday 8pm. Omit for one-time tasks."`
 }
 
 // CreateWorkflowInput is the input schema for the create_workflow tool.
 type CreateWorkflowInput struct {
-	Name  string         `json:"name" desc:"Name for this workflow"`
-	Goal  string         `json:"goal" desc:"Clear description of the goal of this workflow"`
-	Steps []WorkflowStep `json:"steps" desc:"List of steps in the workflow"`
+	Name     string         `json:"name" desc:"Name for this workflow"`
+	Goal     string         `json:"goal" desc:"Clear description of the goal of this workflow"`
+	Steps    []WorkflowStep `json:"steps" desc:"List of steps in the workflow"`
+	Schedule string         `json:"schedule,omitempty" desc:"Cron expression for recurring tasks. '0 8 * * *' = daily 8am, '0 9 * * 1' = every Monday 9am, '0 20 * * 0' = every Sunday 8pm. Omit for one-time tasks."`
 }
 
 // WorkflowTask defines a single task within a workflow.
@@ -70,7 +72,13 @@ func GetExecutiveTools() []ToolDef {
 				"- 'Search for news on X' → send_directly_to_user=true (simple request, direct answer)\n"+
 				"- 'Check my calendar' (as part of planning) → send_directly_to_user=false (you need this info to plan next steps)\n"+
 				"- 'Send email to Bob' → send_directly_to_user=true (single action, user just needs confirmation)\n"+
-				"- 'Get weather then suggest activities' → send_directly_to_user=false (you need weather data to suggest activities)",
+				"- 'Get weather then suggest activities' → send_directly_to_user=false (you need weather data to suggest activities)"+
+				"\n\nSCHEDULING:\n"+
+				"- Set schedule to a cron expression (e.g. '0 8 * * *') to repeat this task automatically\n"+
+				"- Omit schedule for one-time tasks\n"+
+				"- Examples: '0 8 * * *' = daily 8am, '0 9 * * 1' = every Monday 9am\n"+
+				"- Use when user says 'every day', 'weekly', 'every morning', 'remind me every...'\n",
+
 			delegateSchema,
 			"",
 		),
@@ -82,7 +90,12 @@ func GetExecutiveTools() []ToolDef {
 				"Results from all steps return to you for final synthesis — you cannot send step results directly to user. "+
 				"ONLY use this when operations span multiple agents. "+
 				"Do NOT use for multiple operations on the same agent (e.g. creating 3 tasks = one delegation to Friday, not a workflow). "+
-				"Do NOT use for sequential operations a single agent can handle internally.",
+				"Do NOT use for sequential operations a single agent can handle internally."+
+				"\n\nSCHEDULING:\n"+
+				"- Set schedule to a cron expression (e.g. '0 8 * * *') to repeat this task automatically\n"+
+				"- Omit schedule for one-time tasks\n"+
+				"- Examples: '0 8 * * *' = daily 8am, '0 9 * * 1' = every Monday 9am\n"+
+				"- Use when user says 'every day', 'weekly', 'every morning', 'remind me every...'\n",
 			workflowSchema,
 			"",
 		),

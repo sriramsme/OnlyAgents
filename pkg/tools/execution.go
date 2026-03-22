@@ -1,5 +1,9 @@
 package tools
 
+import (
+	"reflect"
+)
+
 type ExecControl uint8
 
 const (
@@ -16,7 +20,7 @@ type ToolExecution struct {
 }
 
 func ExecOK(result any) ToolExecution {
-	return ToolExecution{Result: result, Control: ExecContinue}
+	return ToolExecution{Result: normalizeResult(result), Control: ExecContinue}
 }
 
 func ExecErr(err error) ToolExecution {
@@ -29,3 +33,16 @@ func ExecDone(msg string) ToolExecution {
 
 func (t ToolExecution) IsHalt() bool { return t.Control == ExecHalt }
 func (t ToolExecution) IsErr() bool  { return t.Err != nil }
+
+// normalizeResult converts nil slices to empty slices so LLMs receive
+// "[]" instead of "null" in tool results.
+func normalizeResult(v any) any {
+	if v == nil {
+		return v
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Slice && rv.IsNil() {
+		return reflect.MakeSlice(rv.Type(), 0, 0).Interface()
+	}
+	return v
+}
