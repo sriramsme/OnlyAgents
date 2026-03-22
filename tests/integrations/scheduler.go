@@ -48,8 +48,14 @@ func TestScheduler_EndToEnd(t *testing.T) {
 	defer cancel()
 
 	sched.RegisterDynamic(job)
-	sched.Start(ctx)
-	defer sched.Stop()
+	if err := sched.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() {
+		if err := sched.Stop(); err != nil {
+			t.Errorf("Stop: %v", err)
+		}
+	}()
 
 	// Collect two fires to confirm the job repeats, not just fires once.
 	var received []core.Event
@@ -115,8 +121,14 @@ func TestScheduler_WorkflowFire(t *testing.T) {
 	defer cancel()
 
 	sched.RegisterDynamic(job)
-	sched.Start(ctx)
-	defer sched.Stop()
+	if err := sched.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() {
+		if err := sched.Stop(); err != nil {
+			t.Errorf("Stop: %v", err)
+		}
+	}()
 
 	select {
 	case evt := <-bus:

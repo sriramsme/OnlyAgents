@@ -59,8 +59,14 @@ func TestStart_RunsCatchUpBeforeCron(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	s.Start(ctx)
-	defer s.Stop()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() {
+		if err := s.Stop(); err != nil {
+			t.Errorf("Stop: %v", err)
+		}
+	}()
 
 	// CatchUp must have been called synchronously during Start.
 	if !job.caughtUp.Load() {
@@ -77,8 +83,14 @@ func TestStart_NonCatchUpJobSkipsCatchUp(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	s.Start(ctx)
-	defer s.Stop()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() {
+		if err := s.Stop(); err != nil {
+			t.Errorf("Stop: %v", err)
+		}
+	}()
 
 	// stubJob has no CatchUp — nothing to assert except no panic.
 }
@@ -101,8 +113,14 @@ func TestStart_CatchUpErrorDoesNotStopOtherJobs(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	s.Start(ctx)
-	defer s.Stop()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() {
+		if err := s.Stop(); err != nil {
+			t.Errorf("Stop: %v", err)
+		}
+	}()
 
 	if !failing.caughtUp.Load() {
 		t.Error("failing job's CatchUp should still have been called")
@@ -116,6 +134,10 @@ func TestStop_DoesNotPanic(t *testing.T) {
 	s := scheduler.New(make(chan core.Event, 1))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s.Start(ctx)
-	s.Stop() // should not panic or block
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if err := s.Stop(); err != nil {
+		t.Errorf("Stop: %v", err)
+	}
 }
