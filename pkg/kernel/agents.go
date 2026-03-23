@@ -163,18 +163,18 @@ func (k *Kernel) buildAvailableAgentsMap() map[string]agents.AgentInfo {
 
 func (k *Kernel) buildUserContext() string {
 	return fmt.Sprintf(`
-=== Who the user is ===
+=== ABOUT USER  ===
 Name: %s (preferred: "%s")
 Job: %s
-Background: %s
 Timezone: %s
+Background: %s
 Daily Routine: %s
 Values: %s`,
 		k.user.Identity.Name,
 		k.user.Identity.PreferredName,
 		k.user.Identity.Role,
-		k.user.Background.Professional,
 		k.user.Identity.Timezone,
+		k.user.Background.Professional,
 		k.user.DailyRoutine,
 		strings.Join(k.user.Preferences.WhatIValue, ", "),
 	)

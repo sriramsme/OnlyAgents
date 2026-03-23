@@ -95,11 +95,6 @@ func (a *Agent) sendOutboundMessage(
 	response string,
 	attachments []*media.Attachment,
 ) {
-	if payload.Channel == nil {
-		a.logger.Error("no channel metadata available for outbound message",
-			"correlation_id", correlationID)
-		return
-	}
 	evt := core.Event{
 		Type:          core.OutboundMessage,
 		CorrelationID: correlationID,

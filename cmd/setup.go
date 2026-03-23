@@ -96,6 +96,8 @@ func (s *userIdentityStep) IsDone(ctx *cmdutil.SetupContext) bool {
 func (s *userIdentityStep) Run(ctx *cmdutil.SetupContext) error {
 	cmdutil.Hint(
 		"Agents use this to personalise responses.",
+		"Timezone must be an IANA timezone name e.g. America/New_York, Europe/London, Asia/Kolkata.",
+		"Full list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones",
 		"You can edit ~/.onlyagents/user.yaml directly for more detail.",
 	)
 
@@ -126,6 +128,10 @@ func (s *userIdentityStep) Run(ctx *cmdutil.SetupContext) error {
 	)
 	if err != nil {
 		return err
+	}
+
+	if _, err := time.LoadLocation(tz); err != nil {
+		return fmt.Errorf("invalid timezone %q — must be an IANA name like America/New_York: %w", tz, err)
 	}
 
 	ctx.UserName = name

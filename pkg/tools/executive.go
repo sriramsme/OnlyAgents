@@ -21,7 +21,7 @@ type DelegateInput struct {
 	//   - Response will be used as context for next delegation
 	//   - Executive needs to synthesize results from multiple agents
 	SendDirectlyToUser bool   `json:"send_directly_to_user,omitempty" desc:"If true, sub-agent sends response directly to user. If false (default), returns to executive for synthesis."`
-	Schedule           string `json:"schedule,omitempty" desc:"Cron expression for recurring tasks. '0 8 * * *' = daily 8am, '0 9 * * 1' = every Monday 9am, '0 20 * * 0' = every Sunday 8pm. Omit for one-time tasks."`
+	Schedule           string `json:"schedule,omitempty" desc:"Cron expression for recurring tasks. '0 8 * * *' = daily 8am, '0 9 * * 1' = every Monday 9am. Use the user's timezone from the ABOUT USER section by default unless the user specifies a different timezone. To specify a timezone explicitly, prefix the expression: 'TZ=America/New_York 0 8 * * *'. Omit for one-time tasks."`
 }
 
 // CreateWorkflowInput is the input schema for the create_workflow tool.
@@ -29,7 +29,7 @@ type CreateWorkflowInput struct {
 	Name     string         `json:"name" desc:"Name for this workflow"`
 	Goal     string         `json:"goal" desc:"Clear description of the goal of this workflow"`
 	Steps    []WorkflowStep `json:"steps" desc:"List of steps in the workflow"`
-	Schedule string         `json:"schedule,omitempty" desc:"Cron expression for recurring tasks. '0 8 * * *' = daily 8am, '0 9 * * 1' = every Monday 9am, '0 20 * * 0' = every Sunday 8pm. Omit for one-time tasks."`
+	Schedule string         `json:"schedule,omitempty" desc:"Cron expression for recurring tasks. '0 8 * * *' = daily 8am, '0 9 * * 1' = every Monday 9am. Use the user's timezone from the ABOUT USER section by default unless the user specifies a different timezone. To specify a timezone explicitly, prefix the expression: 'TZ=America/New_York 0 8 * * *'. Omit for one-time tasks."`
 }
 
 // WorkflowTask defines a single task within a workflow.
