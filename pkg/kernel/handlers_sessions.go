@@ -6,7 +6,7 @@ import (
 
 func (k *Kernel) handleSessionGet(evt core.Event) {
 	p := evt.Payload.(core.SessionGetPayload)
-	sessionID, err := k.store.GetConversationByChannel(k.ctx, p.Channel, p.AgentID)
+	conv, err := k.store.GetConversationByChannel(k.ctx, p.Channel, p.AgentID)
 	if err != nil {
 		k.logger.Error("session.get failed", "err", err)
 		if evt.ReplyTo != nil {
@@ -15,7 +15,7 @@ func (k *Kernel) handleSessionGet(evt core.Event) {
 		return
 	}
 	if evt.ReplyTo != nil {
-		evt.ReplyTo <- core.Event{Payload: sessionID}
+		evt.ReplyTo <- core.Event{Payload: conv.ID}
 	}
 }
 
@@ -28,12 +28,12 @@ func (k *Kernel) handleSessionNew(evt core.Event) {
 		return
 	}
 	// End existing if any
-	if existing, err := k.store.GetConversationByChannel(k.ctx, payload.Channel, ""); err == nil {
+	if existing, err := k.store.GetConversationByChannel(k.ctx, payload.Channel, payload.AgentID); err == nil {
 		err := k.cm.EndSession(k.ctx, existing.ID)
 		if err != nil {
 			k.logger.Error("failed to end existing session",
 				"channel", payload.Channel,
-				"session_id", existing,
+				"session_id", existing.ID,
 				"err", err)
 		}
 	}

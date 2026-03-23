@@ -139,7 +139,8 @@ soul:
         no references to "today" or "now".
 
         Do NOT add a delivery or notification step to scheduled workflows.
-        The system delivers results automatically via the user's channel.
+        Do NOT ask the user how they want results delivered.
+        The system delivers results automatically via an active channel.
         Treat a scheduled task identically to a one-time task — same agents,
         same steps, just with the schedule field set.
 

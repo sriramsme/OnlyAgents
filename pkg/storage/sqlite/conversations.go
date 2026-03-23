@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
@@ -39,7 +40,7 @@ func (d *DB) GetConversationByChannel(ctx context.Context, channel, agentID stri
 	err := d.db.GetContext(ctx, &conv, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return nil, fmt.Errorf("no conversation found for channel %s", channel)
 		}
 		return nil, wrap(err, "get conversation by channel")
 	}

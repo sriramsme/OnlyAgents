@@ -51,7 +51,22 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 	if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
 		return tools.ExecErr(fmt.Errorf("invalid delegation args: %w", err))
 	}
-
+	// Scheduled delegation — just save the cron job, no immediate execution.
+	if input.Schedule != "" {
+		err := a.submitCronJob(ctx, input.Task, input.Schedule, core.Event{
+			Type:    core.AgentExecute,
+			AgentID: input.AgentID,
+			Payload: core.AgentExecutePayload{
+				Message:     input.Task,
+				Channel:     channelMetadata,
+				Attachments: attachments,
+			},
+		})
+		if err != nil {
+			return tools.ExecErr(err)
+		}
+		return tools.ExecDone(fmt.Sprintf("Recurring job scheduled.\nSchedule: %s", input.Schedule))
+	}
 	a.logger.Info("delegating task",
 		"agent_id", input.AgentID,
 		"task", input.Task,
@@ -98,29 +113,14 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		return tools.ExecErr(fmt.Errorf("failed to send delegation request"))
 	}
 
-	// Schedule recurring delegation
-	if input.Schedule != "" {
-		err := a.submitCronJob(ctx, input.Task, input.Schedule, core.Event{
-			Type:    core.AgentExecute,
-			AgentID: input.AgentID,
-			Payload: core.AgentExecutePayload{
-				Message:     input.Task,
-				Channel:     channelMetadata,
-				Attachments: attachments,
-			},
-		})
-		if err != nil {
-			return tools.ExecErr(err)
-		}
-	}
-
 	// If sending directly to user, return immediately
 	// Executive doesn't wait for response
 	if input.SendDirectlyToUser {
 		logger.Timing.EndPhaseWithMetadata(correlationID, delegationPhase, map[string]any{
 			"direct_response": true,
 		})
-		return tools.ExecDone(a.delegationAck(input.AgentID))
+		delegationAck := a.delegationAck(input.AgentID)
+		return tools.ExecDone(delegationAck)
 	}
 
 	// Wait for result
