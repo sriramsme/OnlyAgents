@@ -410,3 +410,56 @@ func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *sto
 		UpdatedAt:       storage.DBTime{Time: time.Now()},
 	}
 }
+
+func (e *Engine) StorageToTaskDef(t *storage.WFTask) *WFTaskDefinition {
+	var dependsOn []string
+	if t.DependsOn != "" {
+		if err := json.Unmarshal([]byte(t.DependsOn), &dependsOn); err != nil {
+			e.logger.Warn("failed to unmarshal depends_on", "task_id", t.ID, "error", err)
+			dependsOn = []string{}
+		}
+	}
+
+	var channel *core.ChannelMetadata
+	if t.ChannelJSON != "" {
+		if err := json.Unmarshal([]byte(t.ChannelJSON), &channel); err != nil {
+			e.logger.Warn("failed to unmarshal channel", "task_id", t.ID, "error", err)
+		}
+	}
+
+	var attachments []*media.Attachment
+	if t.Attachments != "" {
+		if err := json.Unmarshal([]byte(t.Attachments), &attachments); err != nil {
+			e.logger.Warn("failed to unmarshal attachments", "task_id", t.ID, "error", err)
+		}
+	}
+
+	var payload map[string]any
+	if t.Payload != "" {
+		if err := json.Unmarshal([]byte(t.Payload), &payload); err != nil {
+			e.logger.Warn("failed to unmarshal payload", "task_id", t.ID, "error", err)
+		}
+	}
+
+	var metadata map[string]string
+	if t.Metadata != "" {
+		if err := json.Unmarshal([]byte(t.Metadata), &metadata); err != nil {
+			e.logger.Warn("failed to unmarshal metadata", "task_id", t.ID, "error", err)
+		}
+	}
+
+	return &WFTaskDefinition{
+		ID:              t.ID,
+		Name:            t.Name,
+		Description:     t.Description,
+		Type:            string(t.Type),
+		DependsOn:       dependsOn,
+		AssignedAgentID: t.AssignedAgentID,
+		Channel:         channel,
+		Attachments:     attachments,
+		Payload:         payload,
+		Metadata:        metadata,
+		MaxRetries:      t.MaxRetries,
+		Timeout:         time.Duration(t.TimeoutSeconds) * time.Second,
+	}
+}

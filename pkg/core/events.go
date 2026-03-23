@@ -55,6 +55,9 @@ const (
 	// Flow: Executive → Kernel → Workflow Engine
 	WorkflowSubmitted EventType = "workflow_submitted"
 
+	// WorkflowInstantiate: Executive creates a workflow from a template
+	WorkflowInstantiate EventType = "workflow_instantiate"
+
 	// WorkflowCompleted: Workflow engine finished all tasks
 	// Flow: Workflow Engine → Kernel → Executive
 	WorkflowCompleted EventType = "workflow_completed"
@@ -241,6 +244,12 @@ func UnmarshalEventPayload[T any](raw any, v *T) error {
 		return json.Unmarshal(p, v)
 	case []byte:
 		return json.Unmarshal(p, v)
+	case map[string]any:
+		b, err := json.Marshal(p)
+		if err != nil {
+			return fmt.Errorf("re-marshal payload: %w", err)
+		}
+		return json.Unmarshal(b, v)
 	default:
 		return fmt.Errorf("unexpected payload type: %T", raw)
 	}

@@ -2,6 +2,8 @@ package kernel
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -23,11 +25,14 @@ func (k *Kernel) handleCronJobScheduled(evt core.Event) {
 			"err", err)
 		return
 	}
-
+	schedule := payload.Schedule
+	if !strings.HasPrefix(schedule, "TZ=") && k.user.Identity.Timezone != "" {
+		schedule = fmt.Sprintf("TZ=%s %s", k.user.Identity.Timezone, schedule)
+	}
 	job := &storage.CronJob{
 		ID:           payload.ID,
 		Name:         payload.Name,
-		Schedule:     payload.Schedule,
+		Schedule:     schedule,
 		Enabled:      true,
 		EventType:    string(payload.Event.Type),
 		EventPayload: string(eventJSON),

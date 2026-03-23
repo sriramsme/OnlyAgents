@@ -38,6 +38,9 @@ func (k *Kernel) route(evt core.Event) {
 	case core.WorkflowSubmitted:
 		k.handleWorkflowSubmitted(evt)
 
+	case core.WorkflowInstantiate:
+		k.handleWorkflowInstantiate(evt)
+
 	case core.WorkflowCompleted:
 		k.handleWorkflowCompleted(evt)
 

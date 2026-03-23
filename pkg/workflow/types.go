@@ -48,6 +48,12 @@ type WorkflowPayload struct {
 	Attachments []*media.Attachment `json:"attachments,omitempty"`
 }
 
+// WorkflowInstantiatePayload: Executive creates a workflow from a template
+type WorkflowInstantiatePayload struct {
+	TemplateID string                `json:"template_id"`
+	Channel    *core.ChannelMetadata `json:"channel,omitempty"`
+}
+
 // WorkflowResultPayload: Workflow execution completed
 type WorkflowResultPayload struct {
 	WorkflowID      string                     `json:"workflow_id"`

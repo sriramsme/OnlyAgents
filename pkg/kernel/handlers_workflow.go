@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
@@ -206,6 +208,62 @@ func (k *Kernel) handleTaskCompleted(evt core.Event) {
 			"error", err,
 			"workflow_id", payload.WorkflowID,
 			"task_id", payload.TaskID)
+	}
+}
+
+func (k *Kernel) handleWorkflowInstantiate(evt core.Event) {
+	var payload workflow.WorkflowInstantiatePayload
+	if err := core.UnmarshalEventPayload(evt.Payload, &payload); err != nil {
+		k.logger.Error("invalid WorkflowInstantiate payload", "err", err)
+		return
+	}
+
+	template, err := k.store.GetWorkflow(k.ctx, payload.TemplateID)
+	if err != nil {
+		k.logger.Error("template not found", "template_id", payload.TemplateID, "err", err)
+		return
+	}
+
+	storageTasks, err := k.store.GetWFTasks(k.ctx, payload.TemplateID)
+	if err != nil {
+		k.logger.Error("failed to load template tasks", "err", err)
+		return
+	}
+
+	// Remap IDs
+	idMap := make(map[string]string)
+	for _, t := range storageTasks {
+		idMap[t.ID] = uuid.NewString()
+	}
+
+	// Convert storage tasks to defs with new IDs
+	var tasks []*workflow.WFTaskDefinition
+	for _, t := range storageTasks {
+		def := k.workflow.StorageToTaskDef(t) // remap
+		def.ID = idMap[t.ID]
+		for i, dep := range def.DependsOn {
+			if newID, ok := idMap[dep]; ok {
+				def.DependsOn[i] = newID
+			}
+		}
+		def.Channel = payload.Channel
+		tasks = append(tasks, def)
+	}
+
+	wf := &workflow.WorkflowDefinition{
+		ID:              uuid.NewString(),
+		Name:            template.Name,
+		Description:     template.Description,
+		CreatedBy:       template.CreatedBy,
+		Status:          "pending",
+		Channel:         payload.Channel,
+		OriginalMessage: template.OriginalMessage,
+		IsTemplate:      false,
+		Tasks:           tasks,
+	}
+
+	if err := k.workflow.SubmitWorkflow(k.ctx, wf, nil); err != nil {
+		k.logger.Error("failed to instantiate workflow", "template_id", payload.TemplateID, "err", err)
 	}
 }
 
