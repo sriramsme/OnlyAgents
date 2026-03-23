@@ -10,6 +10,7 @@ type Conversation struct {
 	ID          string     `db:"id"`
 	Channel     string     `db:"channel"` // "telegram", "discord"
 	AgentID     string     `db:"agent_id"`
+	ChatID      string     `db:"chat_id"`
 	StartedAt   DBTime     `db:"started_at"`
 	EndedAt     NullDBTime `db:"ended_at"`
 	Context     JSONMap    `db:"context"`
@@ -200,7 +201,6 @@ const (
 type Workflow struct {
 	ID              string         `db:"id"`
 	IsTemplate      bool           `db:"is_template"`
-	TriggeredBy     string         `db:"triggered_by"` // FK to cron_jobs.id, NULL if user-initiated
 	Name            string         `db:"name"`
 	Description     string         `db:"description"`
 	CreatedBy       string         `db:"created_by"`

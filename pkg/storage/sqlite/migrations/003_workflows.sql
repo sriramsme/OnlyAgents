@@ -1,7 +1,6 @@
 CREATE TABLE workflows (
     id TEXT PRIMARY KEY,
     is_template INTEGER NOT NULL DEFAULT 0,
-    triggered_by TEXT,  -- FK to cron_jobs.id, NULL if user-initiated
     name TEXT NOT NULL,
     description TEXT,
     created_by TEXT NOT NULL,

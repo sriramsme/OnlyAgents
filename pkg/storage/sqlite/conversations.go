@@ -2,9 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
@@ -13,26 +13,38 @@ import (
 
 func (d *DB) CreateConversation(ctx context.Context, conv *storage.Conversation) error {
 	_, err := d.db.NamedExecContext(ctx, `
-		INSERT INTO conversations (id, channel, agent_id, started_at, ended_at, context, summary, peer_agent_id)
-		VALUES (:id, :channel , :agent_id, :started_at, :ended_at, :context, :summary, :peer_agent_id)
+		INSERT INTO conversations (id, channel, agent_id, chat_id, started_at, ended_at, context, summary, peer_agent_id)
+		VALUES (:id, :channel , :agent_id, :chat_id, :started_at, :ended_at, :context, :summary, :peer_agent_id)
 	`, conv)
 	return wrap(err, "create conversation")
 }
 
-func (d *DB) GetOrCreateSession(ctx context.Context, channel, agentID string) (string, error) {
-	var id string
-	err := d.db.GetContext(ctx, &id,
-		`SELECT id FROM conversations
-         WHERE channel = ? AND agent_id = ? AND ended_at IS NULL`,
-		channel, agentID)
-	if err == nil {
-		return id, nil
+func (d *DB) GetConversationByChannel(ctx context.Context, channel, agentID string) (*storage.Conversation, error) {
+	var conv storage.Conversation
+
+	query := `
+		SELECT id, channel, agent_id, started_at, ended_at
+		FROM conversations
+		WHERE channel = ? AND ended_at IS NULL
+	`
+	args := []any{channel}
+
+	if agentID != "" {
+		query += " AND agent_id = ?"
+		args = append(args, agentID)
 	}
-	id = uuid.NewString()
-	_, err = d.db.ExecContext(ctx,
-		`INSERT INTO conversations (id, channel, agent_id, started_at) VALUES (?, ?, ?, ?)`,
-		id, channel, agentID, time.Now())
-	return id, wrap(err, "get or create session")
+
+	query += " LIMIT 1"
+
+	err := d.db.GetContext(ctx, &conv, query, args...)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, wrap(err, "get conversation by channel")
+	}
+
+	return &conv, nil
 }
 
 func (d *DB) GetConversation(ctx context.Context, id string) (*storage.Conversation, error) {

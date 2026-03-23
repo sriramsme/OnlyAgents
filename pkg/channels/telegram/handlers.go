@@ -108,7 +108,7 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 	c.createPlaceholder(ctx, chatID, message.Chat.ID)
 	c.stopThinkingIndicator(chatID)
 
-	sessionID, err := c.resolveSessionID(agentID)
+	err = c.resolveSessionID(agentID, chatID)
 	if err != nil {
 		return fmt.Errorf("failed to resolve session ID: %w", err)
 	}
@@ -119,7 +119,7 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 		CorrelationID: uuid.NewString(),
 		Payload: core.MessageReceivedPayload{
 			Channel: &core.ChannelMetadata{
-				SessionID: sessionID,
+				SessionID: c.currentSessionID,
 				ChatID:    chatID,
 				Name:      "telegram",
 				UserID:    userID,
@@ -142,6 +142,7 @@ func (c *TelegramChannel) handleNewSession(ctx *th.Context, message *telego.Mess
 	}
 
 	agentID := c.config.DefaultAgent
+	chatID := fmt.Sprintf("%d", message.Chat.ID)
 
 	replyCh := make(chan core.Event, 1)
 	c.eventBus <- core.Event{
@@ -151,6 +152,7 @@ func (c *TelegramChannel) handleNewSession(ctx *th.Context, message *telego.Mess
 		Payload: core.SessionNewPayload{
 			Channel: "telegram",
 			AgentID: agentID,
+			ChatID:  chatID,
 		},
 	}
 
@@ -164,6 +166,7 @@ func (c *TelegramChannel) handleNewSession(ctx *th.Context, message *telego.Mess
 			))
 			return fmt.Errorf("empty session id from kernel %w", err)
 		}
+		c.currentSessionID = sessionID
 		_, err := c.bot.SendMessage(ctx, tu.Message(
 			tu.ID(message.Chat.ID),
 			"🆕 New session started. Previous conversation has been archived.",

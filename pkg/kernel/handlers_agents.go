@@ -29,9 +29,16 @@ func (k *Kernel) handleAgentExecute(evt core.Event) {
 		k.logger.Error("no channel metadata available for outbound message",
 			"correlation_id", evt.CorrelationID)
 
-		payload.Channel = k.GetActiveChannelMetadata()
+		channelMetadata, err := k.GetActiveChannelMetadata()
+		if err != nil {
+			k.logger.Error("failed to get active channel metadata",
+				"error", err)
+			return
+		}
+		payload.Channel = channelMetadata
 	}
 
+	evt.Payload = payload
 	// Forward to agent's inbox
 	select {
 	case agent.Inbox() <- evt:

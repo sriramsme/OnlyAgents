@@ -96,7 +96,13 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 		}
 	} else {
 		ch = *k.channels.GetActive()
-		payload.Channel = k.GetActiveChannelMetadata()
+		payload.Channel, err = k.GetActiveChannelMetadata()
+		if err != nil {
+			logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
+			k.logger.Error("failed to get active channel metadata",
+				"error", err)
+			return
+		}
 	}
 
 	// Create timeout context for channel send

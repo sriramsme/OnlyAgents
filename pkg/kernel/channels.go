@@ -1,23 +1,25 @@
 package kernel
 
 import (
+	"fmt"
+
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
-func (k *Kernel) GetActiveChannelMetadata() *core.ChannelMetadata {
+func (k *Kernel) GetActiveChannelMetadata() (*core.ChannelMetadata, error) {
 	active := *k.channels.GetActive()
 	if active == nil {
-		return nil
+		return nil, fmt.Errorf("no active channel")
 	}
 	agentID := k.agents.GetExecutive().ID() // TODO: Get agent ID from active channel
-	sessionID, err := k.store.GetOrCreateSession(k.ctx, active.PlatformName(), agentID)
+	conv, err := k.store.GetConversationByChannel(k.ctx, active.PlatformName(), agentID)
 	if err != nil {
-		k.logger.Error("failed to get session", "err", err)
-		return nil
+		return nil, fmt.Errorf("failed to get session for channel: %s", active.PlatformName())
 	}
 	metadata := &core.ChannelMetadata{
 		Name:      active.PlatformName(),
-		SessionID: sessionID,
+		SessionID: conv.ID,
+		ChatID:    conv.ChatID,
 	}
-	return metadata
+	return metadata, nil
 }

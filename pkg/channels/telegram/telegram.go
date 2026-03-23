@@ -51,6 +51,9 @@ type TelegramChannel struct {
 	// Message tracking
 	placeholders sync.Map // chatID -> messageID
 	thinkingCtx  sync.Map // chatID -> cancelFunc
+
+	// Session tracking
+	currentSessionID string
 }
 
 // NewChannel creates a new Telegram channel
@@ -116,28 +119,34 @@ func (c *TelegramChannel) HealthCheck() (bool, error) {
 }
 
 // Telegram adapter — one session per chat, auto-created if not exists
-func (c *TelegramChannel) resolveSessionID(agentID string) (string, error) {
+func (c *TelegramChannel) resolveSessionID(agentID string, chatID string) error {
+	if c.currentSessionID != "" {
+		return nil
+	}
+
 	if agentID == "" {
-		return "", fmt.Errorf("agentID is empty")
+		return fmt.Errorf("agentID is empty")
 	}
 	replyCh := make(chan core.Event, 1)
 	c.eventBus <- core.Event{
-		Type:    core.SessionGet,
+		Type:    core.SessionNew,
 		ReplyTo: replyCh,
-		Payload: core.SessionGetPayload{
+		Payload: core.SessionNewPayload{
 			Channel: "telegram",
 			AgentID: agentID,
+			ChatID:  chatID,
 		},
 	}
 	select {
 	case reply := <-replyCh:
 		sessionID, _ := reply.Payload.(string)
 		if sessionID == "" {
-			return "", fmt.Errorf("empty session id from kernel")
+			return fmt.Errorf("empty session id from kernel")
 		}
-		return sessionID, nil
+		c.currentSessionID = sessionID
+		return nil
 	case <-c.ctx.Done():
-		return "", fmt.Errorf("context cancelled waiting for session")
+		return fmt.Errorf("context cancelled waiting for session")
 	}
 }
 

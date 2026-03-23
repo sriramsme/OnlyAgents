@@ -179,11 +179,10 @@ func (a *Agent) requestWorkflow(ctx context.Context, correlationID string,
 
 	if schedule != "" {
 		err := a.submitCronJob(ctx, wf.Name, schedule, core.Event{
-			Type:    core.WorkflowSubmitted,
+			Type:    core.WorkflowInstantiate,
 			AgentID: a.id,
-			Payload: workflow.WorkflowPayload{
-				Workflow:    *wf,
-				Attachments: attachments,
+			Payload: workflow.WorkflowInstantiatePayload{
+				TemplateID: wf.ID,
 			},
 		})
 		if err != nil {

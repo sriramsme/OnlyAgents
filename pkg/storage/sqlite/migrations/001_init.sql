@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     id            TEXT PRIMARY KEY,
     channel       TEXT NOT NULL,        -- "telegram", "onlyagents", "discord"
     agent_id      TEXT NOT NULL,
+    chat_id       TEXT NOT NULL,
     started_at    TEXT NOT NULL,
     ended_at      TEXT,
     context       TEXT NOT NULL DEFAULT '{}',

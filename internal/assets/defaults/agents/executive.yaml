@@ -138,6 +138,11 @@ soul:
         or create_workflow. Write the task in present-imperative tense —
         no references to "today" or "now".
 
+        Do NOT add a delivery or notification step to scheduled workflows.
+        The system delivers results automatically via the user's channel.
+        Treat a scheduled task identically to a one-time task — same agents,
+        same steps, just with the schedule field set.
+
       LIMITS:
         Never invent agents
         Never invent capabilities

@@ -4,10 +4,9 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
-// GetOrCreate — used by all channels on every message
 func (k *Kernel) handleSessionGet(evt core.Event) {
 	p := evt.Payload.(core.SessionGetPayload)
-	sessionID, err := k.store.GetOrCreateSession(k.ctx, p.Channel, p.AgentID)
+	sessionID, err := k.store.GetConversationByChannel(k.ctx, p.Channel, p.AgentID)
 	if err != nil {
 		k.logger.Error("session.get failed", "err", err)
 		if evt.ReplyTo != nil {
@@ -29,8 +28,8 @@ func (k *Kernel) handleSessionNew(evt core.Event) {
 		return
 	}
 	// End existing if any
-	if existing, err := k.store.GetOrCreateSession(k.ctx, payload.Channel, payload.AgentID); err == nil {
-		err := k.cm.EndSession(k.ctx, existing)
+	if existing, err := k.store.GetConversationByChannel(k.ctx, payload.Channel, ""); err == nil {
+		err := k.cm.EndSession(k.ctx, existing.ID)
 		if err != nil {
 			k.logger.Error("failed to end existing session",
 				"channel", payload.Channel,
@@ -39,7 +38,7 @@ func (k *Kernel) handleSessionNew(evt core.Event) {
 		}
 	}
 
-	sessionID, err := k.cm.NewSession(k.ctx, payload.Channel, payload.AgentID)
+	sessionID, err := k.cm.NewSession(k.ctx, &payload)
 	if err != nil {
 		k.logger.Error("failed to start new session",
 			"channel", payload.Channel,

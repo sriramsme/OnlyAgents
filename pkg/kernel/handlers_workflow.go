@@ -111,7 +111,7 @@ func (k *Kernel) handleWorkflowCompleted(evt core.Event) {
 	}
 
 	select {
-	case executive.Inbox() <- synthesisEvent:
+	case k.bus <- synthesisEvent:
 		k.logger.Debug("workflow synthesis task sent to executive")
 
 	case <-time.After(5 * time.Second):
@@ -131,19 +131,8 @@ func (k *Kernel) handleTaskAssigned(evt core.Event) {
 		return
 	}
 
-	// Get target agent (determined by workflow engine based on task capabilities)
-	agent, err := k.agents.Get(evt.AgentID)
-	if err != nil {
-		k.logger.Error("agent not found for task assignment",
-			"agent_id", evt.AgentID,
-			"task_id", payload.TaskID)
-
-		// TODO: Notify workflow engine of failure
-		return
-	}
-
 	k.logger.Debug("assigning task to agent",
-		"agent_id", agent.ID(),
+		"agent_id", evt.AgentID,
 		"task_id", payload.TaskID,
 		"workflow_id", payload.WorkflowID,
 		"channel", payload.Channel)
@@ -152,7 +141,7 @@ func (k *Kernel) handleTaskAssigned(evt core.Event) {
 	agentEvent := core.Event{
 		Type:          core.AgentExecute,
 		CorrelationID: evt.CorrelationID,
-		AgentID:       agent.ID(),
+		AgentID:       evt.AgentID,
 		Payload: core.AgentExecutePayload{
 			Message:     payload.Task,
 			MessageType: core.MessageTypeWorkflowTask,
@@ -169,14 +158,14 @@ func (k *Kernel) handleTaskAssigned(evt core.Event) {
 
 	// Send to agent
 	select {
-	case agent.Inbox() <- agentEvent:
+	case k.bus <- agentEvent:
 		k.logger.Debug("task assigned to agent",
-			"agent_id", agent.ID(),
+			"agent_id", evt.AgentID,
 			"task_id", payload.TaskID)
 
 	case <-time.After(5 * time.Second):
 		k.logger.Error("failed to assign task - agent inbox full",
-			"agent_id", agent.ID(),
+			"agent_id", evt.AgentID,
 			"task_id", payload.TaskID)
 		// TODO: Notify workflow engine
 

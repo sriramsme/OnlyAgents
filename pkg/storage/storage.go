@@ -24,7 +24,7 @@ type Storage interface {
 type ConversationStore interface {
 	CreateConversation(ctx context.Context, conv *Conversation) error
 	GetConversation(ctx context.Context, id string) (*Conversation, error)
-	GetOrCreateSession(ctx context.Context, key, agentID string) (string, error)
+	GetConversationByChannel(ctx context.Context, channel, agentID string) (*Conversation, error)
 	UpdateConversation(ctx context.Context, conv *Conversation) error
 	ListConversations(ctx context.Context, agentID string, limit int) ([]*Conversation, error)
 	EndConversation(ctx context.Context, id string, summary string) error

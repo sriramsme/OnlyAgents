@@ -220,6 +220,7 @@ type SessionGetPayload struct {
 type SessionNewPayload struct {
 	Channel string `json:"channel"`
 	AgentID string `json:"agent_id"`
+	ChatID  string `json:"chat_id,omitempty"` // persist chat_id for 3rd party channels
 }
 
 // SessionEndPayload: End a conversation

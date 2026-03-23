@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
@@ -36,12 +37,13 @@ func New(ctx context.Context, store storage.Storage) (*ConversationManager, erro
 }
 
 // NewSession creates session if it doesn't exist (idempotent)
-func (cm *ConversationManager) NewSession(ctx context.Context, channel, agentID string) (string, error) {
+func (cm *ConversationManager) NewSession(ctx context.Context, payload *core.SessionNewPayload) (string, error) {
 	id := uuid.NewString()
 	err := cm.store.CreateConversation(ctx, &storage.Conversation{
 		ID:        id,
-		Channel:   channel,
-		AgentID:   agentID,
+		Channel:   payload.Channel,
+		AgentID:   payload.AgentID,
+		ChatID:    payload.ChatID,
 		StartedAt: storage.DBTime{Time: time.Now()},
 	})
 	return id, err
