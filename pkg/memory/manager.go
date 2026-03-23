@@ -21,10 +21,10 @@ type MemoryManager struct {
 	deliverer  channels.Channel
 }
 
-func NewMemoryManager(store storage.Storage, llmClient llm.Client) *MemoryManager {
+func NewMemoryManager(store storage.Storage, llmClient llm.Client, tz string) *MemoryManager {
 	return &MemoryManager{
 		store:      store,
-		summarizer: newSummarizer(store, llmClient),
+		summarizer: newSummarizer(store, llmClient, tz),
 	}
 }
 
@@ -35,7 +35,7 @@ func (mm *MemoryManager) RegisterJobs(s *scheduler.Scheduler) {
 	s.Register(&weeklySummaryJob{summarizer: mm.summarizer})
 	s.Register(&monthlySummaryJob{summarizer: mm.summarizer})
 	s.Register(&yearlySummaryJob{summarizer: mm.summarizer})
-	s.Register(&dailyDigestJob{store: mm.store, deliverer: mm.deliverer})
+	s.Register(&dailyDigestJob{store: mm.store, deliverer: mm.deliverer, loc: mm.summarizer.loc})
 }
 
 // SetDeliverer wires up the digest delivery channel (Telegram etc.).
@@ -78,12 +78,12 @@ func (j *weeklySummaryJob) Name() string     { return "weekly_summary" }
 func (j *weeklySummaryJob) Schedule() string { return "0 0 * * 0" }
 
 func (j *weeklySummaryJob) Run(ctx context.Context) error {
-	weekEnd := truncateToDay(time.Now()).Add(-time.Second)
+	weekEnd := truncateToDayInLocation(time.Now(), j.summarizer.loc).Add(-time.Second)
 	return j.summarizer.SummarizeWeek(ctx, weekEnd)
 }
 
 func (j *weeklySummaryJob) CatchUp(ctx context.Context) error {
-	lastSunday := lastWeekday(time.Now(), time.Sunday)
+	lastSunday := lastWeekday(time.Now(), time.Sunday, j.summarizer.loc)
 	from := lastSunday.AddDate(0, 0, -6)
 	weeklies, err := j.summarizer.store.GetWeeklySummaries(ctx, sessionAgentID, from, lastSunday)
 	if err != nil {
@@ -153,6 +153,7 @@ func (j *yearlySummaryJob) CatchUp(ctx context.Context) error {
 type dailyDigestJob struct {
 	store     storage.Storage
 	deliverer channels.Channel
+	loc       *time.Location
 }
 
 func (j *dailyDigestJob) Name() string     { return "daily_digest" }
@@ -172,7 +173,7 @@ func (j *dailyDigestJob) Run(ctx context.Context) error {
 		return fmt.Errorf("digest: tasks: %w", err)
 	}
 
-	tomorrowStart := truncateToDay(tomorrow)
+	tomorrowStart := truncateToDayInLocation(tomorrow, j.loc)
 	tomorrowEnd := tomorrowStart.Add(24*time.Hour - time.Second)
 	reminders, err := j.store.GetDueReminders(ctx, tomorrowEnd)
 	if err != nil {
@@ -200,8 +201,8 @@ func (j *dailyDigestJob) Run(ctx context.Context) error {
 
 // lastWeekday returns the most recent occurrence of the given weekday at 00:00 UTC.
 // If today is that weekday, returns today's 00:00.
-func lastWeekday(t time.Time, wd time.Weekday) time.Time {
-	day := truncateToDay(t)
+func lastWeekday(t time.Time, wd time.Weekday, loc *time.Location) time.Time {
+	day := truncateToDayInLocation(t, loc)
 	offset := int(day.Weekday()) - int(wd)
 	if offset < 0 {
 		offset += 7

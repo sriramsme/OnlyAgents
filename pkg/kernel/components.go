@@ -53,6 +53,11 @@ func loadComponents(
 		return c, fmt.Errorf("load store: %w", err)
 	}
 
+	c.user, err = config.LoadUserConfig()
+	if err != nil {
+		return c, fmt.Errorf("load user config: %w", err)
+	}
+
 	c.scheduler = scheduler.New(kernelBus)
 
 	c.cm, err = loadConversationManager(ctx, c.store)
@@ -60,7 +65,7 @@ func loadComponents(
 		return c, fmt.Errorf("load conversation manager: %w", err)
 	}
 
-	c.mm, err = loadMemoryManager(cfg.Memory, c.store)
+	c.mm, err = loadMemoryManager(cfg.Memory, c.store, c.user.Identity.Timezone)
 	if err != nil {
 		return c, fmt.Errorf("load memory manager: %w", err)
 	}
@@ -107,10 +112,6 @@ func loadComponents(
 	if err != nil {
 		return c, fmt.Errorf("load skills: %w", err)
 	}
-	c.user, err = config.LoadUserConfig()
-	if err != nil {
-		return c, fmt.Errorf("load user config: %w", err)
-	}
 
 	c.workflow = workflow.NewEngine(c.store, kernelBus)
 	if err != nil {
@@ -121,12 +122,12 @@ func loadComponents(
 }
 
 // loadMemoryManager loads the MemoryManager.
-func loadMemoryManager(cfg config.Memory, store storage.Storage) (*memory.MemoryManager, error) {
+func loadMemoryManager(cfg config.Memory, store storage.Storage, userTZ string) (*memory.MemoryManager, error) {
 	llmClient, err := llm.New(cfg.LLM)
 	if err != nil {
 		return nil, fmt.Errorf("create llm client for memory manager: %w", err)
 	}
-	mm := memory.NewMemoryManager(store, llmClient)
+	mm := memory.NewMemoryManager(store, llmClient, userTZ)
 	return mm, nil
 }
 

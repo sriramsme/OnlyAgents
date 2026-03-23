@@ -23,10 +23,15 @@ const sessionAgentID = "__session__"
 type Summarizer struct {
 	store     storage.Storage
 	llmClient llm.Client
+	loc       *time.Location
 }
 
-func newSummarizer(store storage.Storage, llmClient llm.Client) *Summarizer {
-	return &Summarizer{store: store, llmClient: llmClient}
+func newSummarizer(store storage.Storage, llmClient llm.Client, tz string) *Summarizer {
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		loc = time.UTC
+	}
+	return &Summarizer{store: store, llmClient: llmClient, loc: loc}
 }
 
 // Daily
@@ -35,25 +40,19 @@ func newSummarizer(store storage.Storage, llmClient llm.Client) *Summarizer {
 // Facts extracted by the LLM are upserted into the facts table.
 // If there are no messages for the day, it is a no-op.
 func (s *Summarizer) SummarizeDay(ctx context.Context, date time.Time) error {
-	day := truncateToDay(date)
-	msgs, err := s.store.GetRecentMessages(ctx, sessionAgentID, day)
+	from, to := dayBounds(date, s.loc)
+
+	msgs, err := s.store.GetMessagesBetween(ctx, sessionAgentID, from, to)
 	if err != nil {
 		return fmt.Errorf("summarizer: day messages: %w", err)
 	}
-	// Filter to messages within the target day only.
-	nextDay := day.Add(24 * time.Hour)
-	var dayMsgs []*storage.Message
-	for _, m := range msgs {
-		if !m.Timestamp.Before(day) && m.Timestamp.Before(nextDay) {
-			dayMsgs = append(dayMsgs, m)
-		}
-	}
-	if len(dayMsgs) == 0 {
-		logger.Log.Info("summarizer: no messages for day, skipping", "date", day.Format("2006-01-02"))
+	if len(msgs) == 0 {
+		logger.Log.Info("summarizer: no messages for day, skipping",
+			"date", from.In(s.loc).Format("2006-01-02"))
 		return nil
 	}
 
-	prompt := buildDailyPrompt(dayMsgs)
+	prompt := buildDailyPrompt(msgs)
 	raw, err := s.callLLM(ctx, prompt)
 	if err != nil {
 		return fmt.Errorf("summarizer: day llm: %w", err)
@@ -64,30 +63,25 @@ func (s *Summarizer) SummarizeDay(ctx context.Context, date time.Time) error {
 		return fmt.Errorf("summarizer: day parse: %w", err)
 	}
 
-	// Collect unique conversation IDs from messages.
-	convIDs := uniqueConvIDs(dayMsgs)
-
 	if err := s.store.SaveDailySummary(ctx, &storage.DailySummary{
 		ID:              uuid.NewString(),
 		AgentID:         sessionAgentID,
-		Date:            storage.DBTime{Time: day},
+		Date:            storage.DBTime{Time: from}, // store as UTC start of local day
 		Summary:         resp.Summary,
 		KeyEvents:       resp.KeyEvents,
 		Topics:          resp.Topics,
-		ConversationIDs: convIDs,
+		ConversationIDs: uniqueConvIDs(msgs),
 	}); err != nil {
 		return fmt.Errorf("summarizer: save daily: %w", err)
 	}
 
-	// Upsert extracted facts.
 	if err := s.saveFacts(ctx, resp.Facts); err != nil {
-		// Non-fatal: summary is saved, facts are best-effort.
 		logger.Log.Warn("summarizer: save facts", "err", err)
 	}
 
 	logger.Log.Info("summarizer: daily summary saved",
-		"date", day.Format("2006-01-02"),
-		"messages", len(dayMsgs),
+		"date", from.In(s.loc).Format("2006-01-02"),
+		"messages", len(msgs),
 		"facts", len(resp.Facts))
 	return nil
 }
@@ -133,7 +127,7 @@ func (s *Summarizer) SummarizeWeek(ctx context.Context, weekEnd time.Time) error
 
 // SummarizeMonth summarises all weekly summaries for the given year/month.
 func (s *Summarizer) SummarizeMonth(ctx context.Context, year, month int) error {
-	from := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	from := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, s.loc)
 	to := from.AddDate(0, 1, -1)
 	weeklies, err := s.store.GetWeeklySummaries(ctx, sessionAgentID, from, to)
 	if err != nil {
@@ -372,8 +366,17 @@ func parseJSON(raw string, v any) error {
 	return json.Unmarshal([]byte(s), v)
 }
 
-func truncateToDay(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+func truncateToDayInLocation(t time.Time, loc *time.Location) time.Time {
+	local := t.In(loc)
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+}
+
+// dayBounds returns the start and end of a calendar day in the given
+// location, converted to UTC for DB queries.
+func dayBounds(date time.Time, loc *time.Location) (from, to time.Time) {
+	local := date.In(loc)
+	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+	return start.UTC(), start.Add(24 * time.Hour).UTC()
 }
 
 func uniqueConvIDs(msgs []*storage.Message) []string {

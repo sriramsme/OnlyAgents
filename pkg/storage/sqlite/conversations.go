@@ -111,6 +111,16 @@ func (d *DB) GetRecentMessages(ctx context.Context, agentID string, since time.T
 	return msgs, wrap(err, "get recent messages")
 }
 
+func (d *DB) GetMessagesBetween(ctx context.Context, agentID string, from, to time.Time) ([]*storage.Message, error) {
+	var msgs []*storage.Message
+	err := d.db.SelectContext(ctx, &msgs, `
+        SELECT * FROM messages
+        WHERE agent_id = ? AND timestamp >= ? AND timestamp < ?
+        ORDER BY timestamp ASC
+    `, agentID, storage.DBTime{Time: from}, storage.DBTime{Time: to})
+	return msgs, wrap(err, "get messages between")
+}
+
 func (d *DB) DeleteOldMessages(ctx context.Context, olderThan time.Time) error {
 	val := storage.DBTime{Time: olderThan}
 	_, err := d.db.ExecContext(ctx, `DELETE FROM messages WHERE timestamp < ?`, val)

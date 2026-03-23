@@ -34,6 +34,7 @@ type MessageStore interface {
 	SaveMessage(ctx context.Context, msg *Message) error
 	GetMessages(ctx context.Context, conversationID string) ([]*Message, error)
 	GetMessagesByAgent(ctx context.Context, conversationID, agentID string) ([]*Message, error)
+	GetMessagesBetween(ctx context.Context, agentID string, from, to time.Time) ([]*Message, error)
 	GetRecentMessages(ctx context.Context, agentID string, since time.Time) ([]*Message, error)
 	DeleteOldMessages(ctx context.Context, olderThan time.Time) error
 }
