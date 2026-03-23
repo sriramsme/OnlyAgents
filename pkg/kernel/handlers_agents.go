@@ -10,12 +10,26 @@ import (
 
 // handleAgentExecute: Direct agent execution (rare - usually goes via inbox)
 func (k *Kernel) handleAgentExecute(evt core.Event) {
+	var payload core.AgentExecutePayload
+	if err := core.UnmarshalEventPayload(evt.Payload, &payload); err != nil {
+		k.logger.Error("invalid AgentExecute payload", "err", err)
+		return
+	}
 	agent, err := k.agents.Get(evt.AgentID)
 	if err != nil {
 		k.logger.Error("target agent not found",
 			"agent_id", evt.AgentID,
 			"correlation_id", evt.CorrelationID)
 		return
+	}
+
+	// Fallback to active channel if not specified
+	// In most cases, ChannelMetadata will be set by the caller
+	if payload.Channel == nil {
+		k.logger.Error("no channel metadata available for outbound message",
+			"correlation_id", evt.CorrelationID)
+
+		payload.Channel = k.GetActiveChannelMetadata()
 	}
 
 	// Forward to agent's inbox

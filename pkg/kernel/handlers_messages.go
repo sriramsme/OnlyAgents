@@ -79,14 +79,26 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	}
 
 	logger.Timing.StartPhase(evt.CorrelationID, "outbound_send")
-	ch, err := k.channels.Get(payload.Channel.Name)
-	if err != nil {
-		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
-		k.logger.Error("channel not found",
-			"channel", payload.Channel.Name,
-			"correlation_id", evt.CorrelationID)
-		return
+	var ch channels.Channel
+	var err error
+
+	// Fallback to active channel if not specified
+	// In most cases, ChannelMetadata will be set by the caller
+	if payload.Channel != nil {
+		ch, err = k.channels.Get(payload.Channel.Name)
+		if err != nil {
+			logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
+			k.logger.Error("channel not found",
+				"channel", payload.Channel.Name,
+				"correlation_id", evt.CorrelationID)
+
+			ch = *k.channels.GetActive()
+		}
+	} else {
+		ch = *k.channels.GetActive()
+		payload.Channel = k.GetActiveChannelMetadata()
 	}
+
 	// Create timeout context for channel send
 	ctx, cancel := context.WithTimeout(k.ctx, 10*time.Second)
 	defer cancel()
