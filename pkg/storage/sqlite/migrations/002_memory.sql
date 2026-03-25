@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS facts (
     source_summary_date  TEXT    NOT NULL DEFAULT '',     -- YYYY-MM-DD
     superseded_by        TEXT    NOT NULL DEFAULT '',
     first_seen           TEXT    NOT NULL,
-    last_confirmed       TEXT    NOT NULL,
+    last_confirmed       TEXT    NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_facts_entity            ON facts (entity);

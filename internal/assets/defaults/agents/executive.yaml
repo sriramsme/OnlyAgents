@@ -140,6 +140,7 @@ soul:
 
         Do NOT add a delivery or notification step to scheduled workflows.
         Do NOT ask the user how they want results delivered.
+        Do NOT invent steps for: sending digests, delivering alerts, saving copies, notifying users, or any form of output distribution.
         The system delivers results automatically via an active channel.
         Treat a scheduled task identically to a one-time task — same agents,
         same steps, just with the schedule field set.
