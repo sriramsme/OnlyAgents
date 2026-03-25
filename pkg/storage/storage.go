@@ -25,6 +25,7 @@ type ConversationStore interface {
 	CreateConversation(ctx context.Context, conv *Conversation) error
 	GetConversation(ctx context.Context, id string) (*Conversation, error)
 	GetConversationByChannel(ctx context.Context, channel, agentID string) (*Conversation, error)
+	GetConversationsByDay(ctx context.Context, from, to time.Time) ([]*Conversation, error)
 	UpdateConversation(ctx context.Context, conv *Conversation) error
 	ListConversations(ctx context.Context, agentID string, limit int) ([]*Conversation, error)
 	EndConversation(ctx context.Context, id string, summary string) error
@@ -34,31 +35,34 @@ type MessageStore interface {
 	SaveMessage(ctx context.Context, msg *Message) error
 	GetMessages(ctx context.Context, conversationID string) ([]*Message, error)
 	GetMessagesByAgent(ctx context.Context, conversationID, agentID string) ([]*Message, error)
-	GetMessagesBetween(ctx context.Context, agentID string, from, to time.Time) ([]*Message, error)
-	GetRecentMessages(ctx context.Context, agentID string, since time.Time) ([]*Message, error)
+	GetMessagesBetween(ctx context.Context, roles []string, from, to time.Time) ([]*Message, error)
 	DeleteOldMessages(ctx context.Context, olderThan time.Time) error
 }
 
 type MemoryStore interface {
 	SaveDailySummary(ctx context.Context, s *DailySummary) error
-	GetDailySummary(ctx context.Context, agentID string, date time.Time) (*DailySummary, error)
-	GetDailySummaries(ctx context.Context, agentID string, from, to time.Time) ([]*DailySummary, error)
+	GetDailySummary(ctx context.Context, date time.Time) (*DailySummary, error)
+	GetDailySummaries(ctx context.Context, from, to time.Time) ([]*DailySummary, error)
 
 	SaveWeeklySummary(ctx context.Context, s *WeeklySummary) error
-	GetWeeklySummaries(ctx context.Context, agentID string, from, to time.Time) ([]*WeeklySummary, error)
+	GetWeeklySummaries(ctx context.Context, from, to time.Time) ([]*WeeklySummary, error)
 
 	SaveMonthlySummary(ctx context.Context, s *MonthlySummary) error
-	GetMonthlySummaries(ctx context.Context, agentID string, year int) ([]*MonthlySummary, error)
+	GetMonthlySummaries(ctx context.Context, year int) ([]*MonthlySummary, error)
 
 	SaveYearlyArchive(ctx context.Context, a *YearlyArchive) error
-	GetYearlyArchive(ctx context.Context, agentID string, year int) (*YearlyArchive, error)
+	GetYearlyArchive(ctx context.Context, year int) (*YearlyArchive, error)
 }
 
 type FactStore interface {
-	UpsertFact(ctx context.Context, fact *Fact) error
-	GetFacts(ctx context.Context, agentID string, entity string) ([]*Fact, error)
-	SearchFacts(ctx context.Context, agentID string, query string) ([]*Fact, error) // FTS5
+	InsertFact(ctx context.Context, fact *Fact) error
+	GetFacts(ctx context.Context, entity string) ([]*Fact, error)
+	SearchFacts(ctx context.Context, query string) ([]*Fact, error) // FTS5
 	DeleteFact(ctx context.Context, id string) error
+
+	// for conflict detection and reinforcement in saveFacts.
+	GetFactByKey(ctx context.Context, entity, fact string) (*Fact, error)
+	GetActiveFactsByEntity(ctx context.Context, entity string) ([]*Fact, error)
 }
 
 type AgentStateStore interface {

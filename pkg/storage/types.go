@@ -31,21 +31,27 @@ type Message struct {
 	Timestamp        DBTime `db:"timestamp"`
 }
 
+// TopicEntry is a topic extracted from a day's conversation along with
+// its relative share of the day's message volume and the user's sentiment.
+type TopicEntry struct {
+	Topic        string  `json:"topic"`
+	MessageShare float64 `json:"message_share"` // 0.0 – 1.0
+	Sentiment    string  `json:"sentiment"`     // "enthusiastic", "neutral", "frustrated", etc.
+}
+
 // DailySummary is an LLM-generated compression of all messages from one day.
 type DailySummary struct {
-	ID              string            `db:"id"`
-	AgentID         string            `db:"agent_id"`
-	Date            DBTime            `db:"date"`
-	Summary         string            `db:"summary"`
-	KeyEvents       JSONSlice[string] `db:"key_events"`
-	Topics          JSONSlice[string] `db:"topics"`
-	ConversationIDs JSONSlice[string] `db:"conversation_ids"`
+	ID              string                `db:"id"`
+	Date            DBTime                `db:"date"`
+	Summary         string                `db:"summary"`
+	KeyEvents       JSONSlice[string]     `db:"key_events"`
+	Topics          JSONSlice[TopicEntry] `db:"topics"`
+	ConversationIDs JSONSlice[string]     `db:"conversation_ids"`
 }
 
 // WeeklySummary compresses daily summaries for one week.
 type WeeklySummary struct {
 	ID           string            `db:"id"`
-	AgentID      string            `db:"agent_id"`
 	WeekStart    DBTime            `db:"week_start"`
 	WeekEnd      DBTime            `db:"week_end"`
 	Summary      string            `db:"summary"`
@@ -56,7 +62,6 @@ type WeeklySummary struct {
 // MonthlySummary compresses weekly summaries for one month.
 type MonthlySummary struct {
 	ID         string            `db:"id"`
-	AgentID    string            `db:"agent_id"`
 	Year       int               `db:"year"`
 	Month      int               `db:"month"`
 	Summary    string            `db:"summary"`
@@ -67,7 +72,6 @@ type MonthlySummary struct {
 // YearlyArchive is the final compression tier — kept forever.
 type YearlyArchive struct {
 	ID          string            `db:"id"`
-	AgentID     string            `db:"agent_id"`
 	Year        int               `db:"year"`
 	Summary     string            `db:"summary"`
 	MajorEvents JSONSlice[string] `db:"major_events"`
@@ -78,12 +82,13 @@ type YearlyArchive struct {
 // SupersededBy points to a newer conflicting fact's ID, or "".
 type Fact struct {
 	ID                   string  `db:"id"`
-	AgentID              string  `db:"agent_id"`
 	Entity               string  `db:"entity"`
 	EntityType           string  `db:"entity_type"`
 	Fact                 string  `db:"fact"`
 	Confidence           float64 `db:"confidence"`
+	TimesSeen            int     `db:"times_seen"`
 	SourceConversationID string  `db:"source_conversation_id"`
+	SourceSummaryDate    string  `db:"source_summary_date"` // YYYY-MM-DD
 	SupersededBy         string  `db:"superseded_by"`
 	FirstSeen            DBTime  `db:"first_seen"`
 	LastConfirmed        DBTime  `db:"last_confirmed"`

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jmoiron/sqlx"
+
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
@@ -55,6 +57,20 @@ func (d *DB) GetConversation(ctx context.Context, id string) (*storage.Conversat
 		return nil, wrap(err, "get conversation")
 	}
 	return &conv, nil
+}
+
+func (d *DB) GetConversationsByDay(ctx context.Context, from, to time.Time) ([]*storage.Conversation, error) {
+	var convs []*storage.Conversation
+
+	err := d.db.SelectContext(ctx, &convs, `
+		SELECT *
+		FROM conversations
+		WHERE started_at < ?
+		  AND (ended_at IS NULL OR ended_at >= ?)
+		ORDER BY started_at ASC
+	`, storage.DBTime{Time: to}, storage.DBTime{Time: from})
+
+	return convs, wrap(err, "get conversations by day")
 }
 
 func (d *DB) UpdateConversation(ctx context.Context, conv *storage.Conversation) error {
@@ -115,22 +131,45 @@ func (d *DB) GetMessagesByAgent(ctx context.Context, conversationID, agentID str
 	return msgs, wrap(err, "get messages by agent")
 }
 
-func (d *DB) GetRecentMessages(ctx context.Context, agentID string, since time.Time) ([]*storage.Message, error) {
+// GetMessagesBetween returns all messages between the given times.
+// If roles is non-empty, only messages with those roles are returned.
+func (d *DB) GetMessagesBetween(
+	ctx context.Context,
+	roles []string,
+	from, to time.Time,
+) ([]*storage.Message, error) {
 	var msgs []*storage.Message
-	sinceVal := storage.DBTime{Time: since}
-	err := d.db.SelectContext(ctx, &msgs, `
-		SELECT * FROM messages WHERE agent_id = ? AND timestamp >= ? ORDER BY timestamp ASC
-	`, agentID, sinceVal)
-	return msgs, wrap(err, "get recent messages")
-}
 
-func (d *DB) GetMessagesBetween(ctx context.Context, agentID string, from, to time.Time) ([]*storage.Message, error) {
-	var msgs []*storage.Message
-	err := d.db.SelectContext(ctx, &msgs, `
-        SELECT * FROM messages
-        WHERE agent_id = ? AND timestamp >= ? AND timestamp < ?
-        ORDER BY timestamp ASC
-    `, agentID, storage.DBTime{Time: from}, storage.DBTime{Time: to})
+	query := `
+		SELECT m.*
+		FROM messages m
+		JOIN conversations c ON m.conversation_id = c.id
+		WHERE  m.timestamp >= ?
+		  AND m.timestamp < ?
+	`
+	args := []any{
+		storage.DBTime{Time: from},
+		storage.DBTime{Time: to},
+	}
+
+	// Optional role filter
+	if len(roles) > 0 {
+		query += " AND m.role IN (?)"
+		args = append(args, roles)
+	}
+
+	query += " ORDER BY m.timestamp ASC"
+
+	// Expand IN clause safely
+	var err error
+	query, args, err = sqlx.In(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	query = d.db.Rebind(query)
+
+	err = d.db.SelectContext(ctx, &msgs, query, args...)
 	return msgs, wrap(err, "get messages between")
 }
 

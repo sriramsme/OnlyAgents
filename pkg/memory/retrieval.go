@@ -21,11 +21,11 @@ type MemoryContext struct {
 // GetRelevantMemory assembles long-term memory context relevant to the given
 // query. Called by the agent in execute() before building the messages slice.
 // query is typically the user's current message — used for FTS fact search.
-func (mm *MemoryManager) GetRelevantMemory(ctx context.Context, sessionAgentID string, query string) (*MemoryContext, error) {
+func (mm *MemoryManager) GetRelevantMemory(ctx context.Context, query string) (*MemoryContext, error) {
 	mc := &MemoryContext{}
 
 	// 1. Today's daily summary (most recent compressed context).
-	today, err := mm.store.GetDailySummary(ctx, sessionAgentID, time.Now())
+	today, err := mm.store.GetDailySummary(ctx, time.Now())
 	if err == nil {
 		mc.TodaySummary = today
 	}
@@ -34,7 +34,7 @@ func (mm *MemoryManager) GetRelevantMemory(ctx context.Context, sessionAgentID s
 	//    weekly summary so the agent still has some longer-term context.
 	if mc.TodaySummary == nil {
 		now := time.Now()
-		weeklies, err := mm.store.GetWeeklySummaries(ctx, sessionAgentID,
+		weeklies, err := mm.store.GetWeeklySummaries(ctx,
 			now.AddDate(0, 0, -7), now)
 		if err == nil && len(weeklies) > 0 {
 			mc.RecentSummary = weeklies[len(weeklies)-1]
@@ -43,7 +43,7 @@ func (mm *MemoryManager) GetRelevantMemory(ctx context.Context, sessionAgentID s
 
 	// 3. Facts relevant to the query via FTS5.
 	if query != "" {
-		facts, err := mm.store.SearchFacts(ctx, sessionAgentID, query)
+		facts, err := mm.store.SearchFacts(ctx, query)
 		if err == nil {
 			mc.RelevantFacts = facts
 		}

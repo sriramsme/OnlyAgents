@@ -161,7 +161,8 @@ func (a *Agent) prepareExecution(
 		history = []llm.Message{}
 	}
 
-	memCtx, memErr := a.mm.GetRelevantMemory(ctx, a.id, payload.Message)
+	// TODO: review this
+	memCtx, memErr := a.mm.GetRelevantMemory(ctx, payload.Message)
 	if memErr != nil {
 		a.logger.Warn("failed to load memory context", "err", memErr)
 	}
