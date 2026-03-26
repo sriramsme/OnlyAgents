@@ -291,12 +291,18 @@ A session with 60% of the day's messages should dominate the summary narrative a
 produce more facts than a 10% session.
 
 FACT EXTRACTION RULES:
-- Extract only durable, reusable facts about the user or entities they discussed.
-- Prefer specific facts: "prefers async communication" beats "talked about work style".
-- Confidence guide: 0.9+ for explicit statements, 0.6–0.8 for inferred preferences,
-  0.4–0.6 for tentative or single-mention observations.
-- entity_type must be exactly one of: person, place, preference, project, organization, other.
-- Do NOT extract facts about AI agents or the OnlyAgents system itself.
+
+- Do NOT extract facts that describe task configuration — delivery times, output
+  formats for a specific request, preferred sources for a single workflow. These
+  belong in the workflow system, not the facts database.
+- Do NOT extract organizations, tools, or places merely because they were mentioned.
+  Only extract them if they reveal something durable about the user's preferences,
+  relationships, or context (e.g. "works at Acme Corp" is a fact, "mentioned Acme
+  Corp once" is not).
+- A fact must answer: "would this be useful context in a future unrelated
+  conversation?" If no, skip it.
+- Prefer one strong fact over three weak ones. Fewer, higher-confidence facts
+  are better than exhaustive extraction.
 
 OUTPUT: Respond ONLY with valid JSON. No markdown fences, no explanation, no preamble.`
 

@@ -71,6 +71,20 @@ func (cm *ConversationManager) SaveUserMessage(ctx context.Context, sessionID, a
 	})
 }
 
+func (cm *ConversationManager) SaveNotificationMessage(ctx context.Context, sessionID, agentID, content string) error {
+	lock := cm.lockFor(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
+	return cm.store.SaveMessage(ctx, &storage.Message{
+		ID:             uuid.NewString(),
+		ConversationID: sessionID,
+		AgentID:        agentID,
+		Role:           "notification",
+		Content:        content,
+		Timestamp:      storage.DBTime{Time: time.Now()},
+	})
+}
+
 // SaveAssistantMessage persists an assistant turn. toolCalls may be nil for
 // a plain text response.
 func (cm *ConversationManager) SaveAssistantMessage(
@@ -282,7 +296,8 @@ func toMessage(m *storage.Message, selfAgentID string) (llm.Message, error) {
 		// summarizer and debugging.
 		content := truncateToolContent(toolName, m.Content)
 		return llm.ToolResultMessage(m.ToolCallID, toolName, content), nil
-
+	case "notification":
+		return llm.UserMessage("[System notification sent to user: " + m.Content + "]"), nil
 	default:
 		return llm.Message{}, fmt.Errorf("unknown role %q", m.Role)
 	}

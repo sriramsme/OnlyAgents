@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/memory/summarizer"
 	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
@@ -13,7 +12,6 @@ import (
 type MemoryManager struct {
 	store      storage.Storage
 	summarizer *summarizer.Summarizer
-	deliverer  channels.Channel
 }
 
 func NewMemoryManager(store storage.Storage, llmClient llm.Client, tz string) *MemoryManager {
@@ -30,11 +28,4 @@ func (mm *MemoryManager) RegisterJobs(s *scheduler.Scheduler) {
 	s.Register(&weeklySummaryJob{summarizer: mm.summarizer, store: mm.store})
 	s.Register(&monthlySummaryJob{summarizer: mm.summarizer, store: mm.store})
 	s.Register(&yearlySummaryJob{summarizer: mm.summarizer, store: mm.store})
-	s.Register(&dailyDigestJob{store: mm.store, deliverer: mm.deliverer, loc: mm.summarizer.Loc()})
-}
-
-// SetDeliverer wires up the digest delivery channel (Telegram etc.).
-// Must be called before RegisterJobs if you want digest delivery.
-func (mm *MemoryManager) SetDeliverer(d channels.Channel) {
-	mm.deliverer = d
 }
