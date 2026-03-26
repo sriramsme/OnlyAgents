@@ -8,7 +8,7 @@ description: |
   database_migrations, domain_management, secrets_management
 max_concurrency: 3
 buffer_size: 20
-enabled: true
+enabled: false
 
 llm:
   provider: "anthropic"

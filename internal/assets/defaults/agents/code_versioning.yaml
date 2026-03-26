@@ -7,7 +7,7 @@ description: |
   pull_requests, issue_tracking
 max_concurrency: 3
 buffer_size: 20
-enabled: true
+enabled: false
 
 llm:
   provider: "anthropic"

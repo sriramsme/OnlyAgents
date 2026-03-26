@@ -1,6 +1,6 @@
 name: git
 type: cli
-enabled: true
+enabled: false
 access_level: readwrite
 has_groups: true
 description: >

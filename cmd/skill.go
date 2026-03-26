@@ -34,6 +34,8 @@ func init() {
 	skillListCmd.Flags().Bool("enabled", false, "Show only enabled skills")
 	skillViewCmd.Flags().Bool("raw", false, "Dump raw file content")
 	skillViewCmd.Flags().String("field", "", "Print a specific frontmatter field")
+	skillEnableCmd.Flags().Bool("all", false, "Enable all skills")
+	skillDisableCmd.Flags().Bool("all", false, "Disable all skills")
 }
 
 // ── list ──────────────────────────────────────────────────────────────────────
@@ -109,35 +111,73 @@ var skillListCmd = &cobra.Command{
 // ── enable / disable ──────────────────────────────────────────────────────────
 
 var skillEnableCmd = &cobra.Command{
-	Use:   "enable <name>",
-	Short: "Enable a skill",
-	Args:  cobra.ExactArgs(1),
+	Use:   "enable <name> [name...]",
+	Short: "Enable one or more skills",
+	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		paths, err := resolvePaths()
 		if err != nil {
 			return err
 		}
-		if err := cmdutil.SkillSetEnabled(paths.Skills, args[0], true); err != nil {
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
 			return err
 		}
-		cmdutil.Success("%s enabled", args[0])
+		if all {
+			skills, err := cmdutil.SkillRegistry(paths.Skills)
+			if err != nil {
+				return err
+			}
+			for _, s := range skills {
+				args = append(args, s.Name)
+			}
+		}
+		if len(args) == 0 {
+			return fmt.Errorf("specify at least one skill or use --all")
+		}
+		for _, name := range args {
+			if err := cmdutil.SkillSetEnabled(paths.Skills, name, true); err != nil {
+				cmdutil.Warn("skipping %s: %v", name, err)
+				continue
+			}
+			cmdutil.Success("%s enabled", name)
+		}
 		return nil
 	},
 }
 
 var skillDisableCmd = &cobra.Command{
-	Use:   "disable <name>",
-	Short: "Disable a skill",
-	Args:  cobra.ExactArgs(1),
+	Use:   "disable <name> [name...]",
+	Short: "Disable one or more skills",
+	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		paths, err := resolvePaths()
 		if err != nil {
 			return err
 		}
-		if err := cmdutil.SkillSetEnabled(paths.Skills, args[0], false); err != nil {
+		all, err := cmd.Flags().GetBool("all")
+		if err != nil {
 			return err
 		}
-		cmdutil.Warn("%s disabled", args[0])
+		if all {
+			skills, err := cmdutil.SkillRegistry(paths.Skills)
+			if err != nil {
+				return err
+			}
+			for _, s := range skills {
+				args = append(args, s.Name)
+			}
+		}
+		if len(args) == 0 {
+			return fmt.Errorf("specify at least one skill or use --all")
+		}
+		for _, name := range args {
+			if err := cmdutil.SkillSetEnabled(paths.Skills, name, false); err != nil {
+				cmdutil.Warn("skipping %s: %v", name, err)
+				continue
+			}
+			cmdutil.Warn("%s disabled", name)
+		}
 		return nil
 	},
 }

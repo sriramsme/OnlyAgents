@@ -1,6 +1,6 @@
 name: npm
 type: cli
-enabled: true
+enabled: false
 access_level: write
 has_groups: true
 description: >

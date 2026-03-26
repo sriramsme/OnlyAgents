@@ -1,6 +1,6 @@
 name: wrangler
 type: cli
-enabled: true
+enabled: false
 access_level: admin
 has_groups: true
 description: >

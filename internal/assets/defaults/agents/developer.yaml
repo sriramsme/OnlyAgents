@@ -7,7 +7,7 @@ description: |
   package_management, code_search, json_processing
 max_concurrency: 4
 buffer_size: 30
-enabled: true
+enabled: false
 
 llm:
   provider: "anthropic"

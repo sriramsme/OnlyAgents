@@ -7,7 +7,7 @@ description: |
   container_inspection, database_query
 max_concurrency: 3
 buffer_size: 20
-enabled: true
+enabled: false
 
 llm:
   provider: "anthropic"
