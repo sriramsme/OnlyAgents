@@ -66,40 +66,19 @@ func chunkText(text string, maxChars int) []string {
 	if len(text) <= maxChars {
 		return []string{text}
 	}
-
 	var chunks []string
-	paragraphs := strings.Split(text, "\n\n")
-	var current strings.Builder
-
-	for _, p := range paragraphs {
-		// Single paragraph exceeds max — hard split it
-		if len(p) > maxChars {
-			if current.Len() > 0 {
-				chunks = append(chunks, strings.TrimSpace(current.String()))
-				current.Reset()
-			}
-			for len(p) > maxChars {
-				chunks = append(chunks, p[:maxChars])
-				p = p[maxChars:]
-			}
-			if len(p) > 0 {
-				current.WriteString(p)
-			}
-			continue
+	for len(text) > 0 {
+		if len(text) <= maxChars {
+			chunks = append(chunks, text)
+			break
 		}
-
-		if current.Len()+len(p)+2 > maxChars {
-			chunks = append(chunks, strings.TrimSpace(current.String()))
-			current.Reset()
+		// Break on newline boundary near the limit.
+		cut := strings.LastIndexByte(text[:maxChars], '\n')
+		if cut <= 0 {
+			cut = maxChars
 		}
-		if current.Len() > 0 {
-			current.WriteString("\n\n")
-		}
-		current.WriteString(p)
-	}
-
-	if current.Len() > 0 {
-		chunks = append(chunks, strings.TrimSpace(current.String()))
+		chunks = append(chunks, strings.TrimSpace(text[:cut]))
+		text = strings.TrimSpace(text[cut:])
 	}
 	return chunks
 }

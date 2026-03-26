@@ -18,13 +18,59 @@ import (
 )
 
 const (
-	fetchTimeout = 20 * time.Second
-	maxBodyBytes = 4 << 20 // 4MB
-	maxTextChars = 64000
+	fetchTimeout   = 20 * time.Second
+	maxBodyBytes   = 4 << 20 // 4MB
+	maxTextChars   = 64000
+	archiveOrgBase = "https://web.archive.org/web/"
 )
 
+// FetchError carries structured failure info so callers can decide
+// whether to attempt a fallback or surface the error to the agent.
+type FetchError struct {
+	StatusCode  int
+	URL         string
+	Recoverable bool // true = worth trying archive.org
+}
+
+func (e *FetchError) Error() string {
+	return fmt.Sprintf("HTTP %d from %s", e.StatusCode, e.URL)
+}
+
+// recoverableStatus returns true for status codes where
+// archive.org may have a cached copy worth trying.
+func recoverableStatus(code int) bool {
+	switch code {
+	case 403, 429, 451: // forbidden, rate-limited, legal block
+		return true
+	}
+	return false
+}
+
 // fetchURL retrieves and extracts readable text from a URL.
+// On recoverable HTTP errors, automatically retries via archive.org.
 func fetchURL(url string) (title, text string, err error) {
+	title, text, err = fetchURLDirect(url)
+	if err == nil {
+		return title, text, nil
+	}
+
+	fe, ok := err.(*FetchError)
+	if !ok || !fe.Recoverable {
+		return "", "", err
+	}
+
+	// Recoverable — try archive.org cached version.
+	archiveURL := archiveOrgBase + url
+	title, text, archiveErr := fetchURLDirect(archiveURL)
+	if archiveErr != nil {
+		// Return original error — archive miss is not more informative.
+		return "", "", fmt.Errorf("%w (archive.org also unavailable)", err)
+	}
+	return title, text, nil
+}
+
+// fetchURLDirect performs the actual HTTP fetch with no fallback.
+func fetchURLDirect(url string) (title, text string, err error) {
 	client := &http.Client{Timeout: fetchTimeout}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -38,13 +84,17 @@ func fetchURL(url string) (title, text string, err error) {
 		return "", "", fmt.Errorf("fetch failed: %w", err)
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.Log.Error("failed to close response body", "error", err)
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.Log.Error("failed to close response body", "error", closeErr)
 		}
 	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+		return "", "", &FetchError{
+			StatusCode:  resp.StatusCode,
+			URL:         url,
+			Recoverable: recoverableStatus(resp.StatusCode),
+		}
 	}
 
 	ct := resp.Header.Get("Content-Type")

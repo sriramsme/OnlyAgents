@@ -2,6 +2,7 @@ package summarize
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,17 +12,22 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-const maxChunkChars = 24000
+const (
+	maxChunkChars         = 12000 // ~3000 tokens in practice, works across all models
+	intermediateMaxTokens = 250
+	mergeBatchSize        = 5
+)
 
 type SummarizeSkill struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	*skills.BaseSkill
-	llmClient llm.Client
+	llmClient  llm.Client
+	llmOptions llm.Options
 }
 
 // external path — defaults baked in
-func New(ctx context.Context, client llm.Client) (*SummarizeSkill, error) {
+func New(ctx context.Context, client llm.Client, opts llm.Options) (*SummarizeSkill, error) {
 	if client == nil {
 		return nil, fmt.Errorf("summarize: llm client required")
 	}
@@ -38,9 +44,10 @@ func New(ctx context.Context, client llm.Client) (*SummarizeSkill, error) {
 			Tools:       tools.GetSummarizeTools(),
 			Groups:      tools.GetSummarizeGroups(),
 		}, skills.SkillTypeNative),
-		llmClient: client,
-		ctx:       skillCtx,
-		cancel:    cancel,
+		llmClient:  client,
+		llmOptions: opts,
+		ctx:        skillCtx,
+		cancel:     cancel,
 	}, nil
 }
 
@@ -66,6 +73,9 @@ func init() {
 
 		skillCtx, cancel := context.WithCancel(ctx)
 
+		if cfg.LLM.Options == nil {
+			cfg.LLM.Options = &llm.Options{}
+		}
 		return &SummarizeSkill{
 			BaseSkill: skills.NewBaseSkillFromConfig(
 				cfg,
@@ -73,9 +83,10 @@ func init() {
 				tools.GetSummarizeTools(),
 				tools.GetSummarizeGroups(),
 			),
-			llmClient: client,
-			ctx:       skillCtx,
-			cancel:    cancel,
+			llmClient:  client,
+			llmOptions: *cfg.LLM.Options,
+			ctx:        skillCtx,
+			cancel:     cancel,
 		}, nil
 	})
 }
@@ -148,17 +159,37 @@ func (s *SummarizeSkill) summarizeURL(ctx context.Context, args []byte) (any, er
 
 	title, text, err := fetchURL(input.URL)
 	if err != nil {
-		return nil, fmt.Errorf("summarize_url: %w", err)
+		// Surface structured context so the agent can reason about next steps.
+		fe := &FetchError{}
+		if errors.As(err, &fe) {
+			return map[string]any{
+				"url":        input.URL,
+				"accessible": false,
+				"error_type": httpErrorType(fe.StatusCode),
+				"error":      err.Error(),
+			}, nil
+		}
+		return map[string]any{
+			"url":        input.URL,
+			"accessible": false,
+			"error_type": "fetch_failed",
+			"error":      err.Error(),
+		}, nil
 	}
+
 	if strings.TrimSpace(text) == "" {
-		return nil, fmt.Errorf("summarize_url: no readable content found at %s", input.URL)
+		return map[string]any{
+			"url":        input.URL,
+			"accessible": true,
+			"error_type": "no_content",
+			"error":      "no readable content found at URL",
+		}, nil
 	}
 
 	sourceDesc := input.URL
 	if title != "" {
 		sourceDesc = fmt.Sprintf("%s (%s)", title, input.URL)
 	}
-
 	summary, err := s.summarize(ctx, text, sourceDesc, input.Length, input.Language, input.Focus)
 	if err != nil {
 		return nil, err
@@ -167,6 +198,7 @@ func (s *SummarizeSkill) summarizeURL(ctx context.Context, args []byte) (any, er
 		"url":            input.URL,
 		"title":          title,
 		"summary":        summary,
+		"accessible":     true,
 		"summary_length": len(summary),
 	}, nil
 }
@@ -234,22 +266,19 @@ func (s *SummarizeSkill) summarizeYouTube(ctx context.Context, args []byte) (any
 
 // ── core summarization logic ──────────────────────────────────────────────────
 
-// summarize handles chunking for long content and calls the LLM.
+// summarize handles token-aware chunking and batched hierarchical merge.
 func (s *SummarizeSkill) summarize(
 	ctx context.Context,
 	content, sourceDesc string,
 	length tools.SummarizeLength,
 	language, focus string,
 ) (string, error) {
-	// Short content: single call
 	if len(content) <= maxChunkChars {
 		return s.callLLM(ctx, buildPrompt(content, sourceDesc, length, language, focus))
 	}
 
-	// Long content: map-reduce — summarize each chunk, then merge
 	chunks := chunkText(content, maxChunkChars)
 	partials := make([]string, 0, len(chunks))
-
 	for i, chunk := range chunks {
 		desc := fmt.Sprintf("%s (part %d/%d)", sourceDesc, i+1, len(chunks))
 		partial, err := s.callLLM(ctx,
@@ -260,8 +289,31 @@ func (s *SummarizeSkill) summarize(
 		partials = append(partials, partial)
 	}
 
-	// Single merge pass over all partial summaries
-	return s.callLLM(ctx, mergePrompt(partials, length, language, focus))
+	// Batched merge — iterate until one summary remains.
+	// Each pass reduces count by mergeBatchSize factor.
+	// Two passes handle documents of any realistic size.
+	for len(partials) > 1 {
+		var next []string
+		for i := 0; i < len(partials); i += mergeBatchSize {
+			end := i + mergeBatchSize
+			end = min(end, len(partials))
+			batch := partials[i:end]
+			// Only the final batch gets the requested length —
+			// intermediate merges stay medium to preserve detail.
+			batchLength := tools.SummarizeLengthMedium
+			if end == len(partials) && len(next) == 0 {
+				batchLength = length
+			}
+			merged, err := s.callLLM(ctx, mergePrompt(batch, batchLength, language, focus))
+			if err != nil {
+				return "", fmt.Errorf("merge batch %d: %w", i/mergeBatchSize+1, err)
+			}
+			next = append(next, merged)
+		}
+		partials = next
+	}
+
+	return partials[0], nil
 }
 
 func (s *SummarizeSkill) callLLM(ctx context.Context, prompt string) (string, error) {
@@ -270,12 +322,34 @@ func (s *SummarizeSkill) callLLM(ctx context.Context, prompt string) (string, er
 			{Role: "user", Content: prompt},
 		},
 	}
+	if s.llmOptions.MaxTokens > 0 {
+		req.MaxTokens = s.llmOptions.MaxTokens
+	}
+
 	resp, err := s.llmClient.Chat(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("LLM call failed: %w", err)
 	}
-	if len(resp.Content) == 0 {
+	if resp.Content == "" {
 		return "", fmt.Errorf("LLM returned no response")
 	}
 	return strings.TrimSpace(resp.Content), nil
+}
+
+// httpErrorType maps status codes to agent-readable labels.
+func httpErrorType(code int) string {
+	switch {
+	case code == 403:
+		return "forbidden"
+	case code == 404:
+		return "not_found"
+	case code == 429:
+		return "rate_limited"
+	case code == 451:
+		return "legal_block"
+	case code >= 500:
+		return "server_error"
+	default:
+		return "http_error"
+	}
 }

@@ -27,7 +27,10 @@ func GetWebSearchEntries() []ToolEntry {
 			NewToolDef(
 				"websearch",
 				"websearch_search",
-				"Search the web for current information. Returns titles, URLs, and snippets from search results.",
+				"Search the web for current information. Returns titles, URLs, and snippets. "+
+					"Each search should explore a distinct angle — do not repeat or slightly rephrase "+
+					"a query that already returned results. If a search yields nothing useful, try ONE "+
+					"alternative with genuinely different terms, then stop and work with what you have.",
 				SchemaFromStruct(WebSearchInput{}),
 				WebSearch,
 			),
@@ -37,7 +40,10 @@ func GetWebSearchEntries() []ToolEntry {
 			NewToolDef(
 				"websearch",
 				"websearch_fetch",
-				"Fetch a URL and extract its readable text content. Use after websearch_search to read the full content of a result.",
+				"Fetch a URL and extract its full raw text content. Use only when you need verbatim "+
+					"content: structured data, code, or exact quotes. For general reading and research, "+
+					"prefer tools like summarize_url instead if available — it fetches and compresses in one step without "+
+					"bloating context.",
 				SchemaFromStruct(WebSearchFetchInput{}),
 				WebSearch,
 			),

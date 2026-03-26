@@ -13,13 +13,14 @@ import (
 )
 
 func main() {
+	opts := llm.Options{}
 	runner.Run(
 		"summarize",
 		"Summarize text, URLs, files, and YouTube videos",
 		tools.GetSummarizeEntries(),
 		runner.RegisterLLMFlags,
 		runner.LLMSetup(func(client llm.Client) (skills.Skill, error) {
-			return summarize.New(context.Background(), client)
+			return summarize.New(context.Background(), client, opts)
 		}),
 	)
 }

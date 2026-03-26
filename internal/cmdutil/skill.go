@@ -251,7 +251,7 @@ func SkillSummaryLine(s skills.Config) string {
 }
 
 func SkillConfigPath(skillsDir, name string) string {
-	return filepath.Join(skillsDir, name+".md")
+	return filepath.Join(skillsDir, name+".yaml")
 }
 
 // SkillWithTools holds frontmatter metadata plus parsed commands.
