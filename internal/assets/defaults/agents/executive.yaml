@@ -10,16 +10,42 @@ enabled: true
 
 # Executive has looser limits since it coordinates rather than executes
 max_iterations: 5 # Should delegate quickly
-max_tool_calls_per_iteration: 2 # Typically: delegate + maybe find_best_agent
 max_cumulative_tool_calls: 8 # Total delegations + meta-operations
-max_execution_time: 5m # Longer to wait for delegations
 enable_early_stopping: false # Don't early stop coordination
 
 llm:
-  provider: "openai" # anthropic, openai, gemini
-  model: "gpt-5-nano" # model name
-  # Vault key path - will lookup from vault
+  provider: "openai" # LLM provider: anthropic | openai | gemini
+  model: "gpt-5-nano" # Model name (affects cost, speed, reasoning ability)
+
+  # Vault key path - resolved at runtime from configured vault
   api_key_path: "openai/api_key" # or "${vault:openai/api_key}"
+
+  options:
+    # Maximum tokens the model can generate PER STEP (not total execution).
+    #
+    # Impact:
+    # - Higher values → longer, more detailed responses, but:
+    #     • increased latency (slower responses)
+    #     • higher cost
+    #     • higher risk of timeouts in multi-step agent runs
+    # - Lower values → faster, more focused responses, but may truncate outputs
+    #
+    # Note:
+    # This applies to EACH LLM call. Total tokens used in an execution may be
+    # much higher due to multiple iterations and tool calls.
+    max_tokens: 2000
+
+    # Controls randomness / creativity of responses.
+    #
+    # Impact:
+    # - Lower values (0.0–0.3) → deterministic, consistent, better for tools/API usage
+    # - Medium (0.4–0.7) → balanced reasoning and variation
+    # - Higher (0.8–1.0+) → more creative, but can become less predictable
+    #
+    # Note:
+    # Very high values may reduce reliability in multi-step/tool-based executions.
+    # NOt all models support temperature.
+    temperature: 1.0
 
 # ============================================
 # SOUL (Identity, Behavior, Relationship)
@@ -70,6 +96,11 @@ soul:
         • Include necessary context for follow-ups
         • Preserve the user's intent exactly
         • Don't over-explain. Just a concise, clear instruction.
+
+        Do NOT include delivery, notification, or output instructions in the task.
+        Sub-agents only perform the work — the system handles delivery automatically.
+        Wrong: "Fetch IPL news and deliver the digest to the user."
+        Right: "Fetch and summarize the latest IPL news."
 
         Agents should never need prior conversation history to understand the task.
 

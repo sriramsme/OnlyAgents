@@ -30,16 +30,11 @@ skills:
 # These should complete in 1–3 tool calls per logical operation.
 max_iterations: 10
 
-max_tool_calls_per_iteration: 10
-
 # Hard ceiling across the full request
 max_cumulative_tool_calls: 50
 
 # Tool results are small (structured data, not web pages) — generous limit
 max_tool_result_tokens: 500
-
-# Should never take this long — if it does, something is wrong
-max_execution_time: 30s
 
 # Not needed for CRUD — disable to avoid false positives
 enable_early_stopping: false

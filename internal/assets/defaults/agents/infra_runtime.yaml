@@ -20,10 +20,8 @@ skills:
   - name: kubectl
 
 max_iterations: 15
-max_tool_calls_per_iteration: 8
 max_cumulative_tool_calls: 60
 max_tool_result_tokens: 1500
-max_execution_time: 5m
 enable_early_stopping: false
 
 soul:

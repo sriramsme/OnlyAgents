@@ -24,10 +24,8 @@ skills:
   - name: websearch
 
 max_iterations: 20
-max_tool_calls_per_iteration: 10
 max_cumulative_tool_calls: 100
 max_tool_result_tokens: 2000
-max_execution_time: 5m
 enable_early_stopping: false
 
 soul:

@@ -19,10 +19,8 @@ skills:
   - name: github
 
 max_iterations: 10
-max_tool_calls_per_iteration: 8
 max_cumulative_tool_calls: 40
 max_tool_result_tokens: 1000
-max_execution_time: 2m
 enable_early_stopping: false
 
 soul:

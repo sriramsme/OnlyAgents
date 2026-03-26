@@ -9,9 +9,7 @@ buffer_size: 100
 enabled: true
 
 max_iterations: 15
-max_tool_calls_per_iteration: 3
 max_cumulative_tool_calls: 30
-max_execution_time: 10m
 enable_early_stopping: true
 
 llm:
