@@ -177,17 +177,25 @@ onlyagents start
 ### Pre-built binaries
 
 Download from [GitHub Releases](https://github.com/sriramsme/onlyagents/releases).
-
 ```bash
 # macOS (Apple Silicon)
 curl -L https://github.com/sriramsme/onlyagents/releases/latest/download/onlyagents_darwin_arm64.tar.gz | tar xz
 sudo mv onlyagents /usr/local/bin/
 
+# macOS (Intel)
+curl -L https://github.com/sriramsme/onlyagents/releases/latest/download/onlyagents_darwin_amd64.tar.gz | tar xz
+sudo mv onlyagents /usr/local/bin/
+
 # Linux (amd64)
 curl -L https://github.com/sriramsme/onlyagents/releases/latest/download/onlyagents_linux_amd64.tar.gz | tar xz
 sudo mv onlyagents /usr/local/bin/
+
+# Linux (arm64)
+curl -L https://github.com/sriramsme/onlyagents/releases/latest/download/onlyagents_linux_arm64.tar.gz | tar xz
+sudo mv onlyagents /usr/local/bin/
 ```
 
+**Windows** — download the `.zip` for your architecture from the [releases page](https://github.com/sriramsme/onlyagents/releases) and add the binary to your PATH.
 ### Build from source
 
 Prerequisites: Go 1.25+, Node.js 18+ (for the embedded web UI)

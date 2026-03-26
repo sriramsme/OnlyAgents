@@ -2,8 +2,8 @@ version: 2
 
 before:
   hooks:
-    - cd web && npm ci
-    - cd web && npm run build
+    - npm ci --prefix web
+    - npm run build --prefix web
 
 builds:
   - id: onlyagents
@@ -27,7 +27,7 @@ builds:
 
 archives:
   - id: onlyagents
-    name_template: "onlyagents_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "onlyagents_{{ .Os }}_{{ .Arch }}"
     formats:
       - tar.gz
     format_overrides:
