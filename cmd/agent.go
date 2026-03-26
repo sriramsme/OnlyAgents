@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"text/tabwriter"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -67,26 +65,20 @@ var agentListCmd = &cobra.Command{
 			fmt.Println(cmdutil.StyleDim.Render("No agents configured."))
 			return nil
 		}
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, cmdutil.StyleHeader.Render("ID\tNAME\tROLE\tSTATUS\tPROVIDER\tMODEL"))
-		fmt.Fprintln(w, "──\t────\t────\t──────\t────────\t─────")
-		for _, a := range agents {
+		rows := make([][]string, len(agents))
+		dimmed := make([]bool, len(agents))
+		for i, a := range agents {
 			role := "sub-agent"
 			if a.IsExecutive {
 				role = "executive"
 			} else if a.IsGeneral {
 				role = "general"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				a.ID,
-				a.Name,
-				role,
-				cmdutil.EnabledLabel(a.Enabled),
-				a.LLM.Provider,
-				a.LLM.Model,
-			)
+			rows[i] = []string{a.ID, a.Name, role, cmdutil.EnabledLabel(a.Enabled), a.LLM.Provider, a.LLM.Model}
+			dimmed[i] = !a.Enabled
 		}
-		return w.Flush()
+		cmdutil.PrintTable([]string{"ID", "NAME", "ROLE", "STATUS", "PROVIDER", "MODEL"}, rows, dimmed)
+		return nil
 	},
 }
 

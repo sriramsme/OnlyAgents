@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"text/tabwriter"
 
 	skillsPkg "github.com/sriramsme/OnlyAgents/pkg/skills"
 
@@ -67,10 +65,8 @@ var skillListCmd = &cobra.Command{
 			return nil
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, cmdutil.StyleHeader.Render("NAME\tTYPE\tACCESS\tSTATUS\tDESCRIPTION"))
-		fmt.Fprintln(w, "────\t────\t──────\t──────\t───────────")
-
+		// apply filters first
+		filtered := make([]skillsPkg.Config, 0, len(skills))
 		for _, s := range skills {
 			if enabledOnly && !s.Enabled {
 				continue
@@ -78,15 +74,35 @@ var skillListCmd = &cobra.Command{
 			if accessFilter != "" && s.AccessLevel != accessFilter {
 				continue
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			filtered = append(filtered, s)
+		}
+
+		if len(filtered) == 0 {
+			fmt.Println(cmdutil.StyleDim.Render("No skills match filters."))
+			return nil
+		}
+
+		rows := make([][]string, len(filtered))
+		dimmed := make([]bool, len(filtered))
+
+		for i, s := range filtered {
+			rows[i] = []string{
 				s.Name,
 				s.Type,
 				accessLabel(s.AccessLevel),
 				cmdutil.EnabledLabel(s.Enabled),
 				cmdutil.Truncate(s.Description, 50),
-			)
+			}
+			dimmed[i] = !s.Enabled
 		}
-		return w.Flush()
+
+		cmdutil.PrintTable(
+			[]string{"NAME", "TYPE", "ACCESS", "STATUS", "DESCRIPTION"},
+			rows,
+			dimmed,
+		)
+
+		return nil
 	},
 }
 
@@ -219,6 +235,7 @@ var skillToolsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
 		accessFilter, err := cmd.Flags().GetString("access")
 		if err != nil {
 			return err
@@ -231,6 +248,7 @@ var skillToolsCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
 		skills, err := cmdutil.SkillRegistry(paths.Skills)
 		if err != nil {
 			return err
@@ -245,59 +263,73 @@ var skillToolsCmd = &cobra.Command{
 			return nil
 		}
 
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-
-		if verbose {
-			fmt.Fprintln(w, cmdutil.StyleHeader.Render("TOOL\tACCESS\tTIMEOUT\tPARAMS\tDESCRIPTION"))
-			fmt.Fprintln(w, "────\t──────\t───────\t──────\t───────────")
-		} else {
-			fmt.Fprintln(w, cmdutil.StyleHeader.Render("TOOL\tACCESS\tDESCRIPTION"))
-			fmt.Fprintln(w, "────\t──────\t───────────")
-		}
-
-		for _, c := range s.Tools {
-			if accessFilter != "" && c.Access != accessFilter {
+		// filter first
+		filtered := make([]skillsPkg.ToolEntry, 0, len(s.Tools))
+		for _, t := range s.Tools {
+			if accessFilter != "" && t.Access != accessFilter {
 				continue
 			}
+			filtered = append(filtered, t)
+		}
+
+		if len(filtered) == 0 {
+			fmt.Println(cmdutil.StyleDim.Render("No tools match filters."))
+			return nil
+		}
+
+		var headers []string
+		if verbose {
+			headers = []string{"TOOL", "ACCESS", "TIMEOUT", "PARAMS", "DESCRIPTION"}
+		} else {
+			headers = []string{"TOOL", "ACCESS", "DESCRIPTION"}
+		}
+
+		rows := make([][]string, len(filtered))
+		dimmed := make([]bool, len(filtered)) // tools don’t have enabled → keep false
+
+		for i, t := range filtered {
 			if verbose {
-				params := fmt.Sprintf("%d", len(c.Parameters))
-				timeout := fmt.Sprintf("%ds", c.Timeout)
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-					cmdutil.StyleBold.Render(c.Name),
-					accessLabel(c.Access),
-					timeout,
-					params,
-					cmdutil.Truncate(c.Description, 50),
-				)
+				rows[i] = []string{
+					cmdutil.StyleBold.Render(t.Name),
+					accessLabel(t.Access),
+					fmt.Sprintf("%ds", t.Timeout),
+					fmt.Sprintf("%d", len(t.Parameters)),
+					cmdutil.Truncate(t.Description, 50),
+				}
 			} else {
-				fmt.Fprintf(w, "%s\t%s\t%s\n",
-					cmdutil.StyleBold.Render(c.Name),
-					accessLabel(c.Access),
-					cmdutil.Truncate(c.Description, 60),
-				)
-			}
-
-			// inside the loop, after printing the tool row:
-			if commands {
-				fmt.Fprintf(w, "  %s\n", cmdutil.StyleDim.Render("$ "+c.Command))
-			}
-
-			// Under verbose, also print each param on its own line
-			if verbose {
-				for _, p := range c.Parameters {
-					fmt.Fprintf(w, "  ↳ %s\t%s\t\t\t(%s)\n",
-						p.Name, p.Type, cmdutil.Truncate(p.Description, 40))
+				rows[i] = []string{
+					cmdutil.StyleBold.Render(t.Name),
+					accessLabel(t.Access),
+					cmdutil.Truncate(t.Description, 60),
 				}
 			}
 		}
 
-		if err := w.Flush(); err != nil {
-			return err
-		}
+		cmdutil.PrintTable(headers, rows, dimmed)
 
+		// extra details (commands + params)
+		if commands || verbose {
+			fmt.Println()
+			for _, c := range filtered {
+				fmt.Printf("  %s\n", cmdutil.StyleBold.Render(c.Name))
+				if commands {
+					fmt.Printf("    %s\n", cmdutil.StyleDim.Render("$ "+c.Command))
+				}
+				if verbose {
+					for _, p := range c.Parameters {
+						fmt.Printf("    %s  %s  %s\n",
+							cmdutil.StyleBold.Render(p.Name),
+							cmdutil.StyleDim.Render(p.Type),
+							cmdutil.Truncate(p.Description, 40),
+						)
+					}
+				}
+			}
+		}
 		fmt.Printf("\n%s\n", cmdutil.StyleDim.Render(
-			fmt.Sprintf("%d tool(s) in %s skill", len(s.Tools), args[0]),
+			fmt.Sprintf("%d tool(s) in %s skill", len(filtered), args[0]),
 		))
+
 		return nil
 	},
 }

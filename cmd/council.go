@@ -36,24 +36,34 @@ var councilListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
 		if len(councils) == 0 {
 			fmt.Println(cmdutil.StyleDim.Render("No councils found."))
 			return nil
 		}
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, cmdutil.StyleHeader.Render("NAME\tSTATUS\tAGENTS\tSKILLS\tCONNECTORS\tDESCRIPTION"))
-		fmt.Fprintln(w, "────\t──────\t──────\t──────\t──────────\t───────────")
-		for _, c := range councils {
-			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%d\t%s\n",
+
+		rows := make([][]string, len(councils))
+		dimmed := make([]bool, len(councils))
+
+		for i, c := range councils {
+			rows[i] = []string{
 				c.Name,
 				cmdutil.EnabledLabel(c.Enabled),
-				len(c.Agents),
-				len(c.Skills),
-				len(c.Connectors),
+				fmt.Sprintf("%d", len(c.Agents)),
+				fmt.Sprintf("%d", len(c.Skills)),
+				fmt.Sprintf("%d", len(c.Connectors)),
 				cmdutil.Truncate(c.Description, 50),
-			)
+			}
+			dimmed[i] = !c.Enabled
 		}
-		return w.Flush()
+
+		cmdutil.PrintTable(
+			[]string{"NAME", "STATUS", "AGENTS", "SKILLS", "CONNECTORS", "DESCRIPTION"},
+			rows,
+			dimmed,
+		)
+
+		return nil
 	},
 }
 

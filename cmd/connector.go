@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"text/tabwriter"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -40,22 +38,32 @@ var connectorListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
 		if len(connectors) == 0 {
 			fmt.Println(cmdutil.StyleDim.Render("No connectors configured."))
 			return nil
 		}
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, cmdutil.StyleHeader.Render("NAME\tID\tSTATUS\tDESCRIPTION"))
-		fmt.Fprintln(w, "────\t────\t──────\t───────────")
-		for _, c := range connectors {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+
+		rows := make([][]string, len(connectors))
+		dimmed := make([]bool, len(connectors))
+
+		for i, c := range connectors {
+			rows[i] = []string{
 				c.Name,
 				c.ID,
 				cmdutil.EnabledLabel(c.Enabled),
 				cmdutil.Truncate(c.Description, 50),
-			)
+			}
+			dimmed[i] = !c.Enabled
 		}
-		return w.Flush()
+
+		cmdutil.PrintTable(
+			[]string{"NAME", "ID", "STATUS", "DESCRIPTION"},
+			rows,
+			dimmed,
+		)
+
+		return nil
 	},
 }
 

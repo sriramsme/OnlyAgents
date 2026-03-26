@@ -108,31 +108,47 @@ func listModels(provider string) error {
 		return models[i].Provider < models[j].Provider
 	})
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, cmdutil.StyleHeader.Render("MODEL\tPROVIDER\tCONTEXT\tMAX OUT\tTOOLS\tVISION\tCOST\tDESCRIPTION"))
-	fmt.Fprintln(w, "─────\t────────\t───────\t───────\t─────\t──────\t────\t───────────")
+	if len(models) == 0 {
+		fmt.Println(cmdutil.StyleDim.Render("No models found."))
+		return nil
+	}
 
-	for _, info := range models {
+	rows := make([][]string, len(models))
+	dimmed := make([]bool, len(models)) // not really used, keep false
+
+	for i, info := range models {
 		c := info.Capabilities
-		fmt.Fprintf(w, "%s\t%s\t%dk\t%dk\t%s\t%s\t$%.2f→$%.2f\t%s\n",
+
+		rows[i] = []string{
 			info.Name,
 			info.Provider,
-			c.ContextWindow/1000,
-			c.MaxTokens/1000,
+			fmt.Sprintf("%dk", c.ContextWindow/1000),
+			fmt.Sprintf("%dk", c.MaxTokens/1000),
 			cmdutil.YesNo(c.SupportsToolCalling),
 			cmdutil.YesNo(c.SupportsVision),
-			c.InputCostPer1M,
-			c.OutputCostPer1M,
+			fmt.Sprintf("$%.2f→$%.2f", c.InputCostPer1M, c.OutputCostPer1M),
 			cmdutil.Truncate(c.Description, 40),
-		)
-		if c.Deprecated {
-			fmt.Fprintf(w, "\t\t\t\t\t\t\t%s\n",
-				cmdutil.StyleYellow.Render("⚠ DEPRECATED — use "+c.ReplacedBy),
-			)
+		}
+		// optionally dim deprecated models
+		dimmed[i] = c.Deprecated
+	}
+
+	cmdutil.PrintTable(
+		[]string{"MODEL", "PROVIDER", "CONTEXT", "MAX OUT", "TOOLS", "VISION", "COST(in→out)", "DESCRIPTION"},
+		rows,
+		dimmed,
+	)
+
+	// extra deprecated notes (kept outside table to avoid breaking alignment)
+	for _, info := range models {
+		if info.Capabilities.Deprecated {
+			fmt.Println(cmdutil.StyleYellow.Render(
+				"⚠ DEPRECATED — use " + info.Capabilities.ReplacedBy,
+			))
 		}
 	}
 
-	return w.Flush()
+	return nil
 }
 
 // ── info ──────────────────────────────────────────────────────────────────────
