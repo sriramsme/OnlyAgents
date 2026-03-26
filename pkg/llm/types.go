@@ -12,6 +12,16 @@ type Provider string
 // Role represents the message sender
 type Role string
 
+type StopReason string
+
+const (
+	StopReasonUnknown StopReason = "unknown"
+	StopReasonEnd     StopReason = "end"
+	StopReasonLength  StopReason = "length"
+	StopReasonTool    StopReason = "tool"
+	StopReasonContent StopReason = "content_filter"
+)
+
 const (
 	ProviderAnthropic Provider = "anthropic"
 	ProviderOpenAI    Provider = "openai"
@@ -35,6 +45,8 @@ type Client interface {
 
 	// Model returns the model identifier
 	Model() string
+
+	ContextWindow() int
 }
 
 // Request represents a chat completion request
@@ -91,7 +103,7 @@ type Response struct {
 	Content          string           // Final text response
 	ReasoningContent string           // Extended thinking/reasoning
 	ToolCalls        []tools.ToolCall // Tool calls (if any)
-	StopReason       string
+	StopReason       StopReason
 	Usage            Usage
 	Model            string
 }

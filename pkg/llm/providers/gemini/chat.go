@@ -14,7 +14,7 @@ func (c *GeminiClient) Chat(ctx context.Context, req *llm.Request) (*llm.Respons
 	start := time.Now()
 
 	// Runtime validation
-	if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
+	if len(req.Tools) > 0 && !c.Capabilities().SupportsToolCalling {
 		return nil, fmt.Errorf("model %s does not support tool calling", c.model)
 	}
 

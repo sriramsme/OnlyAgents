@@ -13,6 +13,19 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
+func mapStopReason(r string) llm.StopReason {
+	switch r {
+	case "end_turn":
+		return llm.StopReasonEnd
+	case "max_tokens":
+		return llm.StopReasonLength
+	case "tool_use":
+		return llm.StopReasonTool
+	default:
+		return llm.StopReasonUnknown
+	}
+}
+
 // toAnthropicMessages converts our message format to Anthropic's format.
 //
 //nolint:gocyclo
@@ -29,6 +42,9 @@ func (c *AnthropicClient) toAnthropicMessages(messages []llm.Message) (string, [
 		pendingToolResults = nil
 	}
 
+	caps := c.Capabilities()
+	cachingEnabled := c.CachingEnabled()
+
 	for i, m := range messages {
 		switch m.Role {
 		case llm.RoleSystem:
@@ -43,7 +59,7 @@ func (c *AnthropicClient) toAnthropicMessages(messages []llm.Message) (string, [
 					return "", nil, fmt.Errorf("build multimodal user message: %w", err)
 				}
 				// Apply cache control to last user message if caching enabled.
-				if c.enableCaching && c.capabilities.SupportsPromptCaching && i == len(messages)-1 {
+				if cachingEnabled && caps.SupportsPromptCaching && i == len(messages)-1 {
 					if len(blocks) > 0 {
 						last := &blocks[len(blocks)-1]
 						if last.OfText != nil {
@@ -54,7 +70,7 @@ func (c *AnthropicClient) toAnthropicMessages(messages []llm.Message) (string, [
 				msgList = append(msgList, anthropic.NewUserMessage(blocks...))
 			} else {
 				// Plain text — existing behaviour unchanged.
-				if c.enableCaching && c.capabilities.SupportsPromptCaching && i == len(messages)-1 {
+				if cachingEnabled && caps.SupportsPromptCaching && i == len(messages)-1 {
 					msgList = append(msgList, anthropic.NewUserMessage(
 						anthropic.ContentBlockParamUnion{
 							OfText: &anthropic.TextBlockParam{
@@ -112,13 +128,14 @@ func (c *AnthropicClient) toAnthropicMessages(messages []llm.Message) (string, [
 func (c *AnthropicClient) toAnthropicContentBlocks(msg llm.Message) ([]anthropic.ContentBlockParamUnion, error) {
 	blocks := make([]anthropic.ContentBlockParamUnion, 0, len(msg.Parts))
 
+	caps := c.Capabilities()
 	for _, part := range msg.Parts {
 		switch part.Type {
 		case llm.ContentPartTypeText:
 			blocks = append(blocks, anthropic.NewTextBlock(part.Text))
 
 		case llm.ContentPartTypeImage:
-			if !c.capabilities.SupportsVision {
+			if !caps.SupportsVision {
 				blocks = append(blocks, anthropic.NewTextBlock(
 					fmt.Sprintf("[Image attached: %s — this model does not support vision]", part.Filename),
 				))
@@ -175,10 +192,11 @@ func (c *AnthropicClient) toAnthropicContentBlocks(msg llm.Message) ([]anthropic
 
 // validateStreamingCapabilities checks if the model supports required features
 func (c *AnthropicClient) validateStreamingCapabilities(req *llm.Request) error {
-	if !c.capabilities.SupportsStreaming {
+	caps := c.Capabilities()
+	if !caps.SupportsStreaming {
 		return fmt.Errorf("model %s does not support streaming", c.model)
 	}
-	if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
+	if len(req.Tools) > 0 && !caps.SupportsToolCalling {
 		return fmt.Errorf("model %s does not support tool calling", c.model)
 	}
 	return nil
@@ -285,11 +303,12 @@ func (c *AnthropicClient) buildMessageParams(req *llm.Request) (*anthropic.Messa
 // calculateMaxTokens determines and validates the max tokens value
 func (c *AnthropicClient) calculateMaxTokens(requestedTokens int) int {
 	maxTokens := requestedTokens
+	caps := c.Capabilities()
 	if maxTokens == 0 {
-		maxTokens = c.maxTokens
+		maxTokens = c.MaxTokens()
 	}
-	if maxTokens > c.capabilities.MaxTokens {
-		maxTokens = c.capabilities.MaxTokens
+	if maxTokens > caps.MaxTokens {
+		maxTokens = caps.MaxTokens
 	}
 
 	thinkingEnabled := c.isThinkingModel()
@@ -310,7 +329,7 @@ func (c *AnthropicClient) addSystemPrompt(params *anthropic.MessageNewParams, sy
 		return
 	}
 
-	if c.enableCaching && c.capabilities.SupportsPromptCaching {
+	if c.CachingEnabled() && c.Capabilities().SupportsPromptCaching {
 		params.System = []anthropic.TextBlockParam{
 			{
 				Text: systemPrompt,
@@ -326,7 +345,8 @@ func (c *AnthropicClient) addSystemPrompt(params *anthropic.MessageNewParams, sy
 
 // addTools adds tool definitions to params with optional caching
 func (c *AnthropicClient) addTools(params *anthropic.MessageNewParams, requestTools []tools.ToolDef) {
-	if len(requestTools) == 0 || !c.capabilities.SupportsToolCalling {
+	caps := c.Capabilities()
+	if len(requestTools) == 0 || !caps.SupportsToolCalling {
 		return
 	}
 
@@ -334,7 +354,7 @@ func (c *AnthropicClient) addTools(params *anthropic.MessageNewParams, requestTo
 	params.Tools = tools
 
 	// Add cache control to tools if caching is enabled
-	if c.enableCaching && c.capabilities.SupportsPromptCaching && len(tools) > 0 {
+	if c.CachingEnabled() && caps.SupportsPromptCaching && len(tools) > 0 {
 		if lastTool := tools[len(tools)-1].OfTool; lastTool != nil {
 			lastTool.CacheControl = anthropic.CacheControlEphemeralParam{
 				Type: "ephemeral",
@@ -345,9 +365,10 @@ func (c *AnthropicClient) addTools(params *anthropic.MessageNewParams, requestTo
 
 // setTemperature sets the temperature parameter with validation
 func (c *AnthropicClient) setTemperature(params *anthropic.MessageNewParams, requestedTemp float64, thinkingEnabled bool) {
+	caps := c.Capabilities()
 	temperature := requestedTemp
 	if temperature == 0 {
-		temperature = c.temperature
+		temperature = c.Temperature()
 	}
 
 	if thinkingEnabled {
@@ -357,13 +378,13 @@ func (c *AnthropicClient) setTemperature(params *anthropic.MessageNewParams, req
 				"required", 1.0)
 		}
 		temperature = 1.0
-	} else if c.capabilities.SupportsTemperature {
+	} else if caps.SupportsTemperature {
 		// Clamp temperature to valid range
-		if temperature < c.capabilities.MinTemperature {
-			temperature = c.capabilities.MinTemperature
+		if temperature < caps.MinTemperature {
+			temperature = caps.MinTemperature
 		}
-		if temperature > c.capabilities.MaxTemperature {
-			temperature = c.capabilities.MaxTemperature
+		if temperature > caps.MaxTemperature {
+			temperature = caps.MaxTemperature
 		}
 	}
 
@@ -447,7 +468,7 @@ func parseResponse(message *anthropic.Message) *llm.Response {
 		Content:          content,
 		ReasoningContent: reasoningContent,
 		ToolCalls:        toolCalls,
-		StopReason:       string(message.StopReason),
+		StopReason:       mapStopReason(string(message.StopReason)),
 		Usage: llm.Usage{
 			InputTokens:  int(message.Usage.InputTokens),
 			OutputTokens: int(message.Usage.OutputTokens),

@@ -17,7 +17,7 @@ func (c *OpenAIClient) Chat(ctx context.Context, req *llm.Request) (*llm.Respons
 	start := time.Now()
 
 	// Runtime validation
-	if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
+	if len(req.Tools) > 0 && !c.Capabilities().SupportsToolCalling {
 		return nil, fmt.Errorf("model %s does not support tool calling", c.model)
 	}
 
@@ -56,7 +56,7 @@ func (c *OpenAIClient) ChatStream(ctx context.Context, req *llm.Request) <-chan 
 		defer close(ch)
 
 		// Capability checks
-		if !c.capabilities.SupportsStreaming {
+		if !c.Capabilities().SupportsStreaming {
 			ch <- llm.StreamChunk{
 				Error: fmt.Errorf("model %s does not support streaming", c.model),
 				Done:  true,
@@ -64,7 +64,7 @@ func (c *OpenAIClient) ChatStream(ctx context.Context, req *llm.Request) <-chan 
 			return
 		}
 
-		if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
+		if len(req.Tools) > 0 && !c.Capabilities().SupportsToolCalling {
 			ch <- llm.StreamChunk{
 				Error: fmt.Errorf("model %s does not support tool calling", c.model),
 				Done:  true,

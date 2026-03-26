@@ -10,6 +10,21 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
+func mapStopReason(r string) llm.StopReason {
+	switch r {
+	case "stop":
+		return llm.StopReasonEnd
+	case "length":
+		return llm.StopReasonLength
+	case "tool_calls":
+		return llm.StopReasonTool
+	case "content_filter":
+		return llm.StopReasonContent
+	default:
+		return llm.StopReasonUnknown
+	}
+}
+
 // buildChatParams creates the parameters for both streaming and non-streaming
 func (c *OpenAIClient) buildChatParams(req *llm.Request) openai.ChatCompletionNewParams {
 	messages := c.toOpenAIMessages(req.Messages)
@@ -20,40 +35,41 @@ func (c *OpenAIClient) buildChatParams(req *llm.Request) openai.ChatCompletionNe
 		Messages: messages,
 	}
 
+	caps := c.Capabilities()
 	// Max tokens (capped by model limits)
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = c.maxTokens
+		maxTokens = c.MaxTokens()
 	}
-	if maxTokens > c.capabilities.MaxTokens {
-		maxTokens = c.capabilities.MaxTokens
+	if maxTokens > caps.MaxTokens {
+		maxTokens = caps.MaxTokens
 	}
 	params.MaxCompletionTokens = openai.Int(int64(maxTokens))
 
 	// Temperature (constrained by model)
-	if c.capabilities.SupportsTemperature {
+	if caps.SupportsTemperature {
 		temp := req.Temperature
 		if temp == 0 {
-			temp = c.temperature
+			temp = c.Temperature()
 		}
 		// Clamp to model's valid range
-		if temp < c.capabilities.MinTemperature {
-			temp = c.capabilities.MinTemperature
+		if temp < caps.MinTemperature {
+			temp = caps.MinTemperature
 		}
-		if temp > c.capabilities.MaxTemperature {
-			temp = c.capabilities.MaxTemperature
+		if temp > caps.MaxTemperature {
+			temp = caps.MaxTemperature
 		}
 		params.Temperature = openai.Float(temp)
 	}
 
 	// Tools (only if supported)
-	if len(toolParams) > 0 && c.capabilities.SupportsToolCalling {
+	if len(toolParams) > 0 && caps.SupportsToolCalling {
 		params.Tools = toolParams
 	}
 
 	// Prompt caching (only if supported)
-	if c.enableCaching && c.capabilities.SupportsPromptCaching {
-		params.PromptCacheKey = openai.String(c.cacheKey)
+	if c.CachingEnabled() && caps.SupportsPromptCaching {
+		params.PromptCacheKey = openai.String(c.CacheKey())
 		params.PromptCacheRetention = openai.ChatCompletionNewParamsPromptCacheRetention("24h")
 	}
 	return params
@@ -115,7 +131,7 @@ func parseResponse(completion *openai.ChatCompletion) *llm.Response {
 	return &llm.Response{
 		Content:    message.Content,
 		ToolCalls:  toolCalls,
-		StopReason: string(choice.FinishReason),
+		StopReason: mapStopReason(choice.FinishReason),
 		Usage: llm.Usage{
 			InputTokens:  int(completion.Usage.PromptTokens),
 			OutputTokens: int(completion.Usage.CompletionTokens),
@@ -179,6 +195,7 @@ func (c *OpenAIClient) toOpenAIMessages(messages []llm.Message) []openai.ChatCom
 // user message with a typed content part array.
 func (c *OpenAIClient) toOpenAIUserMultimodal(msg llm.Message) openai.ChatCompletionMessageParamUnion {
 	parts := make([]openai.ChatCompletionContentPartUnionParam, 0, len(msg.Parts))
+	caps := c.Capabilities()
 
 	for _, part := range msg.Parts {
 		switch part.Type {
@@ -186,7 +203,7 @@ func (c *OpenAIClient) toOpenAIUserMultimodal(msg llm.Message) openai.ChatComple
 			parts = append(parts, openai.TextContentPart(part.Text))
 
 		case llm.ContentPartTypeImage:
-			if !c.capabilities.SupportsVision {
+			if !caps.SupportsVision {
 				parts = append(parts, openai.TextContentPart(
 					fmt.Sprintf("[Image attached: %s — this model does not support vision]", part.Filename),
 				))

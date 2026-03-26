@@ -24,15 +24,9 @@ func init() {
 
 // GeminiClient implements llm.Client for Google Gemini
 type GeminiClient struct {
-	client       *genai.Client
-	model        string
-	capabilities llm.ModelCapabilities
-
-	// Resolved configuration
-	maxTokens     int
-	temperature   float64
-	enableCaching bool
-	cacheKey      string
+	llm.BaseClient
+	client *genai.Client
+	model  string
 
 	// Caching state
 	cachedContentName string           // Name of created cached content
@@ -53,29 +47,9 @@ func NewGeminiClient(cfg llm.ProviderConfig) (llm.Client, error) {
 		return nil, fmt.Errorf("gemini: %w", err)
 	}
 
-	maxTokens := caps.DefaultMaxTokens
-	temperature := caps.DefaultTemperature
-
-	if cfg.Options != nil {
-		if cfg.Options.MaxTokens > 0 {
-			maxTokens = cfg.Options.MaxTokens
-		}
-
-		if cfg.Options.Temperature > 0 {
-			temperature = cfg.Options.Temperature
-		}
-	}
-
-	// Validate the final configuration
-	if maxTokens > caps.MaxTokens {
-		return nil, fmt.Errorf("max_tokens %d exceeds model limit %d", maxTokens, caps.MaxTokens)
-	}
-
-	if caps.SupportsTemperature {
-		if temperature < caps.MinTemperature || temperature > caps.MaxTemperature {
-			return nil, fmt.Errorf("temperature %.2f outside valid range [%.2f, %.2f]",
-				temperature, caps.MinTemperature, caps.MaxTemperature)
-		}
+	baseClient, err := llm.NewBaseClient(caps, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("gemini: %w", err)
 	}
 
 	ctx := context.Background()
@@ -88,14 +62,10 @@ func NewGeminiClient(cfg llm.ProviderConfig) (llm.Client, error) {
 	}
 
 	return &GeminiClient{
-		client:        client,
-		model:         cfg.Model,
-		capabilities:  caps,
-		maxTokens:     maxTokens,
-		temperature:   temperature,
-		enableCaching: false, // caps.SupportsPromptCaching,
-		cacheKey:      fmt.Sprintf("agent-%s-%d", cfg.Model, time.Now().Unix()/3600),
-		cacheTTL:      1 * time.Hour, // Default 1 hour TTL
+		BaseClient: baseClient,
+		client:     client,
+		model:      cfg.Model,
+		cacheTTL:   1 * time.Hour, // Default 1 hour TTL
 	}, nil
 }
 
@@ -109,26 +79,8 @@ func (c *GeminiClient) Model() string {
 	return c.model
 }
 
-// SetCaching controls context caching
-func (c *GeminiClient) SetCaching(enabled bool) {
-	if c.capabilities.SupportsPromptCaching {
-		c.enableCaching = enabled
-		logger.Log.Debug("gemini context caching", "enabled", enabled)
-	}
-}
-
-// SetCacheKey sets a custom cache key (for compatibility)
-func (c *GeminiClient) SetCacheKey(key string) {
-	c.cacheKey = key
-}
-
 // SetCacheTTL sets the cache TTL duration
 func (c *GeminiClient) SetCacheTTL(ttl time.Duration) {
 	c.cacheTTL = ttl
 	logger.Log.Debug("gemini cache TTL updated", "ttl", ttl)
-}
-
-// Capabilities returns the model capabilities
-func (c *GeminiClient) Capabilities() llm.ModelCapabilities {
-	return c.capabilities
 }

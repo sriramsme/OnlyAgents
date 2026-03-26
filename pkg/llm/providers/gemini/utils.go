@@ -18,12 +18,21 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
+func mapStopReason(r genai.FinishReason) llm.StopReason {
+	switch r {
+	case "MAX_TOKENS":
+		return llm.StopReasonLength
+	default:
+		return llm.StopReasonUnknown
+	}
+}
+
 // validateStreamingCapabilities checks if the model supports required features
 func (c *GeminiClient) validateStreamingCapabilities(req *llm.Request) error {
-	if !c.capabilities.SupportsStreaming {
+	if !c.Capabilities().SupportsStreaming {
 		return fmt.Errorf("model %s does not support streaming", c.model)
 	}
-	if len(req.Tools) > 0 && !c.capabilities.SupportsToolCalling {
+	if len(req.Tools) > 0 && !c.Capabilities().SupportsToolCalling {
 		return fmt.Errorf("model %s does not support tool calling", c.model)
 	}
 	return nil
@@ -116,7 +125,7 @@ func (c *GeminiClient) buildGenerateConfig(req *llm.Request, systemInstruction s
 
 	// Add tools if provided
 	tools := toGeminiTools(req.Tools)
-	if len(tools) > 0 && c.capabilities.SupportsToolCalling {
+	if len(tools) > 0 && c.Capabilities().SupportsToolCalling {
 		config.Tools = tools
 	}
 
@@ -131,13 +140,13 @@ func (c *GeminiClient) getValidatedMaxTokens(requestedTokens int) int32 {
 	maxTokens := requestedTokens
 
 	if maxTokens == 0 {
-		maxTokens = c.maxTokens
+		maxTokens = c.MaxTokens()
 	}
-	if maxTokens > c.capabilities.MaxTokens {
-		maxTokens = c.capabilities.MaxTokens
+	if maxTokens > c.Capabilities().MaxTokens {
+		maxTokens = c.Capabilities().MaxTokens
 	}
 	if maxTokens <= 0 || maxTokens > math.MaxInt32 {
-		maxTokens = c.capabilities.DefaultMaxTokens
+		maxTokens = c.Capabilities().DefaultMaxTokens
 	}
 
 	return int32(maxTokens) // #nosec G115 -- value is clamped to int32 bounds above
@@ -146,16 +155,17 @@ func (c *GeminiClient) getValidatedMaxTokens(requestedTokens int) int32 {
 // getValidatedTemperature validates and clamps the temperature value
 func (c *GeminiClient) getValidatedTemperature(requestedTemp float64) float64 {
 	temperature := requestedTemp
+	capabilities := c.Capabilities()
 	if temperature == 0 {
-		temperature = c.temperature
+		temperature = c.Temperature()
 	}
 
-	if c.capabilities.SupportsTemperature {
-		if temperature < c.capabilities.MinTemperature {
-			temperature = c.capabilities.MinTemperature
+	if capabilities.SupportsTemperature {
+		if temperature < capabilities.MinTemperature {
+			temperature = capabilities.MinTemperature
 		}
-		if temperature > c.capabilities.MaxTemperature {
-			temperature = c.capabilities.MaxTemperature
+		if temperature > capabilities.MaxTemperature {
+			temperature = capabilities.MaxTemperature
 		}
 	}
 
@@ -164,7 +174,7 @@ func (c *GeminiClient) getValidatedTemperature(requestedTemp float64) float64 {
 
 // applyCaching applies caching configuration if enabled
 func (c *GeminiClient) applyCaching(config *genai.GenerateContentConfig, systemInstruction string, contents []*genai.Content, tools []*genai.Tool) {
-	if !c.enableCaching || !c.capabilities.SupportsPromptCaching {
+	if !c.CachingEnabled() || !c.Capabilities().SupportsPromptCaching {
 		return
 	}
 
@@ -349,13 +359,14 @@ func (c *GeminiClient) toGeminiContents(messages []llm.Message) ([]*genai.Conten
 func (c *GeminiClient) toGeminiUserMultimodal(msg llm.Message) (*genai.Content, error) {
 	parts := make([]*genai.Part, 0, len(msg.Parts))
 
+	caps := c.Capabilities()
 	for _, part := range msg.Parts {
 		switch part.Type {
 		case llm.ContentPartTypeText:
 			parts = append(parts, &genai.Part{Text: part.Text})
 
 		case llm.ContentPartTypeImage:
-			if !c.capabilities.SupportsVision {
+			if !caps.SupportsVision {
 				parts = append(parts, &genai.Part{
 					Text: fmt.Sprintf("[Image attached: %s — this model does not support vision]", part.Filename),
 				})
@@ -542,7 +553,7 @@ func parseResponse(resp *genai.GenerateContentResponse) (*llm.Response, error) {
 	return &llm.Response{
 		Content:    textBuilder.String(),
 		ToolCalls:  toolCalls,
-		StopReason: string(candidate.FinishReason),
+		StopReason: mapStopReason(candidate.FinishReason),
 		Usage:      extractUsage(resp.UsageMetadata),
 		Model:      resp.ModelVersion,
 	}, nil
