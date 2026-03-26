@@ -164,7 +164,7 @@ func (d *DB) DeleteReminder(ctx context.Context, id string) error {
 func (d *DB) ListReminders(ctx context.Context) ([]*storage.Reminder, error) {
 	var reminders []*storage.Reminder
 	err := d.db.SelectContext(ctx, &reminders, `
-		SELECT * FROM reminders WHERE sent_at IS NULL ORDER BY due_at ASC
+		SELECT * FROM reminders WHERE ORDER BY due_at ASC
 	`)
 	return reminders, wrap(err, "list reminders")
 }
@@ -177,9 +177,10 @@ func (d *DB) GetDueReminders(ctx context.Context, before time.Time) ([]*storage.
 	return reminders, wrap(err, "get due reminders")
 }
 
-func (d *DB) MarkReminderSent(ctx context.Context, id string) error {
-	now := storage.DBTime{Time: time.Now()}
-	_, err := d.db.ExecContext(ctx, `UPDATE reminders SET sent_at = ? WHERE id = ?`, now, id)
+func (d *DB) MarkReminderSent(ctx context.Context, id string, sentAt time.Time) error {
+	_, err := d.db.ExecContext(ctx,
+		`UPDATE reminders SET sent_at = ? WHERE id = ?`,
+		storage.DBTime{Time: sentAt}, id)
 	return wrap(err, "mark reminder sent")
 }
 

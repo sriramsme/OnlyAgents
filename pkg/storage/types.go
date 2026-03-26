@@ -23,7 +23,7 @@ type Message struct {
 	ID               string `db:"id"`
 	ConversationID   string `db:"conversation_id"`
 	AgentID          string `db:"agent_id"`
-	Role             string `db:"role"` // user | assistant | tool
+	Role             string `db:"role"` // user | assistant | tool | notification
 	Content          string `db:"content"`
 	ReasoningContent string `db:"reasoning_content"`
 	ToolCalls        string `db:"tool_calls"`   // JSON []tools.ToolCall, for role=assistant

@@ -26,8 +26,7 @@ func (d *DB) GetConversationByChannel(ctx context.Context, channel, agentID stri
 	var conv storage.Conversation
 
 	query := `
-		SELECT id, channel, agent_id, started_at, ended_at
-		FROM conversations
+		SELECT * FROM conversations
 		WHERE channel = ? AND ended_at IS NULL
 	`
 	args := []any{channel}

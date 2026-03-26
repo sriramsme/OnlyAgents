@@ -95,7 +95,7 @@ type ReminderStore interface {
 	DeleteReminder(ctx context.Context, id string) error
 	ListReminders(ctx context.Context) ([]*Reminder, error)
 	GetDueReminders(ctx context.Context, before time.Time) ([]*Reminder, error)
-	MarkReminderSent(ctx context.Context, id string) error
+	MarkReminderSent(ctx context.Context, id string, sentAt time.Time) error
 }
 
 // WorkflowStore manages workflow orchestration

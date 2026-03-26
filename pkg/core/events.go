@@ -132,11 +132,12 @@ type MessageReceivedPayload struct {
 
 // OutboundMessagePayload: Response to send to channel
 type OutboundMessagePayload struct {
-	Channel     *ChannelMetadata    `json:"channel"`
-	Content     string              `json:"content"`
-	Attachments []*media.Attachment `json:"attachments,omitempty"`
-	ReplyToID   string              `json:"reply_to_id,omitempty"`
-	ParseMode   string              `json:"parse_mode,omitempty"`
+	Channel        *ChannelMetadata    `json:"channel"`
+	Content        string              `json:"content"`
+	Attachments    []*media.Attachment `json:"attachments,omitempty"`
+	ReplyToID      string              `json:"reply_to_id,omitempty"`
+	ParseMode      string              `json:"parse_mode,omitempty"`
+	IsNotification bool                `json:"is_notification"`
 }
 
 // AgentExecutePayload: Execute agent with message
