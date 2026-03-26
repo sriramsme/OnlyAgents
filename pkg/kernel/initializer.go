@@ -14,6 +14,7 @@ type (
 	promptsInitializer    struct{}
 	memoryInitializer     struct{}
 	cronInitializer       struct{}
+	notifyInitializer     struct{}
 )
 
 func (i connectorsInitializer) Init(ctx context.Context, k *Kernel) error {
@@ -51,12 +52,16 @@ func (i promptsInitializer) Init(ctx context.Context, k *Kernel) error {
 
 // memoryInitializer is the last initializer — it must be the last one to run.
 func (i memoryInitializer) Init(ctx context.Context, k *Kernel) error {
-	k.mm.SetDeliverer(*k.channels.GetActive())
 	k.mm.RegisterJobs(k.scheduler)
 	return nil
 }
 
 func (i cronInitializer) Init(ctx context.Context, k *Kernel) error {
 	k.loadCronJobs()
+	return nil
+}
+
+func (i notifyInitializer) Init(ctx context.Context, k *Kernel) error {
+	k.notifier.RegisterJobs(k.scheduler)
 	return nil
 }

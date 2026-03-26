@@ -7,6 +7,7 @@ func kernelInitializers() []Initializer {
 		promptsInitializer{}, // always last — all data must be set before this
 		memoryInitializer{},
 		cronInitializer{},
+		notifyInitializer{},
 	}
 }
 

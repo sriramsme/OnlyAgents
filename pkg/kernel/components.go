@@ -14,6 +14,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
+	"github.com/sriramsme/OnlyAgents/pkg/notify"
 	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
@@ -33,6 +34,7 @@ type kernelComponents struct {
 	cliExecutor             *cli.CLIExecutor
 	cm                      *memory.ConversationManager
 	mm                      *memory.MemoryManager
+	notifier                *notify.Notifier
 	workflow                *workflow.Engine
 	store                   storage.Storage
 	scheduler               *scheduler.Scheduler
@@ -63,6 +65,11 @@ func loadComponents(
 	c.cm, err = loadConversationManager(ctx, c.store)
 	if err != nil {
 		return c, fmt.Errorf("load conversation manager: %w", err)
+	}
+
+	c.notifier, err = notify.New(c.store, kernelBus, c.user.Identity.Timezone)
+	if err != nil {
+		return c, fmt.Errorf("load notifier: %w", err)
 	}
 
 	c.mm, err = loadMemoryManager(cfg.Memory, c.store, c.user.Identity.Timezone)
