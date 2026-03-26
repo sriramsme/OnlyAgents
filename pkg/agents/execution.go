@@ -21,6 +21,7 @@ type llmCaller func(
 	correlationID string,
 	callCount int,
 	payload core.AgentExecutePayload,
+	maxTokens int, // 0 = let provider decide
 ) (*llm.Response, error)
 
 // execute runs the agent using a blocking LLM call.
@@ -45,8 +46,6 @@ func (a *Agent) runExecutionLoop(
 		return "", nil, fmt.Errorf("execute: nil channel in payload (correlation_id: %s)", correlationID)
 	}
 
-	// Serialize turns for this agent+session — prevents turn 2 reading
-	// history before turn 1 has finished writing all its tool results.
 	lock := a.turnLockFor(payload.Channel.SessionID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -56,10 +55,12 @@ func (a *Agent) runExecutionLoop(
 		return "", nil, err
 	}
 
-	// Accumulate agent-produced files across all tool call rounds.
 	var outboundAttachments []*media.Attachment
-
+	cumulativeToolCalls := 0
 	callCount := 0
+	// First call uses configured max (or 0 = model default).
+	nextMaxTokens := a.llmOptions.MaxTokens
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -68,15 +69,29 @@ func (a *Agent) runExecutionLoop(
 		}
 
 		callCount++
-		resp, err := caller(ctx, messages, correlationID, callCount, payload)
+		if callCount > a.maxIterations {
+			a.logger.Warn("max iterations reached, attempting synthesis from accumulated context",
+				"max_iterations", a.maxIterations,
+				"correlation_id", correlationID,
+			)
+			return a.synthesizeFromContext(ctx, sessionID, correlationID, payload, messages, caller)
+		}
+
+		resp, err := caller(ctx, messages, correlationID, callCount, payload, nextMaxTokens)
 		if err != nil {
 			return "", nil, err
 		}
 
 		if !resp.HasToolCalls() {
+			if resp.StopReason == llm.StopReasonLength {
+				a.logger.Warn("response truncated by token limit, returning partial content",
+					"output_tokens", resp.Usage.OutputTokens,
+					"next_max_tokens", nextMaxTokens,
+					"correlation_id", correlationID,
+				)
+			}
 			a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
 			if resp.Content == "" {
-				// LLM returned empty content — send a fallback so the user isn't left waiting.
 				a.safeSend(core.Event{
 					Type:          core.OutboundMessage,
 					CorrelationID: correlationID,
@@ -90,9 +105,32 @@ func (a *Agent) runExecutionLoop(
 			return resp.Content, outboundAttachments, nil
 		}
 
+		cumulativeToolCalls += len(resp.ToolCalls)
+		if cumulativeToolCalls > a.maxCumulativeToolCalls {
+			a.logger.Warn("max cumulative tool calls reached, attempting synthesis",
+				"cumulative", cumulativeToolCalls,
+				"max", a.maxCumulativeToolCalls,
+				"correlation_id", correlationID,
+			)
+			return a.synthesizeFromContext(ctx, sessionID, correlationID, payload, messages, caller)
+		}
+
+		// Compute budgets for the next iteration using real usage data.
+		budget := llm.ComputeIterationBudget(
+			a.contextWindow,
+			a.safetyMargin,
+			resp.Usage,
+			len(resp.ToolCalls),
+			a.llmOptions.MaxTokens,
+			a.maxToolResultTokens,
+		)
+		nextMaxTokens = budget.MaxTokens
+
 		var produced []*media.Attachment
 		var halt bool
-		messages, produced, halt, err = a.processToolCalls(ctx, sessionID, correlationID, payload, messages, resp)
+		messages, produced, halt, err = a.processToolCalls(
+			ctx, sessionID, correlationID, payload, messages, resp, budget.PerResultTokens,
+		)
 		if err != nil {
 			return "", nil, err
 		}
@@ -112,18 +150,26 @@ func (a *Agent) callLLM(
 	correlationID string,
 	callCount int,
 	payload core.AgentExecutePayload,
+	maxTokens int,
 ) (*llm.Response, error) {
 	phase := fmt.Sprintf("%s_llm_%d. Msg: %s", a.id, callCount, truncate(payload.Message, 100))
 	logger.Timing.StartPhase(correlationID, phase)
 
-	resp, err := a.llmClient.Chat(ctx, &llm.Request{
-		Messages: msgs,
-		Tools:    a.tools,
+	req := &llm.Request{
+		Messages:    msgs,
+		Tools:       a.tools,
+		Temperature: a.llmOptions.Temperature,
 		Metadata: map[string]string{
 			"agent_id":       a.id,
 			"correlation_id": correlationID,
 		},
-	})
+	}
+
+	if maxTokens > 0 {
+		req.MaxTokens = maxTokens
+	}
+
+	resp, err := a.llmClient.Chat(ctx, req)
 	if err != nil {
 		logger.Timing.EndPhaseWithMetadata(correlationID, phase, map[string]any{"error": "llm call failed"})
 		return nil, fmt.Errorf("llm call failed: %w", err)
@@ -199,6 +245,51 @@ func (a *Agent) finaliseTurn(
 	if payload.Workflow != nil {
 		a.fireTaskCompletion(ctx, correlationID, payload.Workflow, resp.Content, nil)
 	}
+}
+
+// synthesizeFromContext makes a final tool-free LLM call when the iteration
+// limit is hit, salvaging useful output from accumulated tool results.
+func (a *Agent) synthesizeFromContext(
+	ctx context.Context,
+	sessionID string,
+	correlationID string,
+	payload core.AgentExecutePayload,
+	messages []llm.Message,
+	caller llmCaller,
+) (string, []*media.Attachment, error) {
+	// Append a synthesis instruction as a user turn.
+	synthMessages := append(messages, llm.UserMessage(
+		"You have reached your tool call limit. "+
+			"Based solely on the information you have gathered so far, "+
+			"provide the best possible response. "+
+			"Do not call any more tools.",
+	))
+
+	// No tools passed — forces a text response.
+	savedTools := a.tools
+	a.tools = nil
+	defer func() { a.tools = savedTools }()
+
+	resp, err := caller(ctx, synthMessages, correlationID, 0, payload, 0)
+	if err != nil {
+		return "", nil, fmt.Errorf("synthesis call failed: %w", err)
+	}
+
+	a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
+
+	if resp.Content == "" {
+		a.safeSend(core.Event{
+			Type:          core.OutboundMessage,
+			CorrelationID: correlationID,
+			AgentID:       a.id,
+			Payload: core.OutboundMessagePayload{
+				Channel: payload.Channel,
+				Content: "I completed the task but had nothing to add.",
+			},
+		}, "empty synthesis fallback")
+	}
+
+	return resp.Content, nil, nil
 }
 
 // buildUserMessage constructs the user turn for the current request.

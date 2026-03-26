@@ -76,6 +76,7 @@ func GetExecutiveTools() []ToolDef {
 				"\n\nSCHEDULING:\n"+
 				"- Set schedule to a cron expression (e.g. '0 8 * * *') to repeat this task automatically\n"+
 				"- Omit schedule for one-time tasks\n"+
+				"- NEVER add an instruction for delivering, notifying, or sending results to the user — the system handles delivery automatically. "+
 				"- Examples: '0 8 * * *' = daily 8am, '0 9 * * 1' = every Monday 9am\n"+
 				"- Use when user says 'every day', 'weekly', 'every morning', 'remind me every...'\n",
 

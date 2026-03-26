@@ -30,18 +30,23 @@ func (a *Agent) callLLMStream(
 	correlationID string,
 	callCount int,
 	payload core.AgentExecutePayload,
+	maxTokens int,
 ) (*llm.Response, error) {
 	phase := fmt.Sprintf("%s_llm_stream_%d. Msg: %s", a.id, callCount, truncate(payload.Message, 100))
 	logger.Timing.StartPhase(correlationID, phase)
 
-	streamCh := a.llmClient.ChatStream(ctx, &llm.Request{
+	req := &llm.Request{
 		Messages: msgs,
 		Tools:    a.tools,
 		Metadata: map[string]string{
 			"agent_id":       a.id,
 			"correlation_id": correlationID,
 		},
-	})
+	}
+	if maxTokens > 0 {
+		req.MaxTokens = maxTokens
+	}
+	streamCh := a.llmClient.ChatStream(ctx, req)
 
 	fullContent, toolCalls, inputTokens, outputTokens, err := collectToolCalls(
 		streamCh,
@@ -63,9 +68,10 @@ func (a *Agent) callLLMStream(
 		return nil, fmt.Errorf("llm stream failed: %w", err)
 	}
 
-	stopReason := "end_turn"
+	// TODO: detect StopReasonLength from stream finish event
+	stopReason := llm.StopReasonEnd
 	if len(toolCalls) > 0 {
-		stopReason = "tool_use"
+		stopReason = llm.StopReasonTool
 	}
 	resp := &llm.Response{
 		Content:    fullContent,

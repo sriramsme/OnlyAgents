@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
@@ -43,14 +42,6 @@ type Config struct {
 	//   - Complex agents (multi-step workflows): 15
 	MaxIterations int `mapstructure:"max_iterations"`
 
-	// MaxToolCallsPerIteration limits tool calls in a single LLM response
-	// Default: 3 (if not set or 0)
-	// Typical values:
-	//   - Conservative (prevent spam): 1-2
-	//   - Balanced: 3
-	//   - Batch operations: 5-6
-	MaxToolCallsPerIteration int `mapstructure:"max_tool_calls_per_iteration"`
-
 	// MaxCumulativeToolCalls is the total tool calls across all iterations
 	// Default: 15 (if not set or 0)
 	// Prevents infinite loops and controls costs
@@ -68,15 +59,6 @@ type Config struct {
 	//   - Balanced: 2000
 	//   - Document processing: 4000
 	MaxToolResultTokens int `mapstructure:"max_tool_result_tokens"`
-
-	// MaxExecutionTime is the overall timeout for agent execution
-	// Default: 3m (if not set or 0)
-	// Format: "30s", "2m", "5m", etc.
-	// Typical values:
-	//   - Real-time responses: 30s-1m
-	//   - Standard queries: 2m-3m
-	//   - Batch processing: 5m-10m
-	MaxExecutionTime time.Duration `mapstructure:"max_execution_time"`
 
 	// EnableEarlyStopping detects and stops repeated tool calls
 	// Default: true (if not explicitly set to false)
@@ -130,6 +112,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	}); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+
 	return &cfg, nil
 }
 
@@ -179,15 +162,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("logging.format", "text")
 	v.SetDefault("llm.provider", "anthropic")
 	v.SetDefault("llm.model", "claude-sonnet-4-20250514")
+	v.SetDefault("llm.options.max_tokens", 0)
+	v.SetDefault("llm.options.temperature", 1.0)
 	v.SetDefault("vault.type", "env")
 	v.SetDefault("vault.prefix", "ONLYAGENTS_")
 	v.SetDefault("vault.enable_cache", true)
 	v.SetDefault("vault.audit_log", false)
 	v.SetDefault("max_iterations", 10)
-	v.SetDefault("max_tool_calls_per_iteration", 3)
 	v.SetDefault("max_cumulative_tool_calls", 15)
-	v.SetDefault("max_tool_result_tokens", 2000)
-	v.SetDefault("max_execution_time", 3*time.Minute)
+	v.SetDefault("max_tool_result_tokens", 1500)
 	v.SetDefault("enable_early_stopping", true)
 	v.SetDefault("similar_call_threshold", 3)
 }
@@ -211,17 +194,11 @@ func (c *Config) Validate() error {
 	if c.MaxIterations < 0 {
 		return fmt.Errorf("max_iterations cannot be negative")
 	}
-	if c.MaxToolCallsPerIteration < 0 {
-		return fmt.Errorf("max_tool_calls_per_iteration cannot be negative")
-	}
 	if c.MaxCumulativeToolCalls < 0 {
 		return fmt.Errorf("max_cumulative_tool_calls cannot be negative")
 	}
 	if c.MaxToolResultTokens < 0 {
 		return fmt.Errorf("max_tool_result_tokens cannot be negative")
-	}
-	if c.MaxExecutionTime < 0 {
-		return fmt.Errorf("max_execution_time cannot be negative")
 	}
 	if c.SimilarCallThreshold < 0 {
 		return fmt.Errorf("similar_call_threshold cannot be negative")

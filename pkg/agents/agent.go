@@ -39,8 +39,19 @@ type Agent struct {
 	availableAgents map[string]AgentInfo // only populated for executive
 	systemPrompt    string               // always the assembled result, never set externally
 
+	// Execution limits
+	maxIterations          int
+	maxCumulativeToolCalls int
+	maxToolResultTokens    int
+	similarCallThreshold   int   // TODO: rn, its not used
+	enableEarlyStopping    *bool // TODO: rn, its not used
+
 	// Core capabilities
-	llmClient      llm.Client
+	llmClient     llm.Client
+	llmOptions    llm.Options
+	contextWindow int
+	safetyMargin  int
+
 	skillsBindings []SkillBinding
 	skills         map[string]skills.Skill // owns lifecycle
 
@@ -101,28 +112,36 @@ func NewAgent(
 	agentCtx, cancel := context.WithCancel(ctx) // #nosec G118 -- cancel is called in Stop()
 
 	return &Agent{
-		id:               cfg.ID,
-		name:             cfg.Name,
-		description:      cfg.Description,
-		isExecutive:      cfg.IsExecutive,
-		isGeneral:        cfg.IsGeneral,
-		maxConcurrency:   cfg.MaxConcurrency,
-		skillsBindings:   cfg.Skills,
-		streamingEnabled: cfg.StreamingEnabled,
-		llmClient:        llmClient,
-		soul:             agentSoul,
-		outbox:           outbox,
-		uiBus:            uiBus,
-		tools:            []tools.ToolDef{},
-		skills:           make(map[string]skills.Skill),
-		toolSkillMap:     make(map[string]string),
-		availableAgents:  make(map[string]AgentInfo), // only populated for executive
-		cm:               cm,
-		mm:               mm,
-		inbox:            make(chan core.Event, cfg.BufferSize),
-		ctx:              agentCtx,
-		cancel:           cancel,
-		logger:           slog.With("agent_id", cfg.ID),
-		state:            "idle",
+		id:                     cfg.ID,
+		name:                   cfg.Name,
+		description:            cfg.Description,
+		isExecutive:            cfg.IsExecutive,
+		isGeneral:              cfg.IsGeneral,
+		maxConcurrency:         cfg.MaxConcurrency,
+		skillsBindings:         cfg.Skills,
+		streamingEnabled:       cfg.StreamingEnabled,
+		llmClient:              llmClient,
+		llmOptions:             *cfg.LLM.Options,
+		contextWindow:          llmClient.ContextWindow(),
+		safetyMargin:           llm.SafetyMargin(llmClient.ContextWindow()),
+		maxIterations:          cfg.MaxIterations,
+		maxCumulativeToolCalls: cfg.MaxCumulativeToolCalls,
+		maxToolResultTokens:    cfg.MaxToolResultTokens,
+		similarCallThreshold:   cfg.SimilarCallThreshold,
+		enableEarlyStopping:    cfg.EnableEarlyStopping,
+		soul:                   agentSoul,
+		outbox:                 outbox,
+		uiBus:                  uiBus,
+		tools:                  []tools.ToolDef{},
+		skills:                 make(map[string]skills.Skill),
+		toolSkillMap:           make(map[string]string),
+		availableAgents:        make(map[string]AgentInfo), // only populated for executive
+		cm:                     cm,
+		mm:                     mm,
+		inbox:                  make(chan core.Event, cfg.BufferSize),
+		ctx:                    agentCtx,
+		cancel:                 cancel,
+		logger:                 slog.With("agent_id", cfg.ID),
+		state:                  "idle",
 	}, nil
 }

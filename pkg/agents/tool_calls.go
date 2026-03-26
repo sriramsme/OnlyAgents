@@ -25,6 +25,7 @@ func (a *Agent) processToolCalls(
 	payload core.AgentExecutePayload,
 	messages []llm.Message,
 	resp *llm.Response,
+	perResultBudget int, // 0 = no limiti
 ) (updated []llm.Message, produced []*media.Attachment, halt bool, err error) {
 	// Persist assistant turn with tool calls
 	if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
@@ -135,6 +136,15 @@ func (a *Agent) processToolCalls(
 				return nil, nil, false, fmt.Errorf("marshal tool result: %w", err)
 			}
 			resultStr := string(resultJSON)
+			if perResultBudget > 0 && len(resultStr) > perResultBudget {
+				a.logger.Warn("tool result truncated",
+					"tool", tc.Function.Name,
+					"original_len", len(resultStr),
+					"budget_chars", perResultBudget,
+					"correlation_id", correlationID,
+				)
+				resultStr = resultStr[:perResultBudget]
+			}
 			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
 				a.logger.Warn("failed to save tool result", "err", err)
 			}
