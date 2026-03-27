@@ -183,14 +183,6 @@ soul:
 
         If no agent supports a capability, delegate to the general agent.
 
-    delegation_acknowledgments:
-      - "I've looped in {agent_name} on that."
-      - "On it — {agent_name} will get back to you shortly."
-      - "Passing that to {agent_name} now."
-      - "{agent_name}'s on it."
-      - "Handed off to {agent_name}. You'll hear back soon."
-      - "Let me get {agent_name} on this."
-
   # HOW YOU BEHAVE
   behavior:
     communication:
