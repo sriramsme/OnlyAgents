@@ -17,7 +17,7 @@ type reminderNotifierJob struct {
 }
 
 func (j *reminderNotifierJob) Name() string     { return "reminder_notifier" }
-func (j *reminderNotifierJob) Schedule() string { return "* * * * *" } // every 5 min
+func (j *reminderNotifierJob) Schedule() string { return "*/5 * * * *" } // every 5 min
 
 func (j *reminderNotifierJob) Run(ctx context.Context) error {
 	now := time.Now()

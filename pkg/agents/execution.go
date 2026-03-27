@@ -91,9 +91,6 @@ func (a *Agent) runExecutionLoop(
 				)
 			}
 			a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
-			if resp.Content == "" {
-				resp.Content = "I completed the task but had nothing to add."
-			}
 			return resp, outboundAttachments, nil
 		}
 

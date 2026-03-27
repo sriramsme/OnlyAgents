@@ -32,12 +32,17 @@ func (c *AnthropicClient) Chat(ctx context.Context, req *llm.Request) (*llm.Resp
 		"tools", len(req.Tools),
 		"streaming", false)
 
-	message, err := c.client.Messages.New(ctx, *params)
-	if err != nil {
+	stream := c.client.Messages.NewStreaming(ctx, *params)
+	message := &anthropic.Message{}
+	for stream.Next() {
+		if err := message.Accumulate(stream.Current()); err != nil {
+			return nil, fmt.Errorf("anthropic stream accumulate: %w", err)
+		}
+	}
+	if err := stream.Err(); err != nil {
 		logger.Log.Error("anthropic api error", "model", c.model, "error", err)
 		return nil, fmt.Errorf("anthropic api error: %w", err)
 	}
-
 	resp := parseResponse(message)
 
 	logger.Log.Info("anthropic response",

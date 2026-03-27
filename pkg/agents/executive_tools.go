@@ -65,7 +65,7 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		if err != nil {
 			return tools.ExecErr(err)
 		}
-		return tools.ExecDone(fmt.Sprintf("Recurring job has been scheduled. Schedule: %s", input.Schedule))
+		return tools.ExecDone(fmt.Sprintf("cron job created: %s", input.Schedule))
 	}
 	a.logger.Info("delegating task",
 		"agent_id", input.AgentID,
@@ -119,7 +119,7 @@ func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 		logger.Timing.EndPhaseWithMetadata(correlationID, delegationPhase, map[string]any{
 			"direct_response": true,
 		})
-		return tools.ExecDone(fmt.Sprintf("I've looped in %s on that. They'll get back to you on that. ", input.AgentID))
+		return tools.ExecDone(fmt.Sprintf("handed off to %s", input.AgentID))
 	}
 
 	// Wait for result
@@ -188,8 +188,7 @@ func (a *Agent) requestWorkflow(ctx context.Context, correlationID string,
 			return tools.ExecErr(err)
 		}
 	}
-	execMsg := fmt.Sprintf("Workflow %s has been created.", wf.Name)
-	return tools.ExecDone(execMsg)
+	return tools.ExecDone(fmt.Sprintf("workflow created: %s", wf.ID))
 }
 
 // submitWorkflow sends workflow to kernel (non-blocking)

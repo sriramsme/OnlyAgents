@@ -7,7 +7,7 @@ import (
 
 // ModelRegistry maps model names to their capabilities
 var ModelRegistry = map[string]llm.ModelCapabilities{
-	"claude-opus-4.6": { // Alias
+	"claude-opus-4-6": { // Alias
 		Available:               true,
 		Provider:                llm.ProviderAnthropic,
 		MaxTokens:               128000,
@@ -57,7 +57,7 @@ var ModelRegistry = map[string]llm.ModelCapabilities{
 		IsReasoningModel:        true,
 		SupportsFunctionCalling: true,
 	},
-	"claude-sonnet-4.6": { // Alias
+	"claude-sonnet-4-6": { // Alias
 		Available:               true,
 		Provider:                llm.ProviderAnthropic,
 		MaxTokens:               64000,
@@ -107,7 +107,7 @@ var ModelRegistry = map[string]llm.ModelCapabilities{
 		IsReasoningModel:        true,
 		SupportsFunctionCalling: true,
 	},
-	"claude-haiku-4.5": { // Alias
+	"claude-haiku-4-5": { // Alias
 		Available:               true,
 		Provider:                llm.ProviderAnthropic,
 		MaxTokens:               64000,
@@ -141,27 +141,27 @@ var CachePricing = map[string]struct {
 	CacheWrite1h float64 // 1 hour TTL
 	CacheHitCost float64 // Cache hits and refreshes
 }{
-	"claude-opus-4.6": {
+	"claude-opus-4-6": {
 		CacheWrite5m: 6.25,
 		CacheWrite1h: 10.00,
 		CacheHitCost: 0.50,
 	},
-	"claude-opus-4.5": {
+	"claude-opus-4-5": {
 		CacheWrite5m: 6.25,
 		CacheWrite1h: 10.00,
 		CacheHitCost: 0.50,
 	},
-	"claude-sonnet-4.6": {
+	"claude-sonnet-4-6": {
 		CacheWrite5m: 3.75,
 		CacheWrite1h: 6.00,
 		CacheHitCost: 0.30,
 	},
-	"claude-sonnet-4.5": {
+	"claude-sonnet-4-5": {
 		CacheWrite5m: 3.75,
 		CacheWrite1h: 6.00,
 		CacheHitCost: 0.30,
 	},
-	"claude-haiku-4.5": {
+	"claude-haiku-4-5": {
 		CacheWrite5m: 1.25,
 		CacheWrite1h: 2.00,
 		CacheHitCost: 0.10,

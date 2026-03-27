@@ -26,16 +26,18 @@ func (c *OpenAIClient) Chat(ctx context.Context, req *llm.Request) (*llm.Respons
 	logger.Log.Debug("openai request",
 		"model", c.model,
 		"messages", len(req.Messages),
-		"tools", len(req.Tools),
-		"streaming", false)
+		"tools", len(req.Tools))
 
-	completion, err := c.client.Chat.Completions.New(ctx, params)
-	if err != nil {
-		logger.Log.Error("openai api error", "model", c.model, "error", err)
+	stream := c.client.Chat.Completions.NewStreaming(ctx, params)
+	acc := openai.ChatCompletionAccumulator{}
+	for stream.Next() {
+		acc.AddChunk(stream.Current())
+	}
+	if err := stream.Err(); err != nil {
 		return nil, fmt.Errorf("openai api error: %w", err)
 	}
 
-	resp := parseResponse(completion)
+	resp := parseResponse(&acc.ChatCompletion)
 
 	logger.Log.Info("openai response",
 		"model", c.model,
