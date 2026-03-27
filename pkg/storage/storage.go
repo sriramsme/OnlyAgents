@@ -37,6 +37,11 @@ type MessageStore interface {
 	GetMessagesByAgent(ctx context.Context, conversationID, agentID string) ([]*Message, error)
 	GetMessagesBetween(ctx context.Context, roles []string, from, to time.Time) ([]*Message, error)
 	DeleteOldMessages(ctx context.Context, olderThan time.Time) error
+	// After send, update the existing message record with the platform ID
+	UpdateMessagePlatformID(ctx context.Context, messageID, platformMessageID string) error
+
+	// Lookup by platform ID — caller reads .AgentID from the result
+	GetMessageByPlatformID(ctx context.Context, platformMessageID string) (*Message, error)
 }
 
 type MemoryStore interface {

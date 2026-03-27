@@ -164,7 +164,7 @@ func (d *DB) DeleteReminder(ctx context.Context, id string) error {
 func (d *DB) ListReminders(ctx context.Context) ([]*storage.Reminder, error) {
 	var reminders []*storage.Reminder
 	err := d.db.SelectContext(ctx, &reminders, `
-		SELECT * FROM reminders WHERE ORDER BY due_at ASC
+		SELECT * FROM reminders ORDER BY due_at ASC
 	`)
 	return reminders, wrap(err, "list reminders")
 }

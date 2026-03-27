@@ -19,6 +19,7 @@ CREATE INDEX IF NOT EXISTS idx_conversations_agent_time
 CREATE TABLE IF NOT EXISTS messages (
     id                TEXT PRIMARY KEY,
     conversation_id   TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    platform_message_id TEXT NOT NULL DEFAULT '',
     agent_id          TEXT NOT NULL,
     role              TEXT NOT NULL,              -- user | assistant | tool
     content           TEXT NOT NULL DEFAULT '',

@@ -105,9 +105,9 @@ func (d *DB) EndConversation(ctx context.Context, id string, summary string) err
 func (d *DB) SaveMessage(ctx context.Context, msg *storage.Message) error {
 	_, err := d.db.NamedExecContext(ctx, `
 		INSERT INTO messages
-			(id, conversation_id, agent_id, role, content, reasoning_content, tool_calls, tool_call_id, timestamp)
+			(id, conversation_id, agent_id, platform_message_id, role, content, reasoning_content, tool_calls, tool_call_id, timestamp)
 		VALUES
-		(:id, :conversation_id, :agent_id, :role, :content, :reasoning_content, :tool_calls, :tool_call_id, :timestamp)
+		(:id, :conversation_id, :agent_id, :platform_message_id, :role, :content, :reasoning_content, :tool_calls, :tool_call_id, :timestamp)
 	`, msg)
 	return wrap(err, "save message")
 }
@@ -128,6 +128,21 @@ func (d *DB) GetMessagesByAgent(ctx context.Context, conversationID, agentID str
         ORDER BY timestamp ASC
     `, conversationID, agentID)
 	return msgs, wrap(err, "get messages by agent")
+}
+
+func (d *DB) UpdateMessagePlatformID(ctx context.Context, messageID, platformMessageID string) error {
+	_, err := d.db.ExecContext(ctx,
+		`UPDATE messages SET platform_message_id = ? WHERE id = ?`,
+		platformMessageID, messageID)
+	return wrap(err, "update message platform id")
+}
+
+func (d *DB) GetMessageByPlatformID(ctx context.Context, platformMessageID string) (*storage.Message, error) {
+	var msg storage.Message
+	err := d.db.GetContext(ctx, &msg,
+		`SELECT * FROM messages WHERE platform_message_id = ? LIMIT 1`,
+		platformMessageID)
+	return &msg, wrap(err, "get message by platform id")
 }
 
 // GetMessagesBetween returns all messages between the given times.

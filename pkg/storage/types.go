@@ -20,15 +20,16 @@ type Conversation struct {
 
 // Message is one turn within a Conversation.
 type Message struct {
-	ID               string `db:"id"`
-	ConversationID   string `db:"conversation_id"`
-	AgentID          string `db:"agent_id"`
-	Role             string `db:"role"` // user | assistant | tool | notification
-	Content          string `db:"content"`
-	ReasoningContent string `db:"reasoning_content"`
-	ToolCalls        string `db:"tool_calls"`   // JSON []tools.ToolCall, for role=assistant
-	ToolCallID       string `db:"tool_call_id"` // for role=tool, echoes the ToolCall.ID
-	Timestamp        DBTime `db:"timestamp"`
+	ID                string `db:"id"`
+	ConversationID    string `db:"conversation_id"`
+	PlatformMessageID string `db:"platform_message_id"`
+	AgentID           string `db:"agent_id"`
+	Role              string `db:"role"` // user | assistant | tool | notification
+	Content           string `db:"content"`
+	ReasoningContent  string `db:"reasoning_content"`
+	ToolCalls         string `db:"tool_calls"`   // JSON []tools.ToolCall, for role=assistant
+	ToolCallID        string `db:"tool_call_id"` // for role=tool, echoes the ToolCall.ID
+	Timestamp         DBTime `db:"timestamp"`
 }
 
 // TopicEntry is a topic extracted from a day's conversation along with
