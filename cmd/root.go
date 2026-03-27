@@ -12,14 +12,16 @@ import (
 var (
 	cfgFile string
 	verbose bool
-	version = "0.1.0" // Could be set via ldflags during build
+	version = "dev"     // overridden by goreleaser
+	commit  = "none"    // overridden by goreleaser
+	date    = "unknown" // overridden by goreleaser
 )
 
 var rootCmd = &cobra.Command{
 	Use:     "onlyagents",
 	Short:   "OnlyAgents - only agents you need",
 	Long:    `OnlyAgents is a flexible multi-agent framework. It is your personal assistant to everything in your life.`,
-	Version: version, // Adds automatic --version flag
+	Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 }
 
 // Execute runs the root command
