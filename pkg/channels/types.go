@@ -20,7 +20,7 @@ type Channel interface {
 	Start() error
 	Stop() error
 
-	Send(ctx context.Context, msg OutgoingMessage) error
+	Send(ctx context.Context, msg OutgoingMessage) (SendResult, error)
 
 	// Health
 	HealthCheck() (bool, error)
@@ -35,6 +35,10 @@ type Registry struct {
 
 type TokenStreamer interface {
 	SendToken(ctx context.Context, channel *core.ChannelMetadata, token, accumulated string) error
+}
+
+type SendResult struct {
+	PlatformMessageID string
 }
 
 // IncomingMessage represents a message from a platform
@@ -58,4 +62,6 @@ type OutgoingMessage struct {
 	ReplyToID   string                 `json:"reply_to_id,omitempty"`
 	ParseMode   string                 `json:"parse_mode,omitempty"`
 	Options     map[string]interface{} `json:"options,omitempty"`
+	AgentID     string                 `json:"agent_id,omitempty"`
+	AgentName   string                 `json:"agent_name,omitempty"`
 }

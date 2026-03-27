@@ -99,8 +99,10 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 			"chat_id", chatID)
 	}
 
-	// Determine target agent from channel config (default if not set)
-	agentID := c.config.DefaultAgent
+	replyToPlatformMessageID := ""
+	if message.ReplyToMessage != nil {
+		replyToPlatformMessageID = fmt.Sprintf("%d", message.ReplyToMessage.MessageID)
+	}
 
 	// Show thinking indicator and create placeholder before firing event.
 	// Send() will update this placeholder when the response arrives.
@@ -108,7 +110,7 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 	c.createPlaceholder(ctx, chatID, message.Chat.ID)
 	c.stopThinkingIndicator(chatID)
 
-	err = c.resolveSessionID(agentID, chatID)
+	err = c.resolveSessionID(chatID)
 	if err != nil {
 		return fmt.Errorf("failed to resolve session ID: %w", err)
 	}
@@ -125,11 +127,10 @@ func (c *TelegramChannel) handleMessage(ctx *th.Context, message *telego.Message
 				UserID:    userID,
 				Username:  message.From.Username,
 			},
-			Content:     content,
-			Attachments: attachments,
-			Metadata: map[string]string{
-				"target_agent": agentID,
-			},
+			Content:                  content,
+			Attachments:              attachments,
+			ReplyToPlatformMessageID: replyToPlatformMessageID,
+			PlatformMessageID:        fmt.Sprintf("%d", message.MessageID),
 		},
 	}
 
@@ -180,36 +181,37 @@ func (c *TelegramChannel) handleNewSession(ctx *th.Context, message *telego.Mess
 // Send is called by kernel when the agent has a response ready.
 // It updates the placeholder message created in handleMessage.
 
-func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage) error {
+func (c *TelegramChannel) Send(ctx context.Context, msg channels.OutgoingMessage) (channels.SendResult, error) {
 	if strings.TrimSpace(msg.Content) == "" {
 		c.logger.Warn("empty message, skipping send")
-		return nil
+		return channels.SendResult{}, nil
 	}
 	chatID, err := parseChatID(msg.Channel.ChatID)
 	if err != nil {
-		return fmt.Errorf("invalid chat id: %w", err)
+		return channels.SendResult{}, fmt.Errorf("invalid chat id: %w", err)
 	}
-
 	htmlContent := markdownToTelegramHTML(msg.Content)
-	// Send any agent-produced file attachments.
+	htmlContent += agentHeader(msg.AgentID, msg.AgentName)
 	for _, att := range msg.Attachments {
 		if err := c.sendAttachment(ctx, chatID, att); err != nil {
-			c.logger.Warn("failed to send attachment",
-				"attachment_id", att.ID,
-				"filename", att.Filename,
-				"err", err)
-			// Continue — don't fail the whole send for one attachment.
+			c.logger.Warn("failed to send attachment", "attachment_id", att.ID, "err", err)
 		}
 	}
-
 	switch {
 	case len(htmlContent) <= 4096:
-		return c.sendSingle(ctx, chatID, msg.Channel.ChatID, htmlContent)
+		return c.sendSingle(ctx, chatID, msg.Channel.ChatID, htmlContent, msg.AgentID)
 	case len(msg.Content) > telegramFileThreshold:
 		return c.sendAsFile(ctx, chatID, msg.Channel.ChatID, msg.Content)
 	default:
-		return c.sendChunked(ctx, chatID, msg.Channel.ChatID, msg.Content)
+		return c.sendChunked(ctx, chatID, msg.Channel.ChatID, msg.Content, msg.AgentID)
 	}
+}
+
+func agentHeader(id, name string) string {
+	if id == "executive" || name == "" {
+		return ""
+	}
+	return fmt.Sprintf("\n\n<b>— %s</b>", name)
 }
 
 // SendToken implements channels.TokenStreamer.

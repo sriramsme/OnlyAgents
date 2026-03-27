@@ -19,25 +19,43 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 		return
 	}
 
-	// Get executive agent (entry point for all user messages)
-	executive := k.agents.GetExecutive()
-
 	correlationID := evt.CorrelationID
 	if correlationID == "" {
 		correlationID = uuid.NewString()
 	}
+
+	// Direct reply routing — bypass executive if message targets a specific agent
+	var targetAgentID string
+	if payload.ReplyToPlatformMessageID != "" {
+		if m, err := k.store.GetMessageByPlatformID(k.ctx, payload.ReplyToPlatformMessageID); err == nil {
+			targetAgentID = m.AgentID
+		}
+	}
+	if targetAgentID == "" {
+		targetAgentID = k.agents.GetExecutive().ID()
+	}
+
+	target, err := k.agents.Get(targetAgentID)
+	if err != nil {
+		k.logger.Error("failed to get target agent", "target_agent_id", targetAgentID, "err", err)
+		return
+	}
+
+	if err := k.cm.SaveUserMessage(k.ctx, payload.Channel.SessionID, target.ID(), payload.PlatformMessageID, payload.Content); err != nil {
+		k.logger.Warn("failed to save user message", "err", err)
+	}
+
 	logger.Timing.StartPhase(correlationID, "end_to_end")
 	logger.Timing.StartPhase(correlationID, "executive_routing")
 
-	// Create agent execution event
 	agentEvent := core.Event{
 		Type:          core.AgentExecute,
 		CorrelationID: correlationID,
-		AgentID:       executive.ID(),
+		AgentID:       targetAgentID,
 		Payload: core.AgentExecutePayload{
 			Message:     payload.Content,
 			MessageType: core.MessageTypeUser,
-			Attachments: payload.Attachments, // Attachments flow through unchanged — kernel is not file-aware.
+			Attachments: payload.Attachments,
 			Channel: &core.ChannelMetadata{
 				SessionID: payload.Channel.SessionID,
 				ChatID:    payload.Channel.ChatID,
@@ -48,21 +66,16 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 		},
 	}
 
-	// Send to executive
 	select {
-	case executive.Inbox() <- agentEvent:
+	case target.Inbox() <- agentEvent:
 		logger.Timing.EndPhase(correlationID, "executive_routing")
-		k.logger.Debug("message routed to executive",
+		k.logger.Debug("message routed",
 			"correlation_id", correlationID,
-			"executive_id", executive.ID(),
-			"attachments", len(payload.Attachments))
-
+			"agent_id", target.ID(),
+			"direct", target.ID() != k.agents.GetExecutive().ID())
 	case <-time.After(5 * time.Second):
 		logger.Timing.EndPhase(correlationID, "executive_routing")
-		k.logger.Error("executive inbox full - message dropped",
-			"correlation_id", correlationID)
-		// TODO: Send error response back to channel
-
+		k.logger.Error("agent inbox full - message dropped", "correlation_id", correlationID)
 	case <-k.ctx.Done():
 		logger.Timing.EndPhase(correlationID, "executive_routing")
 		k.logger.Info("shutdown in progress - message not delivered")
@@ -109,19 +122,38 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	ctx, cancel := context.WithTimeout(k.ctx, 10*time.Second)
 	defer cancel()
 
-	if err := ch.Send(ctx, channels.OutgoingMessage{
+	if payload.IsNotification {
+		msgID, err := k.cm.SaveNotificationMessage(ctx, payload.Channel.SessionID, k.agents.GetExecutive().ID(), payload.Content)
+		if err != nil {
+			k.logger.Warn("failed to save notification message", "err", err)
+		}
+		payload.MessageID = msgID
+	}
+
+	outBoundMessage := channels.OutgoingMessage{
 		Channel:     payload.Channel,
 		Content:     payload.Content,
 		Attachments: payload.Attachments,
 		ReplyToID:   payload.ReplyToID,
 		ParseMode:   payload.ParseMode,
-	}); err != nil {
+		AgentID:     payload.AgentID,
+		AgentName:   payload.AgentName,
+	}
+	result, err := ch.Send(ctx, outBoundMessage)
+	if err != nil {
 		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
 		k.logger.Error("failed to send outbound message",
 			"channel", payload.Channel.Name,
+			"chat_id", payload.Channel.ChatID,
 			"correlation_id", evt.CorrelationID,
 			"error", err)
 	} else {
+		if result.PlatformMessageID != "" {
+			err := k.store.UpdateMessagePlatformID(ctx, payload.MessageID, result.PlatformMessageID)
+			if err != nil {
+				k.logger.Warn("failed to update message platform ID", "err", err)
+			}
+		}
 		logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
 		k.logger.Debug("outbound message sent",
 			"channel", payload.Channel.Name,
@@ -147,12 +179,30 @@ func (k *Kernel) handleOutboundToken(evt core.Event) {
 		"message", payload.AccumulatedContent,
 		"correlation_id", evt.CorrelationID)
 
-	ch, err := k.channels.Get(payload.Channel.Name)
-	if err != nil {
-		k.logger.Error("channel not found for token",
-			"channel", payload.Channel.Name,
-			"correlation_id", evt.CorrelationID)
-		return
+	var ch channels.Channel
+	var err error
+
+	// Fallback to active channel if not specified
+	// In most cases, ChannelMetadata will be set by the caller
+	if payload.Channel != nil {
+		ch, err = k.channels.Get(payload.Channel.Name)
+		if err != nil {
+			logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
+			k.logger.Error("channel not found",
+				"channel", payload.Channel.Name,
+				"correlation_id", evt.CorrelationID)
+
+			ch = *k.channels.GetActive()
+		}
+	} else {
+		ch = *k.channels.GetActive()
+		payload.Channel, err = k.GetActiveChannelMetadata()
+		if err != nil {
+			logger.Timing.EndPhase(evt.CorrelationID, "outbound_send")
+			k.logger.Error("failed to get active channel metadata",
+				"error", err)
+			return
+		}
 	}
 
 	streamer, ok := ch.(channels.TokenStreamer)

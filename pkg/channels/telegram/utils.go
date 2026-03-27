@@ -10,6 +10,7 @@ import (
 
 	"github.com/mymmrac/telego"
 	tu "github.com/mymmrac/telego/telegoutil"
+	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/media"
 )
 
@@ -137,65 +138,69 @@ const (
 )
 
 // sendSingle sends or edits a single message. Existing logic, now extracted.
-func (c *TelegramChannel) sendSingle(ctx context.Context, chatID int64, chatIDStr, htmlContent string) error {
+func (c *TelegramChannel) sendSingle(ctx context.Context, chatID int64, chatIDStr, htmlContent, agentID string) (channels.SendResult, error) {
 	if msgID, ok := c.placeholders.LoadAndDelete(chatIDStr); ok {
 		editMsg := tu.EditMessageText(tu.ID(chatID), msgID.(int), htmlContent).WithParseMode(telego.ModeHTML)
-		if _, err := c.bot.EditMessageText(ctx, editMsg); err == nil {
-			return nil
+		if edited, err := c.bot.EditMessageText(ctx, editMsg); err == nil {
+			return channels.SendResult{PlatformMessageID: fmt.Sprintf("%d", edited.MessageID)}, nil
 		}
 		c.logger.Debug("failed to edit placeholder, sending new message")
 	}
 	outMsg := tu.Message(tu.ID(chatID), htmlContent).WithParseMode(telego.ModeHTML)
-	if _, err := c.bot.SendMessage(ctx, outMsg); err != nil {
-		c.logger.Debug("HTML send failed, falling back to plain text", "error", err)
+	sent, err := c.bot.SendMessage(ctx, outMsg)
+	if err != nil {
 		outMsg.ParseMode = ""
-		_, err = c.bot.SendMessage(ctx, outMsg)
-		return err
+		sent, err = c.bot.SendMessage(ctx, outMsg)
+		if err != nil {
+			return channels.SendResult{}, err
+		}
 	}
-	return nil
+	return channels.SendResult{PlatformMessageID: fmt.Sprintf("%d", sent.MessageID)}, nil
 }
 
 // sendChunked splits long markdown into paragraph-aware chunks and sends each.
 // The placeholder is used for the first chunk; remaining chunks are fresh messages.
-func (c *TelegramChannel) sendChunked(ctx context.Context, chatID int64, chatIDStr, markdown string) error {
+
+func (c *TelegramChannel) sendChunked(ctx context.Context, chatID int64, chatIDStr, markdown, agentID string) (channels.SendResult, error) {
 	chunks := splitMarkdown(markdown, telegramSafeChunkLen)
+	var lastMsgID string
 	for i, chunk := range chunks {
 		html := markdownToTelegramHTML(chunk)
 		if i == 0 {
 			if msgID, ok := c.placeholders.LoadAndDelete(chatIDStr); ok {
-				_, err := c.bot.EditMessageText(ctx, tu.EditMessageText(tu.ID(chatID), msgID.(int), html).WithParseMode(telego.ModeHTML))
-				if err == nil {
+				if edited, err := c.bot.EditMessageText(ctx, tu.EditMessageText(tu.ID(chatID), msgID.(int), html).WithParseMode(telego.ModeHTML)); err == nil {
+					lastMsgID = fmt.Sprintf("%d", edited.MessageID)
 					continue
 				}
-				c.logger.Debug("placeholder edit failed for chunk 0, sending fresh", "error", err)
+				c.logger.Debug("placeholder edit failed for chunk 0, sending fresh")
 			}
 		}
 		outMsg := tu.Message(tu.ID(chatID), html).WithParseMode(telego.ModeHTML)
-		if _, err := c.bot.SendMessage(ctx, outMsg); err != nil {
-			c.logger.Debug("HTML chunk send failed, falling back to plain text", "error", err)
+		sent, err := c.bot.SendMessage(ctx, outMsg)
+		if err != nil {
 			outMsg.ParseMode = ""
-			if _, err2 := c.bot.SendMessage(ctx, outMsg); err2 != nil {
-				return fmt.Errorf("send chunk %d: %w", i, err2)
+			sent, err = c.bot.SendMessage(ctx, outMsg)
+			if err != nil {
+				return channels.SendResult{}, fmt.Errorf("send chunk %d: %w", i, err)
 			}
 		}
+		lastMsgID = fmt.Sprintf("%d", sent.MessageID)
 	}
-	return nil
+	return channels.SendResult{PlatformMessageID: lastMsgID}, nil
 }
 
 // sendAsFile sends the response as a .md file when it exceeds the file threshold.
 // Updates the placeholder with a brief notice first.
-func (c *TelegramChannel) sendAsFile(ctx context.Context, chatID int64, chatIDStr, content string) error {
+func (c *TelegramChannel) sendAsFile(ctx context.Context, chatID int64, chatIDStr, content string) (channels.SendResult, error) {
 	if msgID, ok := c.placeholders.LoadAndDelete(chatIDStr); ok {
 		notice := "📄 Response is too long — sending as a file..."
-		_, err := c.bot.EditMessageText(ctx, tu.EditMessageText(tu.ID(chatID), msgID.(int), notice))
-		if err != nil {
+		if _, err := c.bot.EditMessageText(ctx, tu.EditMessageText(tu.ID(chatID), msgID.(int), notice)); err != nil {
 			c.logger.Debug("placeholder edit failed for file send", "error", err)
 		}
 	}
-
 	tmp, err := os.CreateTemp("", "onlyagents-*.md")
 	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+		return channels.SendResult{}, fmt.Errorf("create temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
 	defer func() {
@@ -203,31 +208,33 @@ func (c *TelegramChannel) sendAsFile(ctx context.Context, chatID int64, chatIDSt
 			c.logger.Warn("failed to remove temp file", "error", err)
 		}
 	}()
-
 	if _, err := tmp.WriteString(content); err != nil {
-		err = tmp.Close()
-		if err != nil {
+		if err := tmp.Close(); err != nil {
 			c.logger.Warn("failed to close temp file", "error", err)
 		}
-		return fmt.Errorf("write temp file: %w", err)
+		return channels.SendResult{}, fmt.Errorf("write temp file: %w", err)
 	}
-	err = tmp.Close()
-	if err != nil {
+
+	if err := tmp.Close(); err != nil {
 		c.logger.Warn("failed to close temp file", "error", err)
 	}
 
-	f, err := os.Open(tmpPath) // nolint:gosec // TODO: pass along onlyagents homedir
+	f, err := os.Open(tmpPath) // nolint:gosec
 	if err != nil {
-		return fmt.Errorf("open temp file for send: %w", err)
+		return channels.SendResult{}, fmt.Errorf("open temp file for send: %w", err)
 	}
+
 	defer func() {
 		if err := f.Close(); err != nil {
 			c.logger.Warn("failed to close temp file", "error", err)
 		}
 	}()
 
-	_, err = c.bot.SendDocument(ctx, tu.Document(tu.ID(chatID), tu.File(f)))
-	return err
+	sent, err := c.bot.SendDocument(ctx, tu.Document(tu.ID(chatID), tu.File(f)))
+	if err != nil {
+		return channels.SendResult{}, err
+	}
+	return channels.SendResult{PlatformMessageID: fmt.Sprintf("%d", sent.MessageID)}, nil
 }
 
 func (c *TelegramChannel) sendAttachment(ctx context.Context, chatID int64, att *media.Attachment) error {

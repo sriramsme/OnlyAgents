@@ -138,17 +138,18 @@ func (g *OAChannel) HealthCheck() (bool, error) {
 
 // Send is called by the kernel when an agent has a response or proactive message
 // for the UI. This is the only path for agent → UI communication.
-func (g *OAChannel) Send(ctx context.Context, msg channels.OutgoingMessage) error {
+func (g *OAChannel) Send(ctx context.Context, msg channels.OutgoingMessage) (channels.SendResult, error) {
 	sessionID := msg.Channel.ChatID
 	v, ok := g.clients.Load(sessionID)
+	sendResult := channels.SendResult{PlatformMessageID: sessionID}
 	if !ok {
 		g.logger.Warn("oaChannel: no ws client for session — message dropped",
 			"session_id", sessionID,
 			"preview", truncate(msg.Content, 80))
 		// TODO: persist to offline queue and deliver on next connect
-		return nil
+		return sendResult, nil
 	}
-	return g.writeToClient(v.(*client), WSMessage{
+	return sendResult, g.writeToClient(v.(*client), WSMessage{
 		Type:      WSMsgAgentText,
 		SessionID: sessionID,
 		Timestamp: time.Now(),
