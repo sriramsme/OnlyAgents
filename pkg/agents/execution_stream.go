@@ -18,7 +18,7 @@ func (a *Agent) executeStream(
 	ctx context.Context,
 	payload core.AgentExecutePayload,
 	correlationID string,
-) (string, []*media.Attachment, error) {
+) (*llm.Response, []*media.Attachment, error) {
 	return a.runExecutionLoop(ctx, payload, correlationID, a.callLLMStream)
 }
 

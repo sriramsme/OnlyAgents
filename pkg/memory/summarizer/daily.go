@@ -318,7 +318,7 @@ const dailyJSONSchema = `{
   "facts": [
     {
       "entity": "entity name",
-      "entity_type": "person|place|preference|project|organization|other",
+      "entity_type": "person|place|preference|other",
       "fact": "specific durable fact",
       "confidence": 0.9
     }

@@ -124,20 +124,25 @@ type CronJobScheduledPayload struct {
 
 // MessageReceivedPayload: User message from channel
 type MessageReceivedPayload struct {
-	Channel     *ChannelMetadata    `json:"channel"`
-	Content     string              `json:"content"`
-	Attachments []*media.Attachment `json:"attachments,omitempty"`
-	Metadata    map[string]string   `json:"metadata"`
+	PlatformMessageID        string              `json:"platform_message_id"`
+	Channel                  *ChannelMetadata    `json:"channel"`
+	Content                  string              `json:"content"`
+	Attachments              []*media.Attachment `json:"attachments,omitempty"`
+	Metadata                 map[string]string   `json:"metadata"`
+	ReplyToPlatformMessageID string              // set by channel if reply, kernel resolves
 }
 
 // OutboundMessagePayload: Response to send to channel
 type OutboundMessagePayload struct {
+	MessageID      string              `json:"message_id"` // id of message as saved in db
 	Channel        *ChannelMetadata    `json:"channel"`
 	Content        string              `json:"content"`
 	Attachments    []*media.Attachment `json:"attachments,omitempty"`
 	ReplyToID      string              `json:"reply_to_id,omitempty"`
 	ParseMode      string              `json:"parse_mode,omitempty"`
 	IsNotification bool                `json:"is_notification"`
+	AgentID        string              `json:"agent_id,omitempty"`
+	AgentName      string              `json:"agent_name,omitempty"`
 }
 
 // AgentExecutePayload: Execute agent with message

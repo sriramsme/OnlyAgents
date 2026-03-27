@@ -15,8 +15,7 @@ type Soul struct {
 }
 
 type IdentityConfig struct {
-	Role                      string   `mapstructure:"role"`
-	DelegationAcknowledgments []string `mapstructure:"delegation_acknowledgments"`
+	Role string `mapstructure:"role"`
 }
 
 type BehaviorConfig struct {
@@ -50,10 +49,6 @@ func (s *Soul) SystemPrompt(availableAgents string) string {
 	body := s.FormatSoulToPrompt(availableAgents)
 
 	return header + "\n\n" + body
-}
-
-func (s *Soul) DelegationAcknowledgments() []string {
-	return s.Identity.DelegationAcknowledgments
 }
 
 func buildInstructionHeader() string {

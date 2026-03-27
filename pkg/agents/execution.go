@@ -29,7 +29,7 @@ func (a *Agent) execute(
 	ctx context.Context,
 	payload core.AgentExecutePayload,
 	correlationID string,
-) (string, []*media.Attachment, error) {
+) (*llm.Response, []*media.Attachment, error) {
 	return a.runExecutionLoop(ctx, payload, correlationID, a.callLLM)
 }
 
@@ -41,9 +41,9 @@ func (a *Agent) runExecutionLoop(
 	payload core.AgentExecutePayload,
 	correlationID string,
 	caller llmCaller,
-) (string, []*media.Attachment, error) {
+) (*llm.Response, []*media.Attachment, error) {
 	if payload.Channel == nil {
-		return "", nil, fmt.Errorf("execute: nil channel in payload (correlation_id: %s)", correlationID)
+		return nil, nil, fmt.Errorf("execute: nil channel in payload (correlation_id: %s)", correlationID)
 	}
 
 	lock := a.turnLockFor(payload.Channel.SessionID)
@@ -52,7 +52,7 @@ func (a *Agent) runExecutionLoop(
 
 	sessionID, messages, err := a.prepareExecution(ctx, payload, correlationID)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
 
 	var outboundAttachments []*media.Attachment
@@ -64,7 +64,7 @@ func (a *Agent) runExecutionLoop(
 	for {
 		select {
 		case <-ctx.Done():
-			return "", nil, fmt.Errorf("request cancelled: %w", ctx.Err())
+			return nil, nil, fmt.Errorf("request cancelled: %w", ctx.Err())
 		default:
 		}
 
@@ -79,7 +79,7 @@ func (a *Agent) runExecutionLoop(
 
 		resp, err := caller(ctx, messages, correlationID, callCount, payload, nextMaxTokens)
 		if err != nil {
-			return "", nil, err
+			return nil, nil, err
 		}
 
 		if !resp.HasToolCalls() {
@@ -92,17 +92,9 @@ func (a *Agent) runExecutionLoop(
 			}
 			a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
 			if resp.Content == "" {
-				a.safeSend(core.Event{
-					Type:          core.OutboundMessage,
-					CorrelationID: correlationID,
-					AgentID:       a.id,
-					Payload: core.OutboundMessagePayload{
-						Channel: payload.Channel,
-						Content: "I completed the task but had nothing to add.",
-					},
-				}, "empty response fallback")
+				resp.Content = "I completed the task but had nothing to add."
 			}
-			return resp.Content, outboundAttachments, nil
+			return resp, outboundAttachments, nil
 		}
 
 		cumulativeToolCalls += len(resp.ToolCalls)
@@ -132,13 +124,13 @@ func (a *Agent) runExecutionLoop(
 			ctx, sessionID, correlationID, payload, messages, resp, budget.PerResultTokens,
 		)
 		if err != nil {
-			return "", nil, err
+			return nil, nil, err
 		}
 
 		outboundAttachments = append(outboundAttachments, produced...)
 
 		if halt {
-			return "", outboundAttachments, nil
+			return nil, outboundAttachments, nil
 		}
 	}
 }
@@ -197,11 +189,14 @@ func (a *Agent) prepareExecution(
 ) (sessionID string, messages []llm.Message, err error) {
 	sessionID = payload.Channel.SessionID
 
-	if err = a.cm.SaveUserMessage(ctx, sessionID, a.id, payload.Message); err != nil {
-		a.logger.Warn("failed to save user message", "err", err, "correlation_id", correlationID)
+	var history []llm.Message
+	var histErr error
+	if a.isExecutive {
+		history, histErr = a.cm.GetFullHistory(ctx, sessionID, a.id, memory.DefaultHistoryTurns)
+	} else {
+		history, histErr = a.cm.GetHistory(ctx, sessionID, a.id, memory.DefaultHistoryTurns)
 	}
 
-	history, histErr := a.cm.GetHistory(ctx, sessionID, a.id, memory.DefaultHistoryTurns)
 	if histErr != nil {
 		a.logger.Warn("failed to load history, falling back to empty", "err", histErr)
 		history = []llm.Message{}
@@ -230,7 +225,7 @@ func (a *Agent) prepareExecution(
 	return sessionID, messages, nil
 }
 
-// finaliseTurn persists the final assistant response and fires workflow
+// finaliseTurn fires workflow
 // completion if applicable. Called when there are no tool calls.
 func (a *Agent) finaliseTurn(
 	ctx context.Context,
@@ -239,9 +234,6 @@ func (a *Agent) finaliseTurn(
 	payload core.AgentExecutePayload,
 	resp *llm.Response,
 ) {
-	if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, nil); err != nil {
-		a.logger.Warn("failed to save assistant message", "err", err, "correlation_id", correlationID)
-	}
 	if payload.Workflow != nil {
 		a.fireTaskCompletion(ctx, correlationID, payload.Workflow, resp.Content, nil)
 	}
@@ -256,7 +248,7 @@ func (a *Agent) synthesizeFromContext(
 	payload core.AgentExecutePayload,
 	messages []llm.Message,
 	caller llmCaller,
-) (string, []*media.Attachment, error) {
+) (*llm.Response, []*media.Attachment, error) {
 	// Append a synthesis instruction as a user turn.
 	synthMessages := append(messages, llm.UserMessage(
 		"You have reached your tool call limit. "+
@@ -272,24 +264,16 @@ func (a *Agent) synthesizeFromContext(
 
 	resp, err := caller(ctx, synthMessages, correlationID, 0, payload, 0)
 	if err != nil {
-		return "", nil, fmt.Errorf("synthesis call failed: %w", err)
+		return nil, nil, fmt.Errorf("synthesis call failed: %w", err)
 	}
 
 	a.finaliseTurn(ctx, sessionID, correlationID, payload, resp)
 
 	if resp.Content == "" {
-		a.safeSend(core.Event{
-			Type:          core.OutboundMessage,
-			CorrelationID: correlationID,
-			AgentID:       a.id,
-			Payload: core.OutboundMessagePayload{
-				Channel: payload.Channel,
-				Content: "I completed the task but had nothing to add.",
-			},
-		}, "empty synthesis fallback")
+		resp.Content = "I completed the task but had nothing to add."
 	}
 
-	return resp.Content, nil, nil
+	return resp, nil, nil
 }
 
 // buildUserMessage constructs the user turn for the current request.

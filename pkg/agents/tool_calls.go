@@ -28,7 +28,7 @@ func (a *Agent) processToolCalls(
 	perResultBudget int, // 0 = no limiti
 ) (updated []llm.Message, produced []*media.Attachment, halt bool, err error) {
 	// Persist assistant turn with tool calls
-	if err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
+	if _, err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
 		a.logger.Warn("failed to save assistant tool-call message", "err", err, "correlation_id", correlationID)
 	}
 
@@ -104,7 +104,7 @@ func (a *Agent) processToolCalls(
 
 		case exec.Control == tools.ExecHalt:
 			// Must still add a tool result before halting — satisfies protocol
-			haltMsg := exec.DirectMessage
+			haltMsg := exec.Message
 			if haltMsg == "" {
 				haltMsg = fmt.Sprintf(`{"status": "halted", "tool": "%s"}`, tc.Function.Name)
 			}
@@ -116,19 +116,6 @@ func (a *Agent) processToolCalls(
 			a.logger.Info("halting execution loop",
 				"tool", tc.Function.Name,
 				"correlation_id", correlationID)
-
-			if exec.DirectMessage != "" {
-				a.safeSend(core.Event{
-					Type:          core.OutboundMessage,
-					CorrelationID: correlationID,
-					AgentID:       a.id,
-					Payload: core.OutboundMessagePayload{
-						Channel: payload.Channel,
-						Content: exec.DirectMessage,
-					},
-				}, "delegation ack")
-			}
-			return messages, nil, true, nil
 
 		default:
 			resultJSON, err := json.Marshal(exec.Result)

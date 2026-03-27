@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/media"
 )
@@ -84,7 +85,7 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 		"message_length", len(payload.Message),
 		"attachments", len(payload.Attachments))
 
-	var response string
+	var response *llm.Response
 	var err error
 	var producedFiles []*media.Attachment
 
@@ -108,50 +109,35 @@ func (a *Agent) handleAgentExecute(evt core.Event) {
 func (a *Agent) routeResponse(
 	evt core.Event,
 	payload core.AgentExecutePayload,
-	response string,
+	response *llm.Response,
 	attachments []*media.Attachment,
 ) {
 	switch payload.MessageType {
-	case core.MessageTypeDelegation:
-		if payload.Delegation != nil && payload.Delegation.SendDirectlyToUser {
-			a.handleDirectDelegationResponse(payload, evt.CorrelationID, response, attachments)
-		} else {
-			a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response)
-		}
+
 	case core.MessageTypeWorkflowTask:
 		a.sendTaskResult(evt.ReplyTo, evt.CorrelationID, response)
+
+	case core.MessageTypeDelegation:
+		if payload.Delegation != nil && payload.Delegation.SendDirectlyToUser {
+			a.sendOutboundMessage(OutboundMessageInput{
+				Channel:       payload.Channel,
+				Response:      response,
+				Attachments:   attachments,
+				CorrelationID: evt.CorrelationID,
+			})
+		} else {
+			a.sendDelegationResult(evt.ReplyTo, evt.CorrelationID, response.Content)
+		}
 	default:
 		if evt.ReplyTo != nil {
-			a.sendSyncResponse(evt.ReplyTo, evt.CorrelationID, response)
+			a.sendSyncResponse(evt.ReplyTo, evt.CorrelationID, response.Content)
 		} else {
-			a.sendOutboundMessage(payload, evt.CorrelationID, response, attachments)
+			a.sendOutboundMessage(OutboundMessageInput{
+				Channel:       payload.Channel,
+				Response:      response,
+				Attachments:   attachments,
+				CorrelationID: evt.CorrelationID,
+			})
 		}
-	}
-}
-
-// handleDirectDelegationResponse sends the sub-agent's response directly to the
-// user and injects it into the executive's history for continuity.
-func (a *Agent) handleDirectDelegationResponse(
-	payload core.AgentExecutePayload,
-	correlationID,
-	response string,
-	attachments []*media.Attachment,
-) {
-	a.sendOutboundMessage(payload, correlationID, response, attachments)
-
-	if payload.Delegation.FromAgentID == "" {
-		return
-	}
-	attribution := fmt.Sprintf("[%s responded directly to user]\n\n%s", a.name, response)
-	if err := a.cm.SaveAssistantMessageAt(
-		a.ctx,
-		payload.Channel.SessionID,
-		payload.Delegation.FromAgentID,
-		attribution,
-		"",
-		nil,
-		payload.Delegation.DelegatedAt,
-	); err != nil {
-		a.logger.Warn("failed to inject response into executive history", "err", err)
 	}
 }

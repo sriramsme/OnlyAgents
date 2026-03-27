@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/media"
 )
 
@@ -89,19 +90,36 @@ func (a *Agent) sendSyncResponse(replyCh chan<- core.Event, correlationID string
 	a.safeReply(replyCh, evt, "sync response")
 }
 
-func (a *Agent) sendOutboundMessage(
-	payload core.AgentExecutePayload,
-	correlationID string,
-	response string,
-	attachments []*media.Attachment,
-) {
+type OutboundMessageInput struct {
+	Channel       *core.ChannelMetadata
+	Response      *llm.Response
+	Attachments   []*media.Attachment
+	CorrelationID string
+}
+
+func (a *Agent) sendOutboundMessage(input OutboundMessageInput) {
+	msgID, err := a.cm.SaveAssistantMessage(
+		a.ctx,
+		input.Channel.SessionID,
+		a.id,
+		input.Response.Content,
+		input.Response.ReasoningContent,
+		input.Response.ToolCalls, // will be empty since outbound message is sendt after processing all tool calls
+	)
+	if err != nil {
+		a.logger.Warn("failed to inject response into executive history", "err", err)
+	}
+
 	evt := core.Event{
 		Type:          core.OutboundMessage,
-		CorrelationID: correlationID,
+		CorrelationID: input.CorrelationID,
 		Payload: core.OutboundMessagePayload{
-			Channel:     payload.Channel,
-			Content:     response,
-			Attachments: attachments,
+			MessageID:   msgID,
+			Channel:     input.Channel,
+			Content:     input.Response.Content,
+			Attachments: input.Attachments,
+			AgentID:     a.id,
+			AgentName:   a.name,
 		},
 	}
 
@@ -122,14 +140,12 @@ func (a *Agent) sendError(channel *core.ChannelMetadata, replyCh chan<- core.Eve
 	}
 	// Don't leave user hanging
 	if channel != nil {
-		a.safeSend(core.Event{
-			Type:          core.OutboundMessage,
-			CorrelationID: correlationID,
-			AgentID:       a.ID(),
-			Payload: core.OutboundMessagePayload{
-				Channel: channel,
+		a.sendOutboundMessage(OutboundMessageInput{
+			Channel: channel,
+			Response: &llm.Response{
 				Content: "Sorry, I ran into an issue processing your request. Please try again.",
 			},
-		}, "execute error fallback")
+			CorrelationID: correlationID,
+		})
 	}
 }

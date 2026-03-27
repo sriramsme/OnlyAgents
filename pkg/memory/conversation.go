@@ -57,26 +57,28 @@ func (cm *ConversationManager) EndSession(ctx context.Context, sessionID string)
 // ── Message persistence ───────────────────────────────────────────────────────
 
 // SaveUserMessage persists an incoming user message turn.
-func (cm *ConversationManager) SaveUserMessage(ctx context.Context, sessionID, agentID, content string) error {
+func (cm *ConversationManager) SaveUserMessage(ctx context.Context, sessionID, agentID, platformMessageID, content string) error {
 	lock := cm.lockFor(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
 	return cm.store.SaveMessage(ctx, &storage.Message{
-		ID:             uuid.NewString(),
-		ConversationID: sessionID,
-		AgentID:        agentID,
-		Role:           "user",
-		Content:        content,
-		Timestamp:      storage.DBTime{Time: time.Now()},
+		ID:                uuid.NewString(),
+		ConversationID:    sessionID,
+		AgentID:           agentID,
+		Role:              "user",
+		Content:           content,
+		PlatformMessageID: platformMessageID,
+		Timestamp:         storage.DBTime{Time: time.Now()},
 	})
 }
 
-func (cm *ConversationManager) SaveNotificationMessage(ctx context.Context, sessionID, agentID, content string) error {
+func (cm *ConversationManager) SaveNotificationMessage(ctx context.Context, sessionID, agentID, content string) (string, error) {
 	lock := cm.lockFor(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
-	return cm.store.SaveMessage(ctx, &storage.Message{
-		ID:             uuid.NewString(),
+	id := uuid.NewString()
+	return id, cm.store.SaveMessage(ctx, &storage.Message{
+		ID:             id,
 		ConversationID: sessionID,
 		AgentID:        agentID,
 		Role:           "notification",
@@ -91,7 +93,7 @@ func (cm *ConversationManager) SaveAssistantMessage(
 	ctx context.Context,
 	sessionID, agentID, content, reasoningContent string,
 	toolCalls []tools.ToolCall,
-) error {
+) (string, error) {
 	return cm.saveAssistantMessage(ctx, sessionID, agentID, content,
 		reasoningContent, toolCalls, time.Time{})
 }
@@ -101,7 +103,7 @@ func (cm *ConversationManager) SaveAssistantMessageAt(
 	sessionID, agentID, content, reasoningContent string,
 	toolCalls []tools.ToolCall,
 	saveAt time.Time,
-) error {
+) (string, error) {
 	return cm.saveAssistantMessage(ctx, sessionID, agentID, content,
 		reasoningContent, toolCalls, saveAt)
 }
@@ -113,7 +115,7 @@ func (cm *ConversationManager) saveAssistantMessage(
 	sessionID, agentID, content, reasoningContent string,
 	toolCalls []tools.ToolCall,
 	saveAt time.Time,
-) error {
+) (string, error) {
 	lock := cm.lockFor(sessionID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -121,15 +123,17 @@ func (cm *ConversationManager) saveAssistantMessage(
 	if len(toolCalls) > 0 {
 		b, err := json.Marshal(toolCalls)
 		if err != nil {
-			return fmt.Errorf("memory: marshal tool calls: %w", err)
+			return "", fmt.Errorf("memory: marshal tool calls: %w", err)
 		}
 		tcJSON = string(b)
 	}
 	if saveAt.IsZero() {
 		saveAt = time.Now()
 	}
-	return cm.store.SaveMessage(ctx, &storage.Message{
-		ID:               uuid.NewString(),
+
+	id := uuid.NewString()
+	return id, cm.store.SaveMessage(ctx, &storage.Message{
+		ID:               id,
 		ConversationID:   sessionID,
 		AgentID:          agentID,
 		Role:             "assistant",
@@ -187,6 +191,44 @@ func (cm *ConversationManager) SaveToolResult(
 //
 // Messages from other agents are given Name = agentID so the LLM understands
 // they came from a different participant in the session.
+// getHistory is the shared base for both GetHistory and GetFullHistory.
+// messages is pre-filtered by the caller.
+func (cm *ConversationManager) getHistory(
+	messages []*storage.Message,
+	agentID string,
+	maxTurns int,
+) ([]llm.Message, error) {
+	var turns [][]*storage.Message
+	var current []*storage.Message
+	for _, m := range messages {
+		if m.Role == "user" && len(current) > 0 {
+			turns = append(turns, current)
+			current = nil
+		}
+		current = append(current, m)
+	}
+	if len(current) > 0 {
+		turns = append(turns, current)
+	}
+	if len(turns) > maxTurns {
+		turns = turns[len(turns)-maxTurns:]
+	}
+	var out []llm.Message
+	for _, turn := range turns {
+		for _, m := range turn {
+			msg, err := toMessage(m, agentID)
+			if err != nil {
+				logger.Log.Warn("memory: skipping malformed message",
+					"id", m.ID, "role", m.Role, "err", err)
+				continue
+			}
+			out = append(out, msg)
+		}
+	}
+	return sanitizeToolCallSequence(out), nil
+}
+
+// GetHistory returns history filtered to the agent's own messages.
 func (cm *ConversationManager) GetHistory(
 	ctx context.Context,
 	sessionID, agentID string,
@@ -200,43 +242,40 @@ func (cm *ConversationManager) GetHistory(
 	if err != nil {
 		return nil, fmt.Errorf("memory: get history: %w", err)
 	}
+	return cm.getHistory(all, agentID, maxTurns)
+}
 
-	// Group messages into turns. A new turn starts on each user message.
-	// Each element of turns is a slice of messages: [user, assistant, tool, tool, ...]
-	var turns [][]*storage.Message
-	var current []*storage.Message
+// GetFullHistory returns history across all agents, used by the executive
+// to maintain full conversation context. Sub-agent tool internals are stripped
+// — only their final assistant responses are included.
+func (cm *ConversationManager) GetFullHistory(
+	ctx context.Context,
+	sessionID, agentID string,
+	maxTurns int,
+) ([]llm.Message, error) {
+	lock := cm.lockFor(sessionID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	all, err := cm.store.GetMessages(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("memory: get full history: %w", err)
+	}
+
+	filtered := make([]*storage.Message, 0, len(all))
 	for _, m := range all {
-		if m.Role == "user" && len(current) > 0 {
-			turns = append(turns, current)
-			current = nil
-		}
-		current = append(current, m)
-	}
-	if len(current) > 0 {
-		turns = append(turns, current)
-	}
-
-	// Sliding window on turns.
-	if len(turns) > maxTurns {
-		turns = turns[len(turns)-maxTurns:]
-	}
-
-	// Flatten turns back to []llm.Message, truncating tool result content.
-	var out []llm.Message
-	for _, turn := range turns {
-		for _, m := range turn {
-			msg, err := toMessage(m, agentID)
-			if err != nil {
-				logger.Log.Warn("memory: skipping malformed message",
-					"id", m.ID, "role", m.Role, "err", err)
-				continue
+		switch m.Role {
+		case "user", "notification":
+			filtered = append(filtered, m)
+		case "assistant":
+			filtered = append(filtered, m)
+		case "tool":
+			if m.AgentID == agentID {
+				filtered = append(filtered, m)
 			}
-			out = append(out, msg)
 		}
 	}
-	// Sanitize before returning — defensive against corrupt history
-	out = sanitizeToolCallSequence(out)
-	return out, nil
+	return cm.getHistory(filtered, agentID, maxTurns)
 }
 
 func (cm *ConversationManager) lockFor(sessionID string) *sync.RWMutex {
