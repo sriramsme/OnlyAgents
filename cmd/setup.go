@@ -9,10 +9,12 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
+	"github.com/sriramsme/OnlyAgents/internal/assets"
 	"github.com/sriramsme/OnlyAgents/internal/auth"
 	"github.com/sriramsme/OnlyAgents/internal/cmdutil"
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/internal/paths"
+	agentsPkg "github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"gopkg.in/yaml.v3"
 )
@@ -65,6 +67,10 @@ func (s *bootstrapStep) Run(ctx *cmdutil.SetupContext) error {
 	paths, err := paths.Init()
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
+	}
+	err = assets.Seed(paths)
+	if err != nil {
+		return fmt.Errorf("seed assets: %w", err)
 	}
 	ctx.Paths = paths
 	cmdutil.Success("created %s", paths.Home)
@@ -212,6 +218,7 @@ func (s *llmStep) IsDone(ctx *cmdutil.SetupContext) bool {
 	return len(ctx.LLMChoices) > 0
 }
 
+//nolint:gocyclo
 func (s *llmStep) Run(ctx *cmdutil.SetupContext) error {
 	cmdutil.Hint(
 		"Each agent can use a different provider and model.",
@@ -219,19 +226,29 @@ func (s *llmStep) Run(ctx *cmdutil.SetupContext) error {
 		"Keys will be written to your .env file.",
 	)
 
-	defaultAgentSlots, err := cmdutil.AgentRegistry(ctx.Paths.Agents)
-	llmProviders := cmdutil.ProviderOptions()
+	allAgents, err := cmdutil.AgentRegistry(ctx.Paths.Agents)
 	if err != nil {
 		return err
 	}
+
+	var defaultAgentSlots []agentsPkg.Config
+	for _, a := range allAgents {
+		if a.Enabled {
+			defaultAgentSlots = append(defaultAgentSlots, a)
+		}
+	}
+
+	if len(defaultAgentSlots) == 0 {
+		cmdutil.Warn("no enabled agents found, skipping LLM configuration")
+		return nil
+	}
+
+	llmProviders := cmdutil.ProviderOptions()
+
 	// Collect unique providers the user wants to use
 	usedProviders := map[string]string{} // provider → apiKey
 
 	for _, slot := range defaultAgentSlots {
-		llmProviderModels, err := cmdutil.ModelOptions(slot.LLM.Provider)
-		if err != nil {
-			return err
-		}
 		llmEnvVar := cmdutil.ProviderEnvVar(slot.LLM.Provider)
 		llmVaultPath := cmdutil.ProviderVaultPath(slot.LLM.Provider)
 
@@ -251,7 +268,13 @@ func (s *llmStep) Run(ctx *cmdutil.SetupContext) error {
 			return err
 		}
 
-		// Model select — depends on provider
+		// NOW compute models based on what user actually picked
+		llmProviderModels, err := cmdutil.ModelOptions(provider)
+		if err != nil {
+			return err
+		}
+
+		// Model select
 		err = cmdutil.RunForm(
 			huh.NewGroup(
 				cmdutil.SelectField("Model", llmProviderModels, &model),
@@ -350,7 +373,7 @@ func (s *channelStep) Run(ctx *cmdutil.SetupContext) error {
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Set up a channel now?").
-				Description("OAChannel (built-in web UI) is always available without setup.\nYou can add other channels later with `onlyagents channel setup <platform>`.").
+				Description("Telegram is recommended and easiest to setup.\nOAChannel (built-in web UI) is always available without setup.\nYou can add other channels later with `onlyagents channel setup <platform>`.").
 				Affirmative("Yes, set one up").
 				Negative("Skip, I'll use the web UI").
 				Value(&skip),
@@ -487,7 +510,7 @@ func (s *authSetupStep) Run(ctx *cmdutil.SetupContext) error {
 	if err != nil {
 		return fmt.Errorf("generate api key: %w", err)
 	}
-	if err := cmdutil.AppendEnvVar(ctx.EnvFilePath, "server/api_key", apiKey); err != nil {
+	if err := cmdutil.AppendEnvVar(ctx.Paths.EnvPath, "server/api_key", apiKey); err != nil {
 		return fmt.Errorf("store api key: %w", err)
 	}
 
