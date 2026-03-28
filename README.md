@@ -1,9 +1,9 @@
 # OnlyAgents
 
-[![CI](https://github.com/sriramsme/onlyagents/workflows/CI/badge.svg)](https://github.com/sriramsme/onlyagents/actions)
-[![Go Report Card](https://goreportcard.com/badge/github.com/sriramsme/onlyagents)](https://goreportcard.com/report/github.com/sriramsme/onlyagents)
+[![CI](https://github.com/sriramsme/onlyagents/workflows/CI/badge.svg)](https://github.com/sriramsme/OnlyAgents/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sriramsme/OnlyAgents)](https://goreportcard.com/report/github.com/sriramsme/OnlyAgents)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/sriramsme/onlyagents)](https://go.dev/)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/sriramsme/OnlyAgents)](https://go.dev/)
 
 Self-hosted, open-source infrastructure for autonomous AI agents. Written in Go. Single binary.
 
@@ -11,7 +11,11 @@ OnlyAgents runs a multi-agent system. One executive agent that understands inten
 
 This is not a wrapper around a single LLM call. It is a runtime for agents.
 
-[Go to Installation](#installation)
+<p>
+  <a href="#installation">Installation</a> &nbsp;·&nbsp;
+  <a href="#getting-started">Getting Started</a> &nbsp;·&nbsp;
+  <a href="#usage">Usage</a>
+</p>
 
 ## Why Go
 
@@ -81,7 +85,7 @@ Same binary on a $5/mo VPS, a spare Mac Mini, a Raspberry Pi, or a rack server. 
 │  TasksConnector                     [more planned]                           │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
-Read more [here](docs/architecture.md)
+Read more [here](docs/ARCHITECTURE.md).
 
 **Executive agent:** top of the hierarchy. Receives all user messages, decides whether to answer directly, delegate to a sub-agent, or decompose into a multi-step workflow. Rewrites requests with full context before delegating.
 
@@ -255,6 +259,30 @@ Safe to re-run. already configured steps can be skipped.
 
 [Available commands](#cli)
 
+## Usage
+
+All messages go to **Fury** (executive) by default. Fury routes your
+request to the right agent automatically.
+
+**Talking to the executive**
+> "Summarize my emails from today"
+> "Set a reminder for 6PM to call mom"
+> "Search for the latest AI news and create a task to review it"
+
+**Talking directly to a sub-agent**
+Reply directly to any of the agent's messages to talk to that agent
+specifically, bypassing the executive.
+
+**Summoning an agent**
+> "Summon SpongeBob"
+
+Fury will ask that agent to introduce itself. Useful for checking
+which agents are active or starting a direct conversation.
+
+You can view configured agents with:
+```bash
+onlyagents agent list
+```
 ## Councils
 
 Councils are preconfigured agent teams for specific domains. Instead of assembling an agent system manually, activate a council with a single command and get a working, curated setup immediately.
@@ -322,14 +350,14 @@ enable_cache: true
 audit_log: false
 ```
 
-For `.env` files, `ANTHROPIC_API_KEY` is referenced in agent configs as `anthropic/api_key`. Other supported backends: `hashicorp`, `aws`, `gcp`. See [docs/vault.md](docs/vault.md).
+For `.env` files, `ANTHROPIC_API_KEY` is referenced in agent configs as `anthropic/api_key`. Other supported backends: `hashicorp`, `aws`, `gcp`.
 
 ### Agent config
 
 ```yaml
 # ~/.onlyagents/configs/agents/executive.yaml
 id: "executive"
-name: "Dragon"
+name: "Fury"
 description: "Executive assistant. Handles delegation, coordination, synthesis."
 is_executive: true
 max_concurrency: 4
@@ -374,7 +402,7 @@ onlyagents skill list              List all skills
 onlyagents skill install <name>    Install required binaries for a skill
 onlyagents skill enable <name>     Enable a skill
 onlyagents skill disable <name>    Disable a skill
-onlyagents skill validate <name>   Validate a skill's requirements (bins, env vars)
+onlyagents skill validate <name>   Validate a skills requirements (bins, env vars)
 onlyagents skill view <name>       View skill config
 onlyagents skill edit <name>       Edit skill config interactively
 onlyagents skill tools <name>      List tools provided by a skill
