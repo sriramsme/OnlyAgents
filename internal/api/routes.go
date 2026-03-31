@@ -23,7 +23,7 @@ func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, a *
 	// Instantiate handler groups
 	health := handlers.NewHealthHandler(deps, logger)
 	authH := handlers.NewAuthHandler(a, logger)
-
+	sessions := handlers.NewSessionsHandler(deps, logger)
 	// agent   := handlers.NewAgentHandler(deps, logger)     // uncomment when ready
 	// skills  := handlers.NewSkillsHandler(deps, logger)    // uncomment when ready
 	// memory  := handlers.NewMemoryHandler(deps, logger)    // uncomment when ready
@@ -48,14 +48,18 @@ func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, a *
 	if deps.WSHandler != nil {
 		mux.HandleFunc("GET /v1/ws", authed(func(w http.ResponseWriter, r *http.Request) {
 			rc := http.NewResponseController(w)
-			err := rc.SetWriteDeadline(time.Time{}) // zero = no deadline for this connection only
-			deps.WSHandler(w, r)
-			if err != nil {
+			if err := rc.SetWriteDeadline(time.Time{}); err != nil {
 				logger.Error("failed to set write deadline", "error", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
 			}
+			deps.WSHandler(w, r)
 		}))
 		logger.Info("registered OAChannel handler", "path", "/v1/ws")
 	}
+	mux.HandleFunc("GET /v1/sessions", authed(sessions.List))
+	mux.HandleFunc("GET /v1/sessions/{id}/history", authed(sessions.History))
+	mux.HandleFunc("DELETE /v1/sessions/{id}", authed(sessions.End))
 
 	// ── Agents ───────────────────────────────────────────────────────────────
 	// mux.HandleFunc("GET /v1/agents",      authed(agent.List))

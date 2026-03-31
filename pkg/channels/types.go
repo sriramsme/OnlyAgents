@@ -56,6 +56,7 @@ type IncomingMessage struct {
 
 // OutgoingMessage represents a message to send to a platform
 type OutgoingMessage struct {
+	MessageID   string                 `json:"message_id"`
 	Channel     *core.ChannelMetadata  `json:"channel"`
 	Content     string                 `json:"content"`
 	Attachments []*media.Attachment    `json:"attachments,omitempty"`

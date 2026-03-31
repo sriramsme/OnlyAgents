@@ -69,9 +69,10 @@ type VoiceChunkPayload struct {
 // AgentTextPayload is the payload for WSMsgAgentText.
 // IsFinal=false means a streaming token; IsFinal=true means the turn is complete.
 type AgentTextPayload struct {
-	Content string `json:"content"`
-	AgentID string `json:"agent_id"`
-	IsFinal bool   `json:"is_final"`
+	MessageID string `json:"message_id"`
+	Content   string `json:"content"`
+	AgentID   string `json:"agent_id"`
+	IsFinal   bool   `json:"is_final"`
 }
 
 // AgentVoicePayload is the payload for WSMsgAgentVoice.

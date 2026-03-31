@@ -131,6 +131,7 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	}
 
 	outBoundMessage := channels.OutgoingMessage{
+		MessageID:   payload.MessageID,
 		Channel:     payload.Channel,
 		Content:     payload.Content,
 		Attachments: payload.Attachments,

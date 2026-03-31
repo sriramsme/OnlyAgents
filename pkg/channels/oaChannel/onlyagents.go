@@ -154,8 +154,9 @@ func (g *OAChannel) Send(ctx context.Context, msg channels.OutgoingMessage) (cha
 		SessionID: sessionID,
 		Timestamp: time.Now(),
 		Payload: AgentTextPayload{
-			Content: msg.Content,
-			IsFinal: true,
+			MessageID: msg.MessageID,
+			Content:   msg.Content,
+			IsFinal:   true,
 		},
 	})
 }
@@ -305,6 +306,7 @@ func (g *OAChannel) writeLoop(ctx context.Context, c *client, uiCh <-chan core.U
 // ── Inbound message handling ──────────────────────────────────────────────────
 
 func (g *OAChannel) handleInbound(ctx context.Context, c *client, msg WSMessage) {
+	g.logger.Debug("oaChannel: inbound message", "type", msg.Type, "session_id", c.sessionID)
 	var err error
 	switch msg.Type {
 	case WSMsgChat:

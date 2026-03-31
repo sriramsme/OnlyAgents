@@ -152,3 +152,8 @@ func (k *Kernel) RegisterChannel(ch channels.Channel) {
 func (k *Kernel) Bus() chan<- core.Event {
 	return k.bus
 }
+
+// Store returns the storage layer.
+func (k *Kernel) Store() storage.Storage {
+	return k.store
+}

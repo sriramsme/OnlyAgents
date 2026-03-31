@@ -85,7 +85,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	fmt.Println("OnlyAgents v0.1.0")
+	fmt.Println("OnlyAgents v" + version)
 	fmt.Println("=================")
 
 	// ── Kernel ────────────────────────────────────────────────────────────────
@@ -169,9 +169,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 		*serverConfig,
 		handlers.Deps{
 			Bus:       k.Bus(),
-			Version:   "0.1.0",
+			Version:   version,
 			Kernel:    k,
 			WSHandler: wsHandler,
+			Store:     k.Store(),
 		},
 		a,
 		apiKey,
@@ -201,12 +202,15 @@ func runStart(cmd *cobra.Command, args []string) error {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), serverConfig.Timeouts.Shutdown)
 	defer shutdownCancel()
 
-	// Kernel first — closes WS connections before HTTP server stops
-	if err := k.Shutdown(); err != nil {
-		logger.Log.Error("kernel stop error", "error", err)
-	}
+	// HTTP server first — closes the listener so no new connections can be accepted.
+	// This means the browser's WS auto-reconnect gets connection-refused immediately
+	// instead of landing on a still-alive endpoint during kernel drain.
 	if err := server.Stop(shutdownCtx); err != nil {
 		logger.Log.Error("server stop error", "error", err)
+	}
+	// Kernel second — drains in-flight events, closes WS connections, stops agents.
+	if err := k.Shutdown(); err != nil {
+		logger.Log.Error("kernel stop error", "error", err)
 	}
 
 	logger.Log.Info("shutdown complete")
