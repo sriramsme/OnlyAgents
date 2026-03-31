@@ -105,15 +105,12 @@ func ReadYAML(path string, v any) error {
 // skipping if the key already exists.
 func AppendEnvVar(envPath, vaultPath, value string) error {
 	// telegram/bot_token → TELEGRAM_BOT_TOKEN
-	envKey := strings.ToUpper(strings.ReplaceAll(vaultPath, "/", "_"))
+	envKey := VaultPathToEnvKey(vaultPath)
 
-	data, err := os.ReadFile(envPath) //nolint:gosec
-	if err != nil {
-		return err
-	}
-	if strings.Contains(string(data), envKey+"=") {
+	if KeyExistsInEnv(envPath, envKey) {
 		return nil // already set
 	}
+
 	f, err := os.OpenFile(envPath, os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec
 	if err != nil {
 		return err
@@ -191,6 +188,29 @@ func GenerateAPIKey() (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+func KeyExistsInEnv(envPath, envVar string) bool {
+	data, err := os.ReadFile(envPath) // #nosec G304
+	if err != nil {
+		return false
+	}
+
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if val, ok := strings.CutPrefix(line, envVar+"="); ok {
+			return strings.TrimSpace(val) != ""
+		}
+	}
+	return false
+}
+
+func VaultPathToEnvKey(vaultPath string) string {
+	return strings.ToUpper(strings.ReplaceAll(vaultPath, "/", "_"))
 }
 
 // ── Table helpers ─────────────────────────────────────────────────────────────

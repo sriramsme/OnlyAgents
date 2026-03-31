@@ -288,6 +288,9 @@ func (s *llmStep) Run(ctx *cmdutil.SetupContext) error {
 		if existing, ok := usedProviders[provider]; ok {
 			apiKey = existing
 			cmdutil.Info("reusing %s from earlier", llmEnvVar)
+		} else if cmdutil.KeyExistsInEnv(ctx.Paths.EnvPath, llmEnvVar) {
+			cmdutil.Info("%s already set in .env, skipping", llmEnvVar)
+			usedProviders[provider] = "" // mark as seen, don't overwrite
 		} else {
 			err = cmdutil.RunForm(
 				huh.NewGroup(
@@ -383,7 +386,7 @@ func (s *channelStep) Run(ctx *cmdutil.SetupContext) error {
 	}
 	if !skip {
 		ctx.ChannelChoice = "oachannel"
-		cmdutil.Success("using built-in OAChannel — run 'onlyagents server start' and open http://localhost:19965")
+		cmdutil.Success("using built-in OAChannel — run 'onlyagents start' and open http://localhost:19965")
 		return nil
 	}
 
@@ -426,6 +429,11 @@ func (s *channelStep) Run(ctx *cmdutil.SetupContext) error {
 
 	// Collect secrets — driven entirely by vault_paths in the channel YAML
 	for _, vp := range cfg.VaultPaths {
+		envVar := cmdutil.VaultPathToEnvKey(vp.Path) // e.g. "telegram/bot_token" → "TELEGRAM_BOT_TOKEN"
+		if cmdutil.KeyExistsInEnv(ctx.Paths.EnvPath, envVar) {
+			cmdutil.Info("%s already set, skipping", envVar)
+			continue
+		}
 		var value string
 		if err := cmdutil.RunForm(huh.NewGroup(
 			cmdutil.SecretInput(vp.Prompt, &value),
