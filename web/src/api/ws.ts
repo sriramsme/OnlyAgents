@@ -53,6 +53,7 @@ export interface WSMessage {
 // ─── Inbound payload types ────────────────────────────────────────────────────
 
 export interface AgentTextPayload {
+  message_id: string
   content: string
   agent_id: string
   is_final: boolean
@@ -149,8 +150,12 @@ export class OAWebSocket {
     }
     this.handlers = options.handlers ?? {}
     this.currentSessionId = options.sessionId
-        ?? localStorage.getItem('oa_session_id')
-        ?? undefined  // ← restored on page reload
+      ?? localStorage.getItem('oa_session_id')
+      ?? undefined  // ← restored on page reload
+
+    if (this.currentSessionId) {
+      localStorage.setItem('oa_session_id', this.currentSessionId)
+    }
   }
   // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -228,7 +233,9 @@ export class OAWebSocket {
     this.ws.onclose = (evt) => {
       this._cleanup()
       this.handlers.onDisconnected?.(evt.wasClean)
-      if (!this.manualClose && this.options.reconnect) {
+      // 1001 = Going Away (server shutdown), 1012 = Service Restart — don't reconnect
+      const serverGoingAway = evt.code === 1001 || evt.code === 1012
+      if (!this.manualClose && !serverGoingAway && this.options.reconnect) {
         this.reconnectTimer = setTimeout(
           () => this._connect(),
           this.options.reconnectDelayMs,
@@ -252,6 +259,7 @@ export class OAWebSocket {
       case 'session.new': {
         const p = msg.payload as NewSessionPayload
         this.currentSessionId = p.session_id
+        localStorage.setItem('oa_session_id', p.session_id)
         this.handlers.onNewSession?.(p)
         break
       }
@@ -285,14 +293,12 @@ export class OAWebSocket {
   }
 
   private _sendMsg(msg: Partial<WSMessage>): void {
-    if (this.ws?.readyState !== WebSocket.OPEN) {
-      this.ws?.send(JSON.stringify(msg))
-
-    }else {
-        // Queue until connected instead of dropping
-        this.pendingMessages.push(msg)
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg))
+    } else {
+      this.pendingMessages.push(msg)
     }
-      }
+  }
 
   private _buildURL(): string {
     const cfg = getConnectionConfig()

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { getConnectionConfig } from './api/client'
 import { apiFetch, ApiError } from './api/client'
@@ -90,13 +90,18 @@ export default function App() {
     )
   }
 
+  function ChatPageWithKey() {
+      const { sessionId } = useParams()
+      return <ChatPage key={sessionId ?? 'new'} />
+  }
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
           <Route element={<Shell />}>
             <Route index element={<WarRoom />} />
-            <Route path="chat" element={<ChatPage />} />
+<Route path="chat" element={<ChatPageWithKey />} />
+<Route path="chat/:sessionId" element={<ChatPageWithKey />} />
             {/* Phase C routes — uncomment as panels are built */}
             {/* <Route path="memory"   element={<MemoryPage />} /> */}
             {/* <Route path="tasks"    element={<TasksPage />} /> */}

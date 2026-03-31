@@ -2,11 +2,11 @@
 // Chat handled over WebSocket (src/api/ws.ts).
 // This file only contains REST endpoints for session management (non-realtime).
 import { apiFetch } from '../client'
-import type { ChatHistoryResponse } from '../types'
+import type { ChatHistoryResponse, Session } from '../types'
 
 export const sessions = {
   // List all sessions for the current user
-  list: () => apiFetch<{ sessions: unknown[]; count: number }>('/v1/sessions'),
+  list: () => apiFetch<{ sessions: Session[]; count: number }>('/v1/sessions'),
 
   // Get message history for a specific session
   history: (sessionId: string) =>

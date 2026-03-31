@@ -76,10 +76,49 @@ export interface DelegationPayload {
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 
-export interface ChatMessage {
-  role: 'user' | 'assistant'
+// should match pkg/storage/types.go
+export type Session = {
+  id: string
+  channel: string
+  agentId: string
+  chatId: string
+
+  startedAt: string
+  endedAt: string
+
+  context: Record<string, any>
+  summary: string
+  peerAgentId: string
+}
+
+export type ChatMessage = {
+  id?: string
+  conversationId?: string
+  agentId?: string
+
+  role: 'user' | 'assistant' | 'tool' | 'notification'
   content: string
+
+  reasoningContent?: string
+  toolCalls?: string
+  toolCallId?: string
+
   timestamp: string
+}
+
+export type ChatHistoryResponse = {
+	history: ChatMessage[]
+	count: number
+}
+
+export type ChatSessionResponse = {
+	session_id: string
+	session: Session
+}
+
+export type ChatSessionListResponse = {
+	sessions: ChatSessionResponse[]
+	count: number
 }
 
 export interface SendMessageRequest {
@@ -92,11 +131,6 @@ export interface SendMessageResponse {
   agent_id: string
   timestamp: string
   latency_ms: number
-}
-
-export interface ChatHistoryResponse {
-  history: ChatMessage[]
-  count: number
 }
 
 // ─── Connection config (stored in localStorage) ───────────────────────────────
