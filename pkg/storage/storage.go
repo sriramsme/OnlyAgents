@@ -27,7 +27,8 @@ type ConversationStore interface {
 	GetConversationByChannel(ctx context.Context, channel, agentID string) (*Conversation, error)
 	GetConversationsByDay(ctx context.Context, from, to time.Time) ([]*Conversation, error)
 	UpdateConversation(ctx context.Context, conv *Conversation) error
-	ListConversations(ctx context.Context, agentID string, limit int) ([]*Conversation, error)
+	ListConversations(ctx context.Context, limit int) ([]*Conversation, error)
+	ListConversationsByChannel(ctx context.Context, channel string, limit int) ([]*Conversation, error)
 	EndConversation(ctx context.Context, id string, summary string) error
 }
 

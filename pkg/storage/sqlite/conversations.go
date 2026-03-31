@@ -81,14 +81,24 @@ func (d *DB) UpdateConversation(ctx context.Context, conv *storage.Conversation)
 	return wrap(err, "update conversation")
 }
 
-func (d *DB) ListConversations(ctx context.Context, agentID string, limit int) ([]*storage.Conversation, error) {
+func (d *DB) ListConversations(ctx context.Context, limit int) ([]*storage.Conversation, error) {
 	var convs []*storage.Conversation
 	err := d.db.SelectContext(ctx, &convs, `
 		SELECT * FROM conversations
-		WHERE agent_id = ?
 		ORDER BY started_at DESC
 		LIMIT ?
-	`, agentID, limit)
+	`, limit)
+	return convs, wrap(err, "list conversations")
+}
+
+func (d *DB) ListConversationsByChannel(ctx context.Context, channel string, limit int) ([]*storage.Conversation, error) {
+	var convs []*storage.Conversation
+	err := d.db.SelectContext(ctx, &convs, `
+		SELECT * FROM conversations
+		WHERE channel = ?
+		ORDER BY started_at DESC
+		LIMIT ?
+	`, channel, limit)
 	return convs, wrap(err, "list conversations")
 }
 
