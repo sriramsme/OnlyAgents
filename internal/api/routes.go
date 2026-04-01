@@ -21,19 +21,20 @@ import (
 // Routes are grouped by domain. Open routes at top, authed routes below.
 func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, a *auth.Auth, logger *slog.Logger) {
 	// Instantiate handler groups
-	health := handlers.NewHealthHandler(deps, logger)
+	healthH := handlers.NewHealthHandler(deps, logger)
 	authH := handlers.NewAuthHandler(a, logger)
-	sessions := handlers.NewSessionsHandler(deps, logger)
-	// agent   := handlers.NewAgentHandler(deps, logger)     // uncomment when ready
-	// skills  := handlers.NewSkillsHandler(deps, logger)    // uncomment when ready
-	// memory  := handlers.NewMemoryHandler(deps, logger)    // uncomment when ready
+	sessionsH := handlers.NewSessionsHandler(deps, logger)
+	agentsH := handlers.NewAgentsHandler(logger)
+	skillsH := handlers.NewSkillsHandler(logger)
+	connectorsH := handlers.NewConnectorsHandler(logger)
+	channelsH := handlers.NewChannelsHandler(logger)
 
 	open := mid.Open()     // logging + recovery + cors
 	authed := mid.Authed() // + auth
 
 	// ── System ──────────────────────────────────────────────────────────────
-	mux.HandleFunc("GET /health", open(health.Health))
-	mux.HandleFunc("GET /version", open(health.Version))
+	mux.HandleFunc("GET /health", open(healthH.Health))
+	mux.HandleFunc("GET /version", open(healthH.Version))
 
 	// ── Auth ─────────────────────────────────────────────────────────────────
 	mux.HandleFunc("POST /auth/login", open(authH.Login))
@@ -57,13 +58,27 @@ func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, a *
 		}))
 		logger.Info("registered OAChannel handler", "path", "/v1/ws")
 	}
-	mux.HandleFunc("GET /v1/sessions", authed(sessions.List))
-	mux.HandleFunc("GET /v1/sessions/{id}/history", authed(sessions.History))
-	mux.HandleFunc("DELETE /v1/sessions/{id}", authed(sessions.End))
+
+	// ── Chat Sessions ───────────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /v1/sessions", authed(sessionsH.List))
+	mux.HandleFunc("GET /v1/sessions/{id}/history", authed(sessionsH.History))
+	mux.HandleFunc("DELETE /v1/sessions/{id}", authed(sessionsH.End))
 
 	// ── Agents ───────────────────────────────────────────────────────────────
-	// mux.HandleFunc("GET /v1/agents",      authed(agent.List))
-	// mux.HandleFunc("GET /v1/agents/{id}", authed(agent.Get))
+	mux.HandleFunc("GET /v1/agents", authed(agentsH.List))
+	mux.HandleFunc("GET /v1/agents/{id}", authed(agentsH.Get))
+
+	// ── Skills ────────────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /v1/skills", authed(skillsH.List))
+	mux.HandleFunc("GET /v1/skills/{id}", authed(skillsH.Get))
+
+	// ── Connectors ────────────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /v1/connectors", authed(connectorsH.List))
+	mux.HandleFunc("GET /v1/connectors/{id}", authed(connectorsH.Get))
+
+	// ── Channels ────────────────────────────────────────────────────────
+	mux.HandleFunc("GET /v1/channels", authed(channelsH.List))
+	mux.HandleFunc("GET /v1/channels/{id}", authed(channelsH.Get))
 
 	// ── Memory ───────────────────────────────────────────────────────────────
 	// mux.HandleFunc("GET /v1/memory/facts",         authed(memory.Facts))
@@ -97,17 +112,6 @@ func registerRoutes(mux *http.ServeMux, mid *Middleware, deps handlers.Deps, a *
 	// mux.HandleFunc("POST   /v1/reminders",      authed(productivity.CreateReminder))
 	// mux.HandleFunc("PUT    /v1/reminders/{id}", authed(productivity.UpdateReminder))
 	// mux.HandleFunc("DELETE /v1/reminders/{id}", authed(productivity.DeleteReminder))
-
-	// ── Config ────────────────────────────────────────────────────────────────
-	// mux.HandleFunc("GET /v1/config/agents",          authed(config.ListAgents))
-	// mux.HandleFunc("GET /v1/config/agents/{id}",     authed(config.GetAgent))
-	// mux.HandleFunc("PUT /v1/config/agents/{id}",     authed(config.WriteAgent))
-	// mux.HandleFunc("GET /v1/config/channels",        authed(config.ListChannels))
-	// mux.HandleFunc("GET /v1/config/channels/{id}",   authed(config.GetChannel))
-	// mux.HandleFunc("PUT /v1/config/channels/{id}",   authed(config.WriteChannel))
-	// mux.HandleFunc("GET /v1/config/connectors",      authed(config.ListConnectors))
-	// mux.HandleFunc("GET /v1/config/connectors/{id}", authed(config.GetConnector))
-	// mux.HandleFunc("PUT /v1/config/connectors/{id}", authed(config.WriteConnector))
 
 	// ── A2A (Phase 7) ─────────────────────────────────────────────────────────
 	// mux.HandleFunc("GET  /v1/a2a/connections",          authed(a2a.ListConnections))

@@ -1,4 +1,4 @@
-// internal/api/handlers/skills.go
+// internal/api/handlers/connectors.go
 package handlers
 
 import (
@@ -6,19 +6,19 @@ import (
 	"net/http"
 
 	"github.com/sriramsme/OnlyAgents/internal/api/httpx"
-	"github.com/sriramsme/OnlyAgents/pkg/skills"
+	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 )
 
-type SkillsHandler struct {
+type ConnectorsHandler struct {
 	logger *slog.Logger
 }
 
-func NewSkillsHandler(logger *slog.Logger) *SkillsHandler {
-	return &SkillsHandler{logger: logger}
+func NewConnectorsHandler(logger *slog.Logger) *ConnectorsHandler {
+	return &ConnectorsHandler{logger: logger}
 }
 
-func (h *SkillsHandler) List(w http.ResponseWriter, r *http.Request) {
-	cfgs, err := skills.LoadAllConfigs("")
+func (h *ConnectorsHandler) List(w http.ResponseWriter, r *http.Request) {
+	cfgs, err := connectors.LoadAllConfigs("")
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, err.Error())
 		return
@@ -32,27 +32,26 @@ func (h *SkillsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]summary, 0, len(cfgs))
 	for _, c := range cfgs {
-		out = append(out, summary{c.Name, c.Name, c.Description, c.Enabled})
+		out = append(out, summary{c.ID, c.Name, c.Description, c.Enabled})
 	}
-
-	httpx.JSON(w, http.StatusOK, map[string]any{"skills": out})
+	httpx.JSON(w, http.StatusOK, map[string]any{"connectors": out})
 }
 
-func (h *SkillsHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (h *ConnectorsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	cfgs, err := skills.LoadAllConfigs("")
+	cfgs, err := connectors.LoadAllConfigs("")
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	for _, c := range cfgs {
-		if c.Name == id {
+		if c.ID == id {
 			httpx.JSON(w, http.StatusOK, c)
 			return
 		}
 	}
 
-	httpx.Error(w, http.StatusNotFound, "skill not found")
+	httpx.Error(w, http.StatusNotFound, "connector not found")
 }
