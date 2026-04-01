@@ -8,6 +8,7 @@ import { LoginPage } from './components/auth/LoginPage'
 import { Shell } from './components/layout/Shell'
 import { WarRoom } from './components/war-room/WarRoom'
 import { ChatPage } from './components/chat/ChatPage'
+import { ConfigListPage } from './components/config/ConfigListPage'
 import { getWSInstance } from './api/ws'
 
 const queryClient = new QueryClient({
@@ -91,8 +92,8 @@ export default function App() {
   }
 
   function ChatPageWithKey() {
-      const { sessionId } = useParams()
-      return <ChatPage key={sessionId ?? 'new'} />
+    const { sessionId } = useParams()
+    return <ChatPage key={sessionId ?? 'new'} />
   }
   return (
     <QueryClientProvider client={queryClient}>
@@ -100,14 +101,17 @@ export default function App() {
         <Routes>
           <Route element={<Shell />}>
             <Route index element={<WarRoom />} />
-<Route path="chat" element={<ChatPageWithKey />} />
-<Route path="chat/:sessionId" element={<ChatPageWithKey />} />
+            <Route path="chat" element={<ChatPageWithKey />} />
+            <Route path="chat/:sessionId" element={<ChatPageWithKey />} />
+            <Route path="agents" element={<ConfigListPage resource="agents" />} />
+            <Route path="skills" element={<ConfigListPage resource="skills" />} />
+            <Route path="connectors" element={<ConfigListPage resource="connectors" />} />
+            <Route path="channels" element={<ConfigListPage resource="channels" />} />
             {/* Phase C routes — uncomment as panels are built */}
             {/* <Route path="memory"   element={<MemoryPage />} /> */}
             {/* <Route path="tasks"    element={<TasksPage />} /> */}
             {/* <Route path="calendar" element={<CalendarPage />} /> */}
             {/* <Route path="notes"    element={<NotesPage />} /> */}
-            {/* <Route path="config"   element={<ConfigPage />} /> */}
           </Route>
         </Routes>
       </BrowserRouter>

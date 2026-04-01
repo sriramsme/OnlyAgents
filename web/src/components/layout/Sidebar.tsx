@@ -1,17 +1,70 @@
 import { NavLink } from 'react-router-dom'
 import { useEventStore } from '../../store/eventStore'
+import { Bot, Zap, Link2, Radio, MessageCircle } from 'lucide-react'
 
-const NAV = [
-  { to: '/',     label: 'Council', icon: '⬡', exact: true },
-  { to: '/chat', label: 'Chat',     icon: '⌨' },
+const NAV_PRIMARY = [
+  { to: '/', label: 'Council', icon: Bot, exact: true, accent: '#00d97e' },
+  { to: '/chat', label: 'Chat', icon: MessageCircle, exact: false, accent: '#00d97e' },
 ]
+
+const NAV_CONFIG = [
+  { to: '/agents', label: 'Agents', icon: Bot, exact: false, accent: '#00d97e' },
+  { to: '/skills', label: 'Skills', icon: Zap, exact: false, accent: '#388bfd' },
+  { to: '/connectors', label: 'Connectors', icon: Link2, exact: false, accent: '#d29922' },
+  { to: '/channels', label: 'Channels', icon: Radio, exact: false, accent: '#bc8cff' },
+]
+
+type NavItem = { to: string; label: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number, color?: string }>; exact: boolean; accent: string }
+
+function NavItem({ to, label, icon: Icon, exact, accent }: NavItem) {
+  return (
+    <NavLink
+      to={to}
+      end={exact}
+      style={({ isActive }) => ({
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '9px 16px',
+        fontSize: 11,
+        fontFamily: 'inherit',
+        textDecoration: 'none',
+        color: isActive ? accent : '#8b9eb0',
+        background: isActive ? `${accent}0d` : 'transparent',
+        borderRight: isActive ? `2px solid ${accent}` : '2px solid transparent',
+        letterSpacing: '0.05em',
+        transition: 'color 0.1s, background 0.1s',
+      })}
+    >
+      <span style={{ lineHeight: 1 }}>
+        <Icon size={13} strokeWidth={1.5} />
+      </span>
+      <span>{label}</span>
+    </NavLink>
+  )
+}
+
+function SectionLabel({ label }: { label: string }) {
+  return (
+    <div style={{
+      padding: '10px 16px 4px',
+      fontSize: 9,
+      letterSpacing: '0.12em',
+      textTransform: 'uppercase',
+      color: '#3d444d',
+      fontFamily: 'inherit',
+    }}>
+      {label}
+    </div>
+  )
+}
 
 export function Sidebar() {
   const connected = useEventStore((s) => s.connected)
-  const lastPing  = useEventStore((s) => s.lastPing)
+  const lastPing = useEventStore((s) => s.lastPing)
 
-  const pingAge  = lastPing ? Date.now() - lastPing : Infinity
-  const isStale  = pingAge > 30_000
+  const pingAge = lastPing ? Date.now() - lastPing : Infinity
+  const isStale = pingAge > 30_000
   const dotColor = !connected ? '#f85149' : isStale ? '#d29922' : '#00d97e'
   const connLabel = !connected ? 'offline' : isStale ? 'stale' : 'live'
 
@@ -60,31 +113,12 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, paddingTop: 8, paddingBottom: 8 }}>
-        {NAV.map(({ to, label, icon, exact }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={exact}
-            style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '9px 16px',
-              fontSize: 11,
-              fontFamily: 'inherit',
-              textDecoration: 'none',
-              color:           isActive ? '#00d97e' : '#8b9eb0',
-              background:      isActive ? 'rgba(0,217,126,0.05)' : 'transparent',
-              borderRight:     isActive ? '2px solid #00d97e' : '2px solid transparent',
-              letterSpacing:   '0.05em',
-              transition:      'color 0.1s, background 0.1s',
-            })}
-          >
-            <span style={{ fontSize: 14, lineHeight: 1 }}>{icon}</span>
-            <span>{label}</span>
-          </NavLink>
-        ))}
+      <nav style={{ flex: 1, paddingTop: 8, paddingBottom: 8, overflowY: 'auto' }}>
+        {NAV_PRIMARY.map(item => <NavItem key={item.to} {...item} />)}
+
+        <SectionLabel label="Config" />
+
+        {NAV_CONFIG.map(item => <NavItem key={item.to} {...item} />)}
       </nav>
 
       {/* Footer */}

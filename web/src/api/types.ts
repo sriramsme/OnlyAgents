@@ -107,18 +107,18 @@ export type ChatMessage = {
 }
 
 export type ChatHistoryResponse = {
-	history: ChatMessage[]
-	count: number
+  history: ChatMessage[]
+  count: number
 }
 
 export type ChatSessionResponse = {
-	session_id: string
-	session: Session
+  session_id: string
+  session: Session
 }
 
 export type ChatSessionListResponse = {
-	sessions: ChatSessionResponse[]
-	count: number
+  sessions: ChatSessionResponse[]
+  count: number
 }
 
 export interface SendMessageRequest {
@@ -138,4 +138,46 @@ export interface SendMessageResponse {
 export interface ConnectionConfig {
   serverUrl: string   // e.g. "http://localhost:19965" or "https://myserver.com"
   apiKey: string      // empty string if no auth configured
+}
+
+// ─── Config resources (agents / skills / connectors / channels) ───────────────
+
+/** Shared summary shape returned by all four List endpoints */
+export interface ConfigSummary {
+  id: string
+  name: string
+  description: string
+  enabled: boolean
+}
+
+/** Full agent config returned by GET /v1/agents/:id */
+export interface AgentConfig extends ConfigSummary {
+  model?: string
+  system_prompt?: string
+  skills?: string[]
+  tools?: string[]
+  [key: string]: unknown
+}
+
+/** Full skill config returned by GET /v1/skills/:id */
+export interface SkillConfig extends ConfigSummary {
+  type?: string
+  config?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+/** Full connector config returned by GET /v1/connectors/:id */
+export interface ConnectorConfig extends ConfigSummary {
+  type?: string
+  url?: string
+  auth?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+/** Full channel config returned by GET /v1/channels/:id */
+export interface ChannelConfig extends ConfigSummary {
+  type?: string
+  webhook_url?: string
+  agent_id?: string
+  [key: string]: unknown
 }
