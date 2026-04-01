@@ -14,79 +14,80 @@ import (
 
 type Config struct {
 	// Common fields — all skill types
-	Name        string `mapstructure:"name"`
-	Type        string `mapstructure:"type"` // "cli" | "native"
-	Enabled     bool   `mapstructure:"enabled"`
-	AccessLevel string `mapstructure:"access_level"`
-	Description string `mapstructure:"description"`
-	Version     string `mapstructure:"version"`
+	Name        string `mapstructure:"name" json:"name"`
+	Type        string `mapstructure:"type" json:"type"` // "cli" | "native"
+	Enabled     bool   `mapstructure:"enabled" json:"enabled"`
+	AccessLevel string `mapstructure:"access_level" json:"access_level"`
+	Description string `mapstructure:"description" json:"description,omitempty"`
+	Version     string `mapstructure:"version" json:"version,omitempty"`
 
-	Capabilities []string     `mapstructure:"capabilities"`
-	Instructions string       `mapstructure:"instructions"`
-	Authors      []Author     `mapstructure:"authors,omitempty"`
-	Homepage     string       `mapstructure:"homepage,omitempty"`
-	Requires     Requirements `mapstructure:"requires,omitempty"`
+	Capabilities []string     `mapstructure:"capabilities" json:"capabilities,omitempty"`
+	Instructions string       `mapstructure:"instructions" json:"instructions,omitempty"`
+	Authors      []Author     `mapstructure:"authors,omitempty" json:"authors,omitempty"`
+	Homepage     string       `mapstructure:"homepage,omitempty" json:"homepage,omitempty"`
+	Requires     Requirements `mapstructure:"requires,omitempty" json:"requires"`
 
-	Connector *ConnectorSpec `mapstructure:"connector,omitempty"`
+	Connector *ConnectorSpec `mapstructure:"connector,omitempty" json:"connector,omitempty"`
 
 	// CLI skill — tools block
 
-	Groups map[string]string `mapstructure:"groups,omitempty"`
-	Tools  []ToolEntry       `mapstructure:"tools,omitempty"`
+	Groups map[string]string `mapstructure:"groups,omitempty" json:"groups,omitempty"`
+	Tools  []ToolEntry       `mapstructure:"tools,omitempty" json:"tools,omitempty"`
 
 	// Executor config
-	Executor ExecutorConfig `mapstructure:"executor,omitempty"`
+	Executor ExecutorConfig `mapstructure:"executor,omitempty" json:"executor"`
 
 	// Optional LLM configuration
-	LLM *llm.Config `mapstructure:"llm,omitempty"`
+	LLM *llm.Config `mapstructure:"llm,omitempty" json:"llm,omitempty"`
 
-	Security config.SecurityConfig `mapstructure:"security,omitempty"`
+	Security config.SecurityConfig `mapstructure:"security,omitempty" json:"security"`
 	// For skill-specific extensions
-	Config map[string]any `mapstructure:"config,omitempty"`
+	Config map[string]any `mapstructure:"config,omitempty" json:"config,omitempty"`
 }
 
 type ConnectorSpec struct {
-	Required  bool     `mapstructure:"required"`
-	Default   string   `mapstructure:"default"`
-	Supported []string `mapstructure:"supported"`
+	Required  bool     `mapstructure:"required" json:"required"`
+	Default   string   `mapstructure:"default" json:"default,omitempty"`
+	Supported []string `mapstructure:"supported" json:"supported,omitempty"`
 }
+
 type ToolEntry struct {
-	Name        string      `mapstructure:"name"`
-	Description string      `mapstructure:"description"`
-	Access      string      `mapstructure:"access"`
-	Command     string      `mapstructure:"command"`
-	Timeout     int         `mapstructure:"timeout"`
-	Parameters  []ParamDef  `mapstructure:"parameters"`
-	Validation  *Validation `mapstructure:"validation,omitempty"`
-	Group       string      `mapstructure:"group,omitempty"`
+	Name        string      `mapstructure:"name" json:"name"`
+	Description string      `mapstructure:"description" json:"description,omitempty"`
+	Access      string      `mapstructure:"access" json:"access"`
+	Command     string      `mapstructure:"command" json:"command"`
+	Timeout     int         `mapstructure:"timeout" json:"timeout,omitempty"`
+	Parameters  []ParamDef  `mapstructure:"parameters" json:"parameters,omitempty"`
+	Validation  *Validation `mapstructure:"validation,omitempty" json:"validation,omitempty"`
+	Group       string      `mapstructure:"group,omitempty" json:"group,omitempty"`
 }
 
 type ParamDef struct {
-	Name        string `mapstructure:"name"`
-	Type        string `mapstructure:"type"`
-	Description string `mapstructure:"description"`
+	Name        string `mapstructure:"name" json:"name"`
+	Type        string `mapstructure:"type" json:"type"`
+	Description string `mapstructure:"description" json:"description,omitempty"`
 }
 
 type Validation struct {
-	AllowedCommands []string `mapstructure:"allowed_commands"`
-	DeniedPatterns  []string `mapstructure:"denied_patterns"`
-	MaxOutputSize   int      `mapstructure:"max_output_size"`
-	RequireConfirm  bool     `mapstructure:"require_confirm"`
+	AllowedCommands []string `mapstructure:"allowed_commands" json:"allowed_commands,omitempty"`
+	DeniedPatterns  []string `mapstructure:"denied_patterns" json:"denied_patterns,omitempty"`
+	MaxOutputSize   int      `mapstructure:"max_output_size" json:"max_output_size,omitempty"`
+	RequireConfirm  bool     `mapstructure:"require_confirm" json:"require_confirm"`
 }
 
 type BinRequirement struct {
-	Name    string            `yaml:"name"`
-	Install map[string]string `yaml:"install,omitempty"` // pkg manager → command/url
+	Name    string            `mapstructure:"name" json:"name"`
+	Install map[string]string `mapstructure:"install,omitempty" json:"install,omitempty"` // pkg manager → command/url
 }
 
 type Requirements struct {
-	Bins []BinRequirement `yaml:"bins,omitempty"`
-	Env  []string         `yaml:"env,omitempty"`
+	Bins []BinRequirement `mapstructure:"bins,omitempty" json:"bins,omitempty"`
+	Env  []string         `mapstructure:"env,omitempty" json:"env,omitempty"`
 }
 
 type Author struct {
-	Name  string `mapstructure:"name"`
-	Email string `mapstructure:"email,omitempty"`
+	Name  string `mapstructure:"name" json:"name"`
+	Email string `mapstructure:"email,omitempty" json:"email,omitempty"`
 }
 
 // holds CLI executor configuration

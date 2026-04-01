@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
@@ -11,8 +10,6 @@ import (
 // Deps holds every dependency that handlers might need.
 // Add a new field here when you add a new package (memory, skills, etc).
 // Handlers only take what they need from this struct.
-//
-// This is the idiomatic Go alternative to a global service locator.
 type Deps struct {
 	Bus       chan<- core.Event
 	Version   string
@@ -26,25 +23,6 @@ type Deps struct {
 	// Agents    AgentsReader    — for /v1/agents
 }
 
-// Here's an example of how we can wire the skills reader and  kernel:
-// // handlers/deps.go
-// type SkillsReader interface {
-//     ListSkills() []core.SkillInfo
-//     GetSkill(name string) (core.SkillInfo, bool)
-// }
-//
-// // pkg/kernel/reader.go
-// func (k *Kernel) ListSkills() []core.SkillInfo { ... }
-// func (k *Kernel) GetSkill(name string) (core.SkillInfo, bool) { ... }
-//
-// // start.go
-// deps := handlers.Deps{
-//     Kernel: k,
-//     Skills: k, // same k, different interface
-// }
-
-// ─── Kernel interface ─────────────────────────────────────────────────────────
-
 // KernelReader is the interface the API layer needs from the kernel.
 // Defined here (not in pkg/kernel) so the API layer never imports the kernel
 // package — avoiding a potential import cycle and keeping the boundary clean.
@@ -56,13 +34,7 @@ type KernelReader interface {
 
 	// IsHealthy returns false if the kernel context has been cancelled.
 	IsHealthy() bool
-}
 
-// ─── Agent interface ──────────────────────────────────────────────────────────
-
-// AgentExecutor is the interface handlers need from a single agent.
-// Keeping it small and defined here avoids importing pkg/agents into the API layer.
-type AgentExecutor interface {
-	Execute(ctx context.Context, message string) (string, error)
-	ID() string
+	// UIBus returns the UI event bus.
+	UIBus() core.UIBus
 }

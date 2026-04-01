@@ -12,14 +12,14 @@ import (
 )
 
 type Config struct {
-	ID           string                     `mapstructure:"id"`
-	Name         string                     `mapstructure:"name"`
-	Description  string                     `mapstructure:"description"`
-	Instructions string                     `mapstructure:"instructions"`
-	Type         string                     `mapstructure:"type"`
-	Enabled      bool                       `mapstructure:"enabled"`
-	VaultPaths   map[string]vault.PathEntry `mapstructure:"vault_paths"`
-	RawConfig    map[string]any             `mapstructure:",remain"`
+	ID           string                     `mapstructure:"id" json:"id"`
+	Name         string                     `mapstructure:"name" json:"name"`
+	Description  string                     `mapstructure:"description" json:"description,omitempty"`
+	Instructions string                     `mapstructure:"instructions" json:"instructions,omitempty"`
+	Type         string                     `mapstructure:"type" json:"type"`
+	Enabled      bool                       `mapstructure:"enabled" json:"enabled"`
+	VaultPaths   map[string]vault.PathEntry `mapstructure:"vault_paths" json:"vault_paths,omitempty"`
+	RawConfig    map[string]any             `mapstructure:",remain" json:"raw_config,omitempty"`
 }
 
 // LoadConnectorConfig loads a single connector config file

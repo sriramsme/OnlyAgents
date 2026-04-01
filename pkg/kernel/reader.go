@@ -5,12 +5,9 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 )
 
-// KernelReader is the read-only interface exposed to the server.
-type KernelReader interface {
-	AgentsStatus() []core.AgentStatus
-	IsHealthy() bool
-	UIBus() core.UIBus
-}
+// KernelReader (defined in handlers/deps.go) is the read-only
+// interface exposed to the server.
+// These methods are called by the API layer.
 
 func (k *Kernel) AgentsStatus() []core.AgentStatus {
 	ids := k.agents.ListAll()

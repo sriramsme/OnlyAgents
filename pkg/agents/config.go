@@ -13,20 +13,20 @@ import (
 
 // Config represents the complete agent configuration.
 type Config struct {
-	ID               string         `mapstructure:"id"`
-	Name             string         `mapstructure:"name"`
-	Description      string         `mapstructure:"description"`
-	IsExecutive      bool           `mapstructure:"is_executive"`
-	IsGeneral        bool           `mapstructure:"is_general"`
-	Enabled          bool           `mapstructure:"enabled"`
-	Role             string         `mapstructure:"role"`
-	StreamingEnabled bool           `mapstructure:"streaming_enabled"`
-	MaxConcurrency   int            `mapstructure:"max_concurrency"`
-	BufferSize       int            `mapstructure:"buffer_size"`
-	LLM              llm.Config     `mapstructure:"llm"`
-	Skills           []SkillBinding `mapstructure:"skills"`
-	Channels         []string       `mapstructure:"channels"`
-	Soul             Soul           `mapstructure:"soul"`
+	ID               string         `mapstructure:"id" json:"id"`
+	Name             string         `mapstructure:"name" json:"name"`
+	Description      string         `mapstructure:"description" json:"description"`
+	IsExecutive      bool           `mapstructure:"is_executive" json:"is_executive"`
+	IsGeneral        bool           `mapstructure:"is_general" json:"is_general"`
+	Enabled          bool           `mapstructure:"enabled" json:"enabled"`
+	Role             string         `mapstructure:"role" json:"role"`
+	StreamingEnabled bool           `mapstructure:"streaming_enabled" json:"streaming_enabled"`
+	MaxConcurrency   int            `mapstructure:"max_concurrency" json:"max_concurrency"`
+	BufferSize       int            `mapstructure:"buffer_size" json:"buffer_size"`
+	LLM              llm.Config     `mapstructure:"llm" json:"llm"`
+	Skills           []SkillBinding `mapstructure:"skills" json:"skills"`
+	Channels         []string       `mapstructure:"channels" json:"channels"`
+	Soul             Soul           `mapstructure:"soul" json:"soul"`
 
 	// ============================================
 	// EXECUTION LIMITS (Guard Rails)
@@ -40,7 +40,7 @@ type Config struct {
 	//   - Simple agents (email, calculator): 5
 	//   - Standard agents (researcher): 10
 	//   - Complex agents (multi-step workflows): 15
-	MaxIterations int `mapstructure:"max_iterations"`
+	MaxIterations int `mapstructure:"max_iterations" json:"max_iterations"`
 
 	// MaxCumulativeToolCalls is the total tool calls across all iterations
 	// Default: 15 (if not set or 0)
@@ -49,7 +49,7 @@ type Config struct {
 	//   - Simple agents: 5-8
 	//   - Standard agents: 15
 	//   - Complex agents: 25-30
-	MaxCumulativeToolCalls int `mapstructure:"max_cumulative_tool_calls"`
+	MaxCumulativeToolCalls int `mapstructure:"max_cumulative_tool_calls" json:"max_cumulative_tool_calls"`
 
 	// MaxToolResultTokens truncates individual tool results to this size
 	// Default: 2000 (if not set or 0)
@@ -58,13 +58,13 @@ type Config struct {
 	//   - Summary-focused: 1000
 	//   - Balanced: 2000
 	//   - Document processing: 4000
-	MaxToolResultTokens int `mapstructure:"max_tool_result_tokens"`
+	MaxToolResultTokens int `mapstructure:"max_tool_result_tokens" json:"max_tool_result_tokens"`
 
 	// EnableEarlyStopping detects and stops repeated tool calls
 	// Default: true (if not explicitly set to false)
 	// CRITICAL for search-heavy agents (prevents search spam)
 	// Set to false only for legitimate repeated operations
-	EnableEarlyStopping *bool `mapstructure:"enable_early_stopping"`
+	EnableEarlyStopping *bool `mapstructure:"enable_early_stopping" json:"enable_early_stopping"`
 
 	// SimilarCallThreshold is how many similar calls before early stopping
 	// Default: 3 (if not set or 0)
@@ -73,12 +73,12 @@ type Config struct {
 	//   - Aggressive (prevent loops): 2
 	//   - Balanced: 3
 	//   - Forgiving (allow exploration): 4-5
-	SimilarCallThreshold int `mapstructure:"similar_call_threshold"`
+	SimilarCallThreshold int `mapstructure:"similar_call_threshold" json:"similar_call_threshold"`
 }
 
 type SkillBinding struct {
-	Name        string `mapstructure:"name"`
-	ConnectorID string `mapstructure:"connector,omitempty"` // empty = use skill default
+	Name        string `mapstructure:"name" json:"name"`
+	ConnectorID string `mapstructure:"connector,omitempty" json:"connector_id"` // empty = use skill default
 }
 
 // load reads an agent config file into a Config struct.
