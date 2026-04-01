@@ -14,11 +14,11 @@ import (
 
 // Channel represents a loaded channel config file
 type Config struct {
+	ID           string                     `mapstructure:"id" json:"id"`
 	Name         string                     `mapstructure:"name" json:"name"`
 	Description  string                     `mapstructure:"description" json:"description,omitempty"`
 	Instructions string                     `mapstructure:"instructions" json:"instructions,omitempty"`
 	Priority     int                        `mapstructure:"priority" json:"priority"`
-	Platform     string                     `mapstructure:"platform" json:"platform"`
 	Enabled      bool                       `mapstructure:"enabled" json:"enabled"`
 	VaultPaths   map[string]vault.PathEntry `mapstructure:"vault_paths" json:"vault_paths,omitempty"`
 	AllowFrom    []string                   `mapstructure:"allow_from,omitempty" json:"allow_from,omitempty"`
@@ -57,8 +57,8 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
 
-	if cfg.Platform == "" {
-		return nil, fmt.Errorf("platform field is required")
+	if cfg.ID == "" {
+		return nil, fmt.Errorf("id field is required")
 	}
 	return &cfg, nil
 }
@@ -85,7 +85,7 @@ func LoadAllConfigs(dir string) (map[string]*Config, error) {
 			return nil, fmt.Errorf("load %s: %w", f.Name(), err)
 		}
 
-		configs[cfg.Platform] = cfg
+		configs[cfg.ID] = cfg
 	}
 
 	return configs, nil

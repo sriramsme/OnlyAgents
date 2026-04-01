@@ -398,7 +398,7 @@ func (s *channelStep) Run(ctx *cmdutil.SetupContext) error {
 	// Exclude oachannel from the list — it needs no setup
 	var setupable []channels.Config
 	for _, c := range configs {
-		if c.Platform != "oachannel" {
+		if c.ID != "oachannel" {
 			setupable = append(setupable, c)
 		}
 	}
@@ -406,7 +406,7 @@ func (s *channelStep) Run(ctx *cmdutil.SetupContext) error {
 	opts := make([]huh.Option[string], len(setupable))
 	for i, cfg := range setupable {
 		label := fmt.Sprintf("%-20s %s", cfg.Name, cmdutil.Truncate(cfg.Description, 48))
-		opts[i] = huh.NewOption(label, cfg.Platform)
+		opts[i] = huh.NewOption(label, cfg.ID)
 	}
 
 	var choice string

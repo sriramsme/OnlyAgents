@@ -6,7 +6,7 @@ allowed_origins:
 # DO NOT EDIT BELOW THIS LINE
 # -----------------------------
 name: OnlyAgents Channel
-platform: onlyagents
+id: onlyagents
 description: Built-in web interface — no setup required.
 instructions: >
   This channel is built-in to OnlyAgents.

@@ -34,7 +34,7 @@ func EnabledChannels(channelList []channels.Config) []channels.Config {
 
 func FindChannelByPlatform(channelList []channels.Config, platform string) (channels.Config, error) {
 	for _, c := range channelList {
-		if c.Platform == platform {
+		if c.ID == platform {
 			return c, nil
 		}
 	}
@@ -90,7 +90,7 @@ func ChannelSetVaultKey(channelsDir, name, keyField, vaultPath string) error {
 }
 
 func ChannelEnable(channelsDir string, cfg channels.Config, enabled bool) error {
-	path := ChannelConfigPath(channelsDir, cfg.Platform)
+	path := ChannelConfigPath(channelsDir, cfg.ID)
 	var raw map[string]any
 	if err := ReadYAML(path, &raw); err != nil {
 		return err
@@ -116,7 +116,7 @@ func ValidateChannels(channels []channels.Config) []string {
 		if seenNames[c.Name] > 1 {
 			issues = append(issues, fmt.Sprintf("duplicate channel name %q", c.Name))
 		}
-		if c.Platform == "" {
+		if c.ID == "" {
 			issues = append(issues, prefix+": platform is empty")
 		}
 	}
@@ -135,7 +135,7 @@ func ValidateChannels(channels []channels.Config) []string {
 func ChannelSummaryLine(c channels.Config) string {
 	return fmt.Sprintf("%-16s %-12s %s",
 		c.Name,
-		c.Platform,
+		c.ID,
 		EnabledLabel(c.Enabled),
 	)
 }

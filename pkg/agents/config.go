@@ -119,7 +119,7 @@ func LoadConfig(configPath string) (*Config, error) {
 // LoadAllAgentsConfig loads every *.yaml under dir, sharing a single vault
 // instance across all of them. Returns the configs and the vault so the
 // caller owns its lifecycle.
-func LoadAllConfigs(dir string) ([]*Config, error) {
+func LoadAllConfigs(dir string) (map[string]*Config, error) {
 	if dir == "" {
 		dir = paths.AgentsDir()
 	}
@@ -130,7 +130,7 @@ func LoadAllConfigs(dir string) ([]*Config, error) {
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no agents found in %s", dir)
 	}
-	var configs []*Config
+	configs := make(map[string]*Config)
 	for _, f := range files {
 		if f.IsDir() || filepath.Ext(f.Name()) != ".yaml" {
 			continue
@@ -144,9 +144,8 @@ func LoadAllConfigs(dir string) ([]*Config, error) {
 		if err := cfg.Validate(); err != nil {
 			return nil, fmt.Errorf("config validation %s: %w", f.Name(), err)
 		}
-		if cfg.Enabled {
-			configs = append(configs, cfg)
-		}
+
+		configs[cfg.ID] = cfg
 	}
 	if len(configs) == 0 {
 		return nil, fmt.Errorf("no agents loaded. Make sure at least the executive and general  agents are enabled")

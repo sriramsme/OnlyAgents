@@ -52,7 +52,7 @@ var channelListCmd = &cobra.Command{
 		for i, c := range channels {
 			rows[i] = []string{
 				c.Name,
-				c.Platform,
+				c.ID,
 				cmdutil.EnabledLabel(c.Enabled),
 				cmdutil.Truncate(c.Description, 50),
 			}

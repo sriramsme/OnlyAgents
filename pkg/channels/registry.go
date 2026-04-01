@@ -32,7 +32,7 @@ func NewRegistry(
 			continue
 		}
 
-		factory, err := GetFactory(cfg.Platform)
+		factory, err := GetFactory(cfg.ID)
 		if err != nil {
 			return nil, fmt.Errorf("channel %s: %w", name, err)
 		}

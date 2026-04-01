@@ -23,18 +23,18 @@ var (
 )
 
 // Register registers a connector factory for a platform
-func Register(platform string, factory Factory) {
+func Register(id string, factory Factory) {
 	factoryMu.Lock()
 	defer factoryMu.Unlock()
 
 	if factory == nil {
-		panic("connectors: Register factory is nil for platform " + platform)
+		panic("connectors: Register factory is nil for platform with id " + id)
 	}
-	if _, exists := factories[platform]; exists {
-		panic("connectors: Register called twice for platform " + platform)
+	if _, exists := factories[id]; exists {
+		panic("connectors: Register called twice for platform with id " + id)
 	}
 
-	factories[platform] = factory
+	factories[id] = factory
 }
 
 // GetFactory returns the factory for a platform

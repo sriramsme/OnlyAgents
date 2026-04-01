@@ -31,7 +31,10 @@ func NewRegistry(
 	}
 
 	// Create all agents (but don't start them yet - let caller control that)
-	for _, cfg := range configs {
+	for id, cfg := range configs {
+		if !cfg.Enabled {
+			continue
+		}
 		llmClient, err := llm.New(cfg.LLM)
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: llm init: %w", cfg.ID, err)
@@ -40,10 +43,10 @@ func NewRegistry(
 		// Pass parent context to agent
 		agent, err := NewAgent(ctx, *cfg, llmClient, outbox, uiBus, cm, mm)
 		if err != nil {
-			return nil, fmt.Errorf("agent %s: init: %w", cfg.ID, err)
+			return nil, fmt.Errorf("agent %s: init: %w", id, err)
 		}
 
-		r.agents[cfg.ID] = agent
+		r.agents[id] = agent
 		if agent.IsExecutive() {
 			if r.executive != nil {
 				return nil, fmt.Errorf("multiple executive agents configured")
