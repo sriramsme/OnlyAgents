@@ -56,6 +56,9 @@ func (k *Kernel) route(evt core.Event) {
 	case core.SessionNew:
 		k.handleSessionNew(evt)
 
+	case core.SessionEnsure:
+		k.handleSessionEnsure(evt)
+
 	case core.SessionEnd:
 		k.handleSessionEnd(evt)
 

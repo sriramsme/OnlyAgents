@@ -126,9 +126,9 @@ func (c *TelegramChannel) resolveSessionID(chatID string) error {
 
 	replyCh := make(chan core.Event, 1)
 	c.eventBus <- core.Event{
-		Type:    core.SessionNew,
+		Type:    core.SessionEnsure,
 		ReplyTo: replyCh,
-		Payload: core.SessionNewPayload{
+		Payload: core.SessionEnsurePayload{
 			Channel: "telegram",
 			AgentID: c.config.DefaultAgent,
 			ChatID:  chatID,

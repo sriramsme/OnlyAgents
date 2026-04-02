@@ -59,6 +59,37 @@ func (k *Kernel) handleSessionNew(evt core.Event) {
 	}
 }
 
+func (k *Kernel) handleSessionEnsure(evt core.Event) {
+	p := evt.Payload.(core.SessionEnsurePayload)
+
+	// 1. Try existing session
+	conv, err := k.store.GetConversationByChannel(k.ctx, p.Channel, p.AgentID)
+	if err == nil && conv != nil {
+		if evt.ReplyTo != nil {
+			evt.ReplyTo <- core.Event{Payload: conv.ID}
+		}
+		return
+	}
+
+	// 2. Create new if none exists
+	sessionID, err := k.cm.NewSession(k.ctx, &core.SessionNewPayload{
+		Channel: p.Channel,
+		AgentID: p.AgentID,
+		ChatID:  p.ChatID,
+	})
+	if err != nil {
+		k.logger.Error("failed to create session", "err", err)
+		if evt.ReplyTo != nil {
+			evt.ReplyTo <- core.Event{Payload: ""}
+		}
+		return
+	}
+
+	if evt.ReplyTo != nil {
+		evt.ReplyTo <- core.Event{Payload: sessionID}
+	}
+}
+
 func (k *Kernel) handleSessionEnd(evt core.Event) {
 	payload, ok := evt.Payload.(core.SessionEndPayload)
 	if !ok {

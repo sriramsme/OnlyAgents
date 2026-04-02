@@ -82,6 +82,8 @@ const (
 	// Flow: Kernel → Agent
 	SessionGet EventType = "session_get"
 
+	SessionEnsure EventType = "session_ensure"
+
 	CronJobScheduled EventType = "cron_job_scheduled"
 	// =====================================
 	// Future: Agent-to-Agent Communication
@@ -224,6 +226,11 @@ type SessionGetPayload struct {
 
 // NewSessionPayload: Start a new conversation
 type SessionNewPayload struct {
+	Channel string `json:"channel"`
+	AgentID string `json:"agent_id"`
+	ChatID  string `json:"chat_id,omitempty"` // persist chat_id for 3rd party channels
+}
+type SessionEnsurePayload struct {
 	Channel string `json:"channel"`
 	AgentID string `json:"agent_id"`
 	ChatID  string `json:"chat_id,omitempty"` // persist chat_id for 3rd party channels
