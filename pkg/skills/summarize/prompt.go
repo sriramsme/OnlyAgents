@@ -29,24 +29,19 @@ func resolveLength(l tools.SummarizeLength) lengthTarget {
 
 func buildPrompt(content, sourceDesc string, length tools.SummarizeLength, language, focus string) string {
 	target := resolveLength(length)
-
 	var sb strings.Builder
-
 	sb.WriteString("You are a precise summarizer. Summarize the following content.\n\n")
-	fmt.Printf("Length: %s\n", target.label)
-
+	fmt.Fprintf(&sb, "Length: %s\n", target.label)
 	if language != "" && language != "auto" {
-		fmt.Printf("Output language: %s\n", language)
+		fmt.Fprintf(&sb, "Output language: %s\n", language)
 	} else {
 		sb.WriteString("Output language: match the source language\n")
 	}
-
 	if focus != "" {
-		fmt.Printf("Focus: %s\n", focus)
+		fmt.Fprintf(&sb, "Focus: %s\n", focus)
 	}
-
 	if sourceDesc != "" {
-		fmt.Printf("Source: %s\n", sourceDesc)
+		fmt.Fprintf(&sb, "Source: %s\n", sourceDesc)
 	}
 
 	sb.WriteString("\nRules:\n")

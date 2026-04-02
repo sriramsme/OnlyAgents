@@ -18,10 +18,11 @@ import (
 )
 
 const (
-	fetchTimeout   = 20 * time.Second
-	maxBodyBytes   = 4 << 20 // 4MB
-	maxTextChars   = 64000
-	archiveOrgBase = "https://web.archive.org/web/"
+	fetchTimeout    = 20 * time.Second
+	maxBodyBytes    = 4 << 20 // 4MB
+	maxTextChars    = 64000   // for files
+	maxWebTextChars = 20000   // for web
+	archiveOrgBase  = "https://web.archive.org/web/"
 )
 
 // FetchError carries structured failure info so callers can decide
@@ -66,7 +67,7 @@ func fetchURL(url string) (title, text string, err error) {
 		// Return original error — archive miss is not more informative.
 		return "", "", fmt.Errorf("%w (archive.org also unavailable)", err)
 	}
-	return title, text, nil
+	return title, truncate(text, maxWebTextChars), nil
 }
 
 // fetchURLDirect performs the actual HTTP fetch with no fallback.

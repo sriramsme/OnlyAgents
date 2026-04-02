@@ -94,7 +94,7 @@ func (e *EnvVault) ListSecrets(ctx context.Context, prefix string) ([]string, er
 			if len(parts) == 2 {
 				// Convert back to vault key format
 				envKey := parts[0]
-				vaultKey := e.fromEnvKey(envKey)
+				vaultKey := envKey
 
 				if prefix == "" || strings.HasPrefix(vaultKey, prefix) {
 					secrets = append(secrets, vaultKey)
@@ -135,18 +135,6 @@ func (e *EnvVault) toEnvKeyWithoutPrefix(key string) string {
 	envKey := strings.ReplaceAll(key, "/", "_")
 	envKey = strings.ReplaceAll(envKey, "-", "_")
 	return strings.ToUpper(envKey)
-}
-
-// fromEnvKey converts environment variable name back to vault key
-// "ONLYAGENTS_LLM_ANTHROPIC_API_KEY" -> "llm/anthropic/api_key"
-func (e *EnvVault) fromEnvKey(envKey string) string {
-	// Remove prefix
-	key := strings.TrimPrefix(envKey, e.prefix)
-	// Convert to lowercase
-	key = strings.ToLower(key)
-	// Replace underscores with slashes
-	key = strings.ReplaceAll(key, "_", "/")
-	return key
 }
 
 // LoadDotEnv loads environment variables from a .env file

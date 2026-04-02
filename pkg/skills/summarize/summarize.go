@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
@@ -14,8 +17,9 @@ import (
 
 const (
 	maxChunkChars         = 12000 // ~3000 tokens in practice, works across all models
-	intermediateMaxTokens = 250
+	intermediateMaxTokens = 800
 	mergeBatchSize        = 5
+	perCallTimeout        = 25 * time.Second
 )
 
 type SummarizeSkill struct {
@@ -274,21 +278,27 @@ func (s *SummarizeSkill) summarize(
 	language, focus string,
 ) (string, error) {
 	if len(content) <= maxChunkChars {
-		return s.callLLM(ctx, buildPrompt(content, sourceDesc, length, language, focus))
+		return s.callLLM(ctx, buildPrompt(content, sourceDesc, length, language, focus), s.llmOptions.MaxTokens)
 	}
 
 	chunks := chunkText(content, maxChunkChars)
-	partials := make([]string, 0, len(chunks))
+	partials := make([]string, len(chunks))
+	eg, egCtx := errgroup.WithContext(ctx)
 	for i, chunk := range chunks {
-		desc := fmt.Sprintf("%s (part %d/%d)", sourceDesc, i+1, len(chunks))
-		partial, err := s.callLLM(ctx,
-			buildPrompt(chunk, desc, tools.SummarizeLengthMedium, language, focus))
-		if err != nil {
-			return "", fmt.Errorf("summarize chunk %d: %w", i+1, err)
-		}
-		partials = append(partials, partial)
+		eg.Go(func() error {
+			desc := fmt.Sprintf("%s (part %d/%d)", sourceDesc, i+1, len(chunks))
+			partial, err := s.callLLM(egCtx,
+				buildPrompt(chunk, desc, tools.SummarizeLengthMedium, language, focus), intermediateMaxTokens)
+			if err != nil {
+				return fmt.Errorf("summarize chunk %d: %w", i+1, err)
+			}
+			partials[i] = partial
+			return nil
+		})
 	}
-
+	if err := eg.Wait(); err != nil {
+		return "", err
+	}
 	// Batched merge — iterate until one summary remains.
 	// Each pass reduces count by mergeBatchSize factor.
 	// Two passes handle documents of any realistic size.
@@ -304,7 +314,13 @@ func (s *SummarizeSkill) summarize(
 			if end == len(partials) && len(next) == 0 {
 				batchLength = length
 			}
-			merged, err := s.callLLM(ctx, mergePrompt(batch, batchLength, language, focus))
+
+			mergeTokens := intermediateMaxTokens
+			if end == len(partials) && len(next) == 0 {
+				batchLength = length
+				mergeTokens = s.llmOptions.MaxTokens
+			}
+			merged, err := s.callLLM(ctx, mergePrompt(batch, batchLength, language, focus), mergeTokens)
 			if err != nil {
 				return "", fmt.Errorf("merge batch %d: %w", i/mergeBatchSize+1, err)
 			}
@@ -316,17 +332,24 @@ func (s *SummarizeSkill) summarize(
 	return partials[0], nil
 }
 
-func (s *SummarizeSkill) callLLM(ctx context.Context, prompt string) (string, error) {
+func (s *SummarizeSkill) callLLM(ctx context.Context, prompt string, maxTokens int) (string, error) {
+	callCtx, cancel := context.WithTimeout(ctx, perCallTimeout)
+	defer cancel()
+
 	req := &llm.Request{
 		Messages: []llm.Message{
 			{Role: "user", Content: prompt},
 		},
+		MaxTokens: maxTokens,
 	}
-	if s.llmOptions.MaxTokens > 0 {
+
+	if maxTokens > 0 {
+		req.MaxTokens = maxTokens
+	} else if s.llmOptions.MaxTokens > 0 {
 		req.MaxTokens = s.llmOptions.MaxTokens
 	}
 
-	resp, err := s.llmClient.Chat(ctx, req)
+	resp, err := s.llmClient.Chat(callCtx, req)
 	if err != nil {
 		return "", fmt.Errorf("LLM call failed: %w", err)
 	}
