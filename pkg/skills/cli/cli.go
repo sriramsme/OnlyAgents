@@ -22,37 +22,27 @@ func init() {
 	skills.Register("cli", NewCLISkill)
 }
 
-// CLISkill represents a skill loaded from a SKILL.md file.
+// CLISkill executes structured commands defined in YAML skill files.
+// The LLM supplies parameter values only — the binary and arg templates
+// are always config-defined, never user-supplied.
 type CLISkill struct {
 	*skills.BaseSkill
 
 	ctx      context.Context
 	cancel   context.CancelFunc
-	commands map[string]*skills.ToolEntry // toolName → command
+	commands map[string]*skills.ToolEntry
 
 	executor *CLIExecutor
 }
 
-// ──────────────────────────────────────────────────────────────
-// Constructor
-// ──────────────────────────────────────────────────────────────
+// ── Constructor
 
-// NewCLISkill creates a CLISkill from a ParsedSkill definition.
-func NewCLISkill(ctx context.Context, cfg skills.Config, conn connectors.Connector,
-) (skills.Skill, error) {
-	// cli doesnt need a connector, check if its empty
+func NewCLISkill(ctx context.Context, cfg skills.Config, conn connectors.Connector) (skills.Skill, error) {
 	if conn != nil {
-		return nil, fmt.Errorf("cli skill: connector is not empty")
+		return nil, fmt.Errorf("cli skill does not accept a connector")
 	}
-	executor := NewCLIExecutor(ctx, &cfg.Executor, cfg.Security, cfg.Requires.Env)
 
-	toolDefs := make([]tools.ToolDef, 0, len(cfg.Tools))
-	commandMap := make(map[string]*skills.ToolEntry, len(cfg.Tools))
-
-	logger.Log.Info("initializing cli skill",
-		"skill", cfg.Name,
-		"tools", len(cfg.Tools),
-		"access_level", cfg.AccessLevel)
+	executor := NewCLIExecutor(&cfg.Executor, cfg.Security, cfg.Requires.Env)
 
 	missing, err := checkRequiredBins(cfg.Requires)
 	if err != nil {
@@ -63,27 +53,33 @@ func NewCLISkill(ctx context.Context, cfg skills.Config, conn connectors.Connect
 		case "disable":
 			return nil, fmt.Errorf("skill %s disabled: missing bins: %s", cfg.Name, strings.Join(missing, ", "))
 		case "warn":
-			logger.Log.Warn("skill missing required bins — tools may fail",
+			logger.Log.Warn("skill missing required bins — some tools may fail",
 				"skill", cfg.Name,
 				"missing", missing)
-			// continue loading
-		default: // "error" — default
+		default: // "error"
 			return nil, fmt.Errorf("skill %s: required bins not found: %s", cfg.Name, strings.Join(missing, ", "))
 		}
 	}
 
-	for i := range cfg.Tools {
-		t := &cfg.Tools[i] // pointer into slice — avoid copy
+	toolDefs := make([]tools.ToolDef, 0, len(cfg.Tools))
+	commandMap := make(map[string]*skills.ToolEntry, len(cfg.Tools))
 
+	for i := range cfg.Tools {
+		t := &cfg.Tools[i]
+
+		if t.Exec.Command == "" {
+			logger.Log.Warn("tool has no exec.command, skipping",
+				"skill", cfg.Name, "tool", t.Name)
+			continue
+		}
 		if t.Timeout == 0 {
 			t.Timeout = 30
 		}
 		if t.Access == "" {
 			t.Access = "read"
 		}
-
 		if !accessPermits(cfg.AccessLevel, t.Access) {
-			continue // tool exceeds skill access level — skip
+			continue
 		}
 
 		params := make([]string, len(t.Parameters))
@@ -101,17 +97,19 @@ func NewCLISkill(ctx context.Context, cfg skills.Config, conn connectors.Connect
 		commandMap[t.Name] = t
 	}
 
-	cliCtx, cancel := context.WithCancel(ctx)
-	logger.Log.Info("parsed cli skill",
+	logger.Log.Info("initialized cli skill",
 		"skill", cfg.Name,
 		"tools", len(toolDefs),
-		"commands", len(commandMap))
+		"access_level", cfg.AccessLevel)
 
-	groupDefs := make(map[tools.ToolGroup]string)
+	groupDefs := make(map[tools.ToolGroup]string, len(cfg.Groups))
 	for name, desc := range cfg.Groups {
 		groupDefs[tools.ToolGroup(name)] = desc
 	}
+
+	cliCtx, cancel := context.WithCancel(ctx)
 	base := skills.NewBaseSkillFromConfig(cfg, skills.SkillTypeCLI, toolDefs, groupDefs)
+
 	return &CLISkill{
 		BaseSkill: base,
 		commands:  commandMap,
@@ -121,54 +119,54 @@ func NewCLISkill(ctx context.Context, cfg skills.Config, conn connectors.Connect
 	}, nil
 }
 
-// ── Skill interface ───────────────────────────────────────────────────────────
+// ── Skill interface
 
-func (s *CLISkill) Initialize() error {
-	return nil
-}
+func (s *CLISkill) Initialize() error { return nil }
 
 func (s *CLISkill) Shutdown() error {
 	s.cancel()
 	return nil
 }
 
-// Execute runs the CLI command corresponding to toolName.
-func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) tools.ToolExecution {
+func (s *CLISkill) Execute(ctx context.Context, toolName string, rawArgs []byte) tools.ToolExecution {
 	var params map[string]any
-	if err := json.Unmarshal(args, &params); err != nil {
+	if err := json.Unmarshal(rawArgs, &params); err != nil {
 		return tools.ExecErr(fmt.Errorf("parse args: %w", err))
 	}
 
-	cmd, ok := s.commands[toolName]
+	entry, ok := s.commands[toolName]
 	if !ok {
 		return tools.ExecErr(fmt.Errorf("tool not found: %s", toolName))
 	}
 
-	command := buildCommand(cmd.Command, params)
-	if err := validateCommand(command, cmd.Validation); err != nil {
-		return tools.ExecErr(fmt.Errorf("command validation failed: %w", err))
+	// Binary is always from config — never from LLM input.
+	binary := entry.Exec.Command
+	args := buildArgs(entry.Exec.Args, params)
+
+	// StdinParam: some tools (e.g. fs_write via tee) pipe a param as stdin
+	// rather than passing it as an arg, avoiding shell quoting entirely.
+	stdin := ""
+	if entry.Exec.StdinParam != "" {
+		if v, ok := params[entry.Exec.StdinParam]; ok {
+			stdin = fmt.Sprintf("%v", v)
+		}
 	}
 
-	// Create a per-call output directory. CLI commands write files here via
-	// the OUTPUT_DIR env var. We scan it after execution to collect produced files.
 	callID := uuid.NewString()
 	outputDir := filepath.Join(s.executor.security.WorkingDir, "output", callID)
 	if err := os.MkdirAll(outputDir, 0o700); err != nil {
 		return tools.ExecErr(fmt.Errorf("create output dir: %w", err))
 	}
 
-	result, err := s.executor.Execute(ctx, command, cmd.Timeout, outputDir)
+	result, err := s.executor.Execute(ctx, binary, args, stdin, entry.Timeout, outputDir)
 	if err != nil {
-		return tools.ExecErr(fmt.Errorf("command execution failed: %w", err))
+		return tools.ExecErr(fmt.Errorf("execution failed: %w", err))
 	}
 
-	// Collect any files the command wrote to outputDir.
 	producedFiles, err := scanOutputDir(outputDir)
 	if err != nil {
-		// Non-fatal — command succeeded, we just couldn't collect files.
 		logger.Log.Warn("failed to scan output dir",
-			"output_dir", outputDir,
-			"err", err)
+			"output_dir", outputDir, "err", err)
 	}
 
 	return tools.ToolExecution{
@@ -182,7 +180,25 @@ func (s *CLISkill) Execute(ctx context.Context, toolName string, args []byte) to
 	}
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers
+
+// buildArgs interpolates {{param}} placeholders in arg templates.
+// No shell escaping is needed — args go directly to exec.Command, not a shell.
+func buildArgs(templates []string, params map[string]any) []string {
+	re := regexp.MustCompile(`\{\{(\w+)\}\}`)
+	out := make([]string, len(templates))
+	for i, tmpl := range templates {
+		out[i] = re.ReplaceAllStringFunc(tmpl, func(match string) string {
+			name := strings.Trim(match, "{}")
+			if val, ok := params[name]; ok {
+				return fmt.Sprintf("%v", val)
+			}
+			return match // leave unresolved placeholder as-is
+		})
+	}
+	return out
+}
+
 func checkRequiredBins(requires skills.Requirements) (missing []string, err error) {
 	for _, bin := range requires.Bins {
 		if _, err := exec.LookPath(bin.Name); err != nil {
@@ -197,25 +213,11 @@ func accessPermits(granted, required string) bool {
 	return levels[granted] >= levels[required]
 }
 
-// buildCommand replaces {{param}} placeholders with actual values.
-func buildCommand(template string, params map[string]any) string {
-	re := regexp.MustCompile(`\{\{(\w+)\}\}`)
-	return re.ReplaceAllStringFunc(template, func(match string) string {
-		name := strings.Trim(match, "{}")
-		if val, ok := params[name]; ok {
-			return fmt.Sprintf("%v", val) // TODO: proper shell escaping
-		}
-		return match
-	})
-}
-
-// scanOutputDir returns absolute paths of all files written to dir.
-// Subdirectories are ignored — commands should write flat files to OUTPUT_DIR.
 func scanOutputDir(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil // command didn't write anything, that's fine
+			return nil, nil
 		}
 		return nil, fmt.Errorf("read output dir: %w", err)
 	}
@@ -228,48 +230,6 @@ func scanOutputDir(dir string) ([]string, error) {
 		paths = append(paths, filepath.Join(dir, entry.Name()))
 	}
 	return paths, nil
-}
-
-// validateCommand checks against skill-defined rules and hardcoded dangerous patterns.
-func validateCommand(command string, rules *skills.Validation) error {
-	if rules != nil {
-		if len(rules.AllowedCommands) > 0 {
-			allowed := false
-			for _, a := range rules.AllowedCommands {
-				if strings.HasPrefix(command, a) {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return fmt.Errorf("command not in whitelist: %s", command)
-			}
-		}
-		for _, pattern := range rules.DeniedPatterns {
-			matched, err := regexp.MatchString(pattern, command)
-			if err != nil {
-				return fmt.Errorf("invalid denied pattern %q: %w", pattern, err)
-			}
-			if matched {
-				return fmt.Errorf("command matches denied pattern: %s", pattern)
-			}
-		}
-	}
-
-	for _, pattern := range []string{
-		`rm\s+-rf`,
-		`dd\s+if=`,
-		`mkfs`,
-		`:\(\)\{.*\}`,  // fork bomb
-		`curl.*\|.*sh`, // pipe to shell
-		`wget.*\|.*sh`,
-	} {
-		if matched, err := regexp.MatchString(pattern, command); err == nil && matched {
-			return fmt.Errorf("dangerous command pattern detected: %s", command)
-		}
-	}
-
-	return nil
 }
 
 func buildParamProps(defs []skills.ParamDef) map[string]tools.Property {

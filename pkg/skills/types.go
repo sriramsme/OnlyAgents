@@ -33,11 +33,11 @@ type Skill interface {
 	// Tools returns the function definitions this skill exposes to the LLM
 	Tools() []tools.ToolDef
 
-	// Groups returns name → description manifest. Empty map if has_groups: false.
+	// Groups returns name → description manifest.
 	Groups() map[tools.ToolGroup]string
 
 	// ToolsByGroup returns only tools belonging to the given groups.
-	// If groups is empty, returns all tools (respects has_groups: false skills).
+	// If groups is empty, returns all tools.
 	ToolsByGroup(groups []tools.ToolGroup) []tools.ToolDef
 
 	// Execute is called by kernel when LLM requests a tool call

@@ -25,10 +25,10 @@ type Memory struct {
 }
 
 type SecurityConfig struct {
-	ExecutionMode   string `mapstructure:"execution_mode"` // restricted | native
-	WorkingDir      string `mapstructure:"working_dir"`
-	AllowNetwork    bool   `mapstructure:"allow_network"`
-	AllowSystemBins bool   `mapstructure:"allow_system_bins"`
+	ExecutionMode   string `mapstructure:"execution_mode"`    // restricted | native
+	WorkingDir      string `mapstructure:"working_dir"`       // landlock root — all agent exec is jailed here
+	AllowNetwork    bool   `mapstructure:"allow_network"`     // maps to network namespace on Linux
+	AllowSystemBins bool   `mapstructure:"allow_system_bins"` // expands PATH beyond workdir/bin
 }
 
 type MarketplaceConfig struct {

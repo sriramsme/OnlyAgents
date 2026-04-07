@@ -353,7 +353,7 @@ var skillToolsCmd = &cobra.Command{
 			for _, c := range filtered {
 				fmt.Printf("  %s\n", cmdutil.StyleBold.Render(c.Name))
 				if commands {
-					fmt.Printf("    %s\n", cmdutil.StyleDim.Render("$ "+c.Command))
+					fmt.Printf("    %s\n", cmdutil.StyleDim.Render("$ "+c.Exec.Command))
 				}
 				if verbose {
 					for _, p := range c.Parameters {

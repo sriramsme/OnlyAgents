@@ -16,6 +16,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.22.0
 	github.com/jmoiron/sqlx v1.4.0
+	github.com/landlock-lsm/go-landlock v0.7.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/mymmrac/telego v1.6.0
 	github.com/openai/openai-go/v3 v3.24.0
@@ -136,7 +137,7 @@ require (
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/image v0.32.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/genproto v0.0.0-20250603155806-513f23925822 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250818200422-3122310a409c // indirect
@@ -144,6 +145,7 @@ require (
 	google.golang.org/grpc v1.74.2 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	kernel.org/pub/linux/libs/security/libcap/psx v1.2.77 // indirect
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect

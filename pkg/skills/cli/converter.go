@@ -78,7 +78,7 @@ func ParseSkillFile(sf *skills.Config) (*skills.Config, error) {
 		if t.Name == "" {
 			return nil, fmt.Errorf("skill %q: tool[%d] missing name", sf.Name, i)
 		}
-		if t.Command == "" {
+		if t.Exec.Command == "" {
 			return nil, fmt.Errorf("skill %q tool %q: missing command", sf.Name, t.Name)
 		}
 		if sf.Tools[i].Timeout == 0 {
@@ -110,7 +110,7 @@ func validateYAMLOutput(content string) (*skills.Config, error) {
 		if t.Name == "" {
 			return nil, fmt.Errorf("tool[%d]: missing name", i)
 		}
-		if t.Command == "" {
+		if t.Exec.Command == "" {
 			return nil, fmt.Errorf("tool %q: missing command", t.Name)
 		}
 	}
@@ -193,17 +193,17 @@ tools:
     group: <group_name>
     access: <read|write|admin>
     timeout: 30
-    command: <shell command with {{param}} placeholders>
+    exec:
+	  command: <binary>
+	  args: ["<arg1>", "<arg2>", "{{param}}"]
+	  stdin_param: <optional param name whose value is piped to stdin>
     parameters:
       - name: <param_name>
         type: <string|number|integer|boolean|array>
         description: <param description>
     validation:
-      allowed_commands:
-        - <base command>
-      denied_patterns:
-        - "rm -rf"
       max_output_size: 102400
+	  require_confirm: true
   - name: <next_tool_name>
     ...`
 
