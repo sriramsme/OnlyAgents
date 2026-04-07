@@ -2,7 +2,6 @@ name: make
 type: cli
 enabled: false
 access_level: write
-has_groups: true
 description: >
   Run and inspect Makefile targets — build, test, lint, and other project
   automation tasks defined in a project's Makefile.
@@ -31,19 +30,6 @@ groups:
   make_run: "Execute Makefile targets"
   make_passthrough: "Escape hatch — run any make invocation not covered by named tools"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# VALIDATION ANCHORS
-# ─────────────────────────────────────────────────────────────────────────────
-_validation_defaults:
-  read: &read
-    allowed_commands: [make]
-    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
-    max_output_size: 102400
-  write: &write
-    allowed_commands: [make]
-    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
-    max_output_size: 102400
-
 _params:
   working_dir: &working_dir
     name: working_dir
@@ -53,100 +39,154 @@ _params:
   makefile: &makefile
     name: makefile
     type: string
-    description: Path to a specific Makefile. Leave empty to use the default Makefile in working_dir.
+    description: Path to a specific Makefile.
     default: ""
   jobs: &jobs
     name: jobs
     type: integer
-    description: Number of parallel jobs. Leave at 1 for serial execution.
+    description: Number of parallel jobs.
     default: 1
 
 tools:
+
   # ── INSPECT ────────────────────────────────────────────────────────────────
 
   - name: make_list_targets
-    description: List all documented targets in the Makefile — targets that have a comment on the same or preceding line. Useful before deciding which target to run.
+    description: List documented targets in the Makefile.
     group: make_inspect
     access: read
     timeout: 10
-    command: "grep -E '^[a-zA-Z0-9_-]+:.*?##' {{#if makefile}}{{makefile}}{{else}}{{working_dir}}/Makefile{{/if}} | awk 'BEGIN {FS = \":.*?## \"} {printf \"%-20s %s\\n\", $1, $2}'"
+    exec:
+      command: sh
+      args:
+        [
+          "-c",
+          "grep -E '^[a-zA-Z0-9_-]+:.*?##' {{file}} | awk 'BEGIN {FS = \":.*?## \"} {printf \"%-20s %s\\n\", $1, $2}'"
+        ]
     parameters:
       - *working_dir
       - *makefile
-    validation: *read
+      - name: file
+        type: string
+        description: Path to Makefile (resolved externally)
 
   - name: make_dry_run
-    description: Print the commands a target would execute without running them. Use this before make_run on unfamiliar targets.
+    description: Print commands a target would execute.
     group: make_inspect
     access: read
     timeout: 15
-    command: "make -n {{target}} {{#if makefile}}-f {{makefile}}{{/if}} {{#if working_dir}}-C {{working_dir}}{{/if}}"
+    exec:
+      command: make
+      args: ["-n", "{{target}}", "{{makefile_flag}}", "{{makefile}}", "{{dir_flag}}", "{{working_dir}}"]
     parameters:
       - name: target
         type: string
-        description: Makefile target to preview.
       - *working_dir
       - *makefile
-    validation: *read
+      - name: makefile_flag
+        type: string
+        default: ""
+      - name: dir_flag
+        type: string
+        default: ""
 
   - name: make_print_variable
-    description: Print the expanded value of a Makefile variable without running any target.
+    description: Print value of a Makefile variable.
     group: make_inspect
     access: read
     timeout: 10
-    command: "make -p -f /dev/null {{#if makefile}}-f {{makefile}}{{else}}-f {{working_dir}}/Makefile{{/if}} 2>/dev/null | grep -E '^{{variable}} :?='"
+    exec:
+      command: sh
+      args:
+        [
+          "-c",
+          "make -p -f /dev/null {{file}} 2>/dev/null | grep -E '^{{variable}} :?='"
+        ]
     parameters:
       - *working_dir
       - *makefile
       - name: variable
         type: string
-        description: Variable name to print (e.g. GOFLAGS, VERSION, BIN_DIR).
-    validation: *read
+      - name: file
+        type: string
 
   # ── RUN ────────────────────────────────────────────────────────────────────
 
   - name: make_run
-    description: Execute one or more Makefile targets in sequence. Pass variables as KEY=VALUE pairs to override Makefile defaults.
+    description: Execute one or more Makefile targets.
     group: make_run
     access: write
     timeout: 300
-    command: "make {{#if makefile}}-f {{makefile}}{{/if}} {{#if working_dir}}-C {{working_dir}}{{/if}} -j{{jobs}} {{targets}} {{variables}}"
+    exec:
+      command: make
+      args:
+        [
+          "{{makefile_flag}}",
+          "{{makefile}}",
+          "{{dir_flag}}",
+          "{{working_dir}}",
+          "-j{{jobs}}",
+          "{{targets}}",
+          "{{variables}}"
+        ]
     parameters:
       - name: targets
         type: string
-        description: Space-separated list of targets to run in order (e.g. "clean build" or "test lint").
       - *working_dir
       - *makefile
       - *jobs
       - name: variables
         type: string
-        description: Space-separated KEY=VALUE overrides to pass to make (e.g. "ENV=prod VERSION=1.2.3"). Leave empty for none.
         default: ""
-    validation: *write
+      - name: makefile_flag
+        type: string
+        default: ""
+      - name: dir_flag
+        type: string
+        default: ""
 
   - name: make_run_default
-    description: Run the default target (the first target in the Makefile, typically 'all' or 'build').
+    description: Run default target.
     group: make_run
     access: write
     timeout: 300
-    command: "make {{#if makefile}}-f {{makefile}}{{/if}} {{#if working_dir}}-C {{working_dir}}{{/if}} -j{{jobs}}"
+    exec:
+      command: make
+      args:
+        [
+          "{{makefile_flag}}",
+          "{{makefile}}",
+          "{{dir_flag}}",
+          "{{working_dir}}",
+          "-j{{jobs}}"
+        ]
     parameters:
       - *working_dir
       - *makefile
       - *jobs
-    validation: *write
+      - name: makefile_flag
+        type: string
+        default: ""
+      - name: dir_flag
+        type: string
+        default: ""
 
   # ── PASSTHROUGH ────────────────────────────────────────────────────────────
 
   - name: make_passthrough
-    description: Run any make invocation not covered by named tools — for recursive make, custom include paths, or advanced flags.
+    description: Run arbitrary make invocation.
     group: make_passthrough
     access: write
     timeout: 300
-    command: "make {{args}} {{#if working_dir}}-C {{working_dir}}{{/if}}"
+    exec:
+      command: make
+      args: ["{{args}}", "{{dir_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
       - name: args
         type: string
-        description: Full argument string to pass directly to make (e.g. "-j4 VERBOSE=1 test").
-    validation: *write
+      - name: dir_flag
+        type: string
+        default: ""
+    validation:
+      require_confirm: true

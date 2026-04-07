@@ -2,7 +2,6 @@ name: npm
 type: cli
 enabled: false
 access_level: write
-has_groups: true
 description: >
   Node.js package management and script execution — install dependencies,
   run project scripts, audit for vulnerabilities, and publish packages.
@@ -30,16 +29,6 @@ groups:
   npm_audit: "Check for vulnerabilities and fix them"
   npm_passthrough: "Escape hatch — run any npm command not covered by named tools"
 
-_validation_defaults:
-  read: &read
-    allowed_commands: [npm]
-    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
-    max_output_size: 102400
-  write: &write
-    allowed_commands: [npm]
-    denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
-    max_output_size: 102400
-
 _params:
   working_dir: &working_dir
     name: working_dir
@@ -48,175 +37,208 @@ _params:
     default: ""
 
 tools:
+
   # ── PROJECT ────────────────────────────────────────────────────────────────
 
   - name: npm_init
-    description: Initialize a new Node.js project and create a package.json. Pass yes=true to accept all defaults without prompting.
+    description: Initialize a new Node.js project.
     group: npm_project
     access: write
     timeout: 15
-    command: "npm init {{#if yes}}--yes{{/if}} {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["init", "{{flags}}"]
     parameters:
       - *working_dir
-      - name: yes
-        type: boolean
-        description: Accept all defaults without interactive prompts.
-        default: true
-    validation: *write
+      - name: flags
+        type: string
+        description: e.g. "--yes --prefix ./app"
+        default: "--yes"
 
   - name: npm_list
-    description: List installed packages and their versions. Pass depth to control how deep the dependency tree is shown.
+    description: List installed packages and their versions.
     group: npm_project
     access: read
     timeout: 15
-    command: "npm list --depth={{depth}} {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["list", "--depth={{depth}}", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
       - name: depth
         type: integer
-        description: Depth of the dependency tree to display. 0 shows only direct dependencies.
         default: 0
-    validation: *read
+      - name: prefix_flag
+        type: string
+        description: Use "--prefix" when working_dir is set
+        default: ""
 
   - name: npm_info
-    description: Show metadata for a package from the npm registry — version, description, dependencies, and homepage.
+    description: Show metadata for a package from the npm registry.
     group: npm_project
     access: read
     timeout: 15
-    command: "npm info {{package}}"
+    exec:
+      command: npm
+      args: ["info", "{{package}}"]
     parameters:
       - name: package
         type: string
-        description: Package name to look up (e.g. react, lodash, express).
-    validation: *read
 
   # ── PACKAGES ───────────────────────────────────────────────────────────────
 
   - name: npm_install
-    description: Install all dependencies from package.json, or install specific packages. Pass dev=true to save to devDependencies.
+    description: Install dependencies or specific packages.
     group: npm_packages
     access: write
     timeout: 120
-    command: "npm install {{packages}} {{#if dev}}--save-dev{{/if}} {{#if exact}}--save-exact{{/if}} {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["install", "{{packages}}", "{{flags}}", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
       - name: packages
         type: string
-        description: Space-separated package names to install (e.g. "express zod"). Leave empty to install all dependencies from package.json.
         default: ""
-      - name: dev
-        type: boolean
-        description: Save as devDependencies.
-        default: false
-      - name: exact
-        type: boolean
-        description: Install exact versions rather than ranges.
-        default: false
-    validation: *write
+      - name: flags
+        type: string
+        description: "eg '--save-dev --save-exact'"
+        default: ""
+      - name: prefix_flag
+        type: string
+        description: "'--prefix' when working_dir is set"
+        default: ""
 
   - name: npm_uninstall
-    description: Remove one or more packages and update package.json.
+    description: Remove packages.
     group: npm_packages
     access: write
     timeout: 30
-    command: "npm uninstall {{packages}} {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["uninstall", "{{packages}}", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
       - name: packages
         type: string
-        description: Space-separated package names to remove.
-    validation: *write
+      - name: prefix_flag
+        type: string
+        default: ""
 
   - name: npm_update
-    description: Update packages to their latest versions within the ranges specified in package.json.
+    description: Update packages.
     group: npm_packages
     access: write
     timeout: 120
-    command: "npm update {{packages}} {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["update", "{{packages}}", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
       - name: packages
         type: string
-        description: Space-separated package names to update. Leave empty to update all packages.
         default: ""
-    validation: *write
+      - name: prefix_flag
+        type: string
+        default: ""
 
   - name: npm_outdated
-    description: List packages with newer versions available in the registry.
+    description: List outdated packages.
     group: npm_packages
     access: read
     timeout: 30
-    command: "npm outdated {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["outdated", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
-    validation: *read
+      - name: prefix_flag
+        type: string
+        default: ""
 
   # ── SCRIPTS ────────────────────────────────────────────────────────────────
 
   - name: npm_run
-    description: Execute a script defined in the scripts field of package.json.
+    description: Run a script from package.json.
     group: npm_scripts
     access: write
     timeout: 300
-    command: "npm run {{script}} {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["run", "{{script}}", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
       - name: script
         type: string
-        description: Script name to run (e.g. build, test, lint, dev).
-    validation: *write
+      - name: prefix_flag
+        type: string
+        default: ""
 
   - name: npm_run_list
-    description: List all scripts defined in package.json.
+    description: List all scripts.
     group: npm_scripts
     access: read
     timeout: 10
-    command: "npm run {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["run", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
-    validation: *read
+      - name: prefix_flag
+        type: string
+        default: ""
 
   # ── AUDIT ──────────────────────────────────────────────────────────────────
 
   - name: npm_audit
-    description: Check installed packages for known vulnerabilities. Returns a report with severity levels.
+    description: Check for vulnerabilities.
     group: npm_audit
     access: read
     timeout: 30
-    command: "npm audit {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["audit", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
-    validation: *read
+      - name: prefix_flag
+        type: string
+        default: ""
 
   - name: npm_audit_fix
-    description: Automatically fix vulnerabilities by upgrading affected packages where possible.
+    description: Fix vulnerabilities.
     group: npm_audit
     access: write
     timeout: 120
-    command: "npm audit fix {{#if force}}--force{{/if}} {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["audit", "fix", "{{flags}}", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
-      - name: force
-        type: boolean
-        description: Apply breaking upgrades to fix vulnerabilities that cannot be resolved within semver ranges. Use with caution.
-        default: false
-    validation: *write
+      - name: flags
+        type: string
+        description: e.g. "--force"
+        default: ""
+      - name: prefix_flag
+        type: string
+        default: ""
 
   # ── PASSTHROUGH ────────────────────────────────────────────────────────────
 
   - name: npm_passthrough
-    description: Run any npm command not covered by named tools — for publish, pack, link, or workspace commands.
+    description: Run arbitrary npm command.
     group: npm_passthrough
     access: write
     timeout: 300
-    command: "npm {{args}} {{#if working_dir}}--prefix {{working_dir}}{{/if}}"
+    exec:
+      command: npm
+      args: ["{{args}}", "{{prefix_flag}}", "{{working_dir}}"]
     parameters:
       - *working_dir
       - name: args
         type: string
-        description: Full argument string to pass directly to npm (e.g. "publish --access public" or "pack").
+      - name: prefix_flag
+        type: string
+        default: ""
     validation:
-      allowed_commands: [npm]
-      denied_patterns: ["$(", "`", "&&", "||", ";", ">", ">>"]
       max_output_size: 102400
       require_confirm: true

@@ -2,7 +2,6 @@ name: docker
 type: cli
 enabled: false
 access_level: admin
-has_groups: true
 description: >
   Docker container and image operations — inspecting running containers, managing
   images, building, running, and cleaning up. For Kubernetes orchestration use
@@ -37,509 +36,241 @@ groups:
   docker_resources: "List and inspect Docker networks and volumes"
   docker_prune: "Remove stopped containers, unused images, and volumes — destructive"
   docker_passthrough: "Escape hatch — run any docker subcommand not covered by named tools"
-# ─────────────────────────────────────────────────────────────────────────────
-# VALIDATION ANCHORS
-# ─────────────────────────────────────────────────────────────────────────────
-_validation_defaults:
-  read: &read
-    allowed_commands: [docker]
-    denied_patterns: ["rm -rf", "$(", "`", "&&", "||", ";", ">", ">>"]
-    max_output_size: 102400
-  write: &write
-    allowed_commands: [docker]
-    denied_patterns: ["rm -rf", "$(", "`", "&&", "||", ";", ">", ">>"]
-    max_output_size: 102400
-  destructive: &destructive
-    allowed_commands: [docker]
-    denied_patterns: ["rm -rf", "$(", "`", "&&", "||", ";", ">", ">>"]
-    max_output_size: 102400
-    require_confirm: true
-
-_params:
-  container: &container
-    name: container
-    type: string
-    description: Container name or ID.
-  image: &image
-    name: image
-    type: string
-    description: Image name with optional tag (e.g. nginx:latest).
-  working_dir: &working_dir
-    name: working_dir
-    type: string
-    description: Absolute path to directory containing docker-compose.yml. Leave empty for current working directory.
-    default: "."
 
 tools:
+
   # ── INSPECT ────────────────────────────────────────────────────────────────
 
   - name: docker_ps
-    description: List running containers. Pass all=true to include stopped containers.
+    description: List containers
     group: docker_inspect
     access: read
-    timeout: 10
-    command: "docker ps {{#if all}}--all{{/if}} --format 'table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}\t{{.Ports}}'"
-    parameters:
-      - name: all
-        type: boolean
-        description: Include stopped containers.
-        default: false
-    validation: *read
+    exec:
+      command: docker
+      args: ["ps", "--all"]
+    parameters: []
 
   - name: docker_images
-    description: List local images — name, tag, size, and age.
+    description: List local images
     group: docker_inspect
     access: read
-    timeout: 10
-    command: "docker images --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}\t{{.CreatedSince}}'"
+    exec:
+      command: docker
+      args: ["images"]
     parameters: []
-    validation: *read
 
   - name: docker_logs
-    description: Fetch logs from a container. Tail the last N lines; optionally follow.
+    description: Fetch logs from a container
     group: docker_inspect
     access: read
-    timeout: 30
-    command: "docker logs {{container}} --tail {{tail}} {{#if timestamps}}--timestamps{{/if}}"
+    exec:
+      command: docker
+      args: ["logs", "--tail", "{{tail}}", "{{container}}"]
     parameters:
-      - *container
+      - name: container
+        type: string
       - name: tail
         type: integer
-        description: Number of lines from the end to show.
         default: 100
-      - name: timestamps
-        type: boolean
-        description: Prefix each line with its timestamp.
-        default: false
-    validation: *read
 
   - name: docker_inspect
-    description: Return low-level JSON metadata for a container or image.
+    description: Inspect container or image
     group: docker_inspect
     access: read
-    timeout: 10
-    command: "docker inspect {{target}}"
+    exec:
+      command: docker
+      args: ["inspect", "{{target}}"]
     parameters:
       - name: target
         type: string
-        description: Container name, container ID, or image name to inspect.
-    validation: *read
-
-  - name: docker_stats
-    description: Display a one-shot resource usage snapshot for all running containers (CPU, memory, net I/O).
-    group: docker_inspect
-    access: read
-    timeout: 10
-    command: "docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}'"
-    parameters: []
-    validation: *read
-
-  - name: docker_top
-    description: Show processes running inside a container.
-    group: docker_inspect
-    access: read
-    timeout: 10
-    command: "docker top {{container}}"
-    parameters:
-      - *container
-    validation: *read
-
-  - name: docker_diff
-    description: Show filesystem changes made inside a container since it started.
-    group: docker_inspect
-    access: read
-    timeout: 10
-    command: "docker diff {{container}}"
-    parameters:
-      - *container
-    validation: *read
 
   # ── LIFECYCLE ──────────────────────────────────────────────────────────────
 
   - name: docker_start
-    description: Start one or more stopped containers.
+    description: Start container
     group: docker_lifecycle
     access: write
-    timeout: 30
-    command: "docker start {{container}}"
+    exec:
+      command: docker
+      args: ["start", "{{container}}"]
     parameters:
-      - *container
-    validation: *write
+      - name: container
+        type: string
 
   - name: docker_stop
-    description: Gracefully stop a running container. Sends SIGTERM then SIGKILL after timeout.
+    description: Stop container
     group: docker_lifecycle
     access: write
-    timeout: 30
-    command: "docker stop --time {{timeout_seconds}} {{container}}"
+    exec:
+      command: docker
+      args: ["stop", "{{container}}"]
     parameters:
-      - *container
-      - name: timeout_seconds
-        type: integer
-        description: Seconds to wait before sending SIGKILL.
-        default: 10
-    validation: *write
+      - name: container
+        type: string
 
   - name: docker_restart
-    description: Restart a container.
+    description: Restart container
     group: docker_lifecycle
     access: write
-    timeout: 30
-    command: "docker restart {{container}}"
+    exec:
+      command: docker
+      args: ["restart", "{{container}}"]
     parameters:
-      - *container
-    validation: *write
+      - name: container
+        type: string
 
   - name: docker_rm
-    description: Remove a stopped container. Pass force=true to kill and remove a running container.
+    description: Remove container
     group: docker_lifecycle
-    access: write
-    timeout: 15
-    command: "docker rm {{#if force}}--force{{/if}} {{container}}"
+    access: admin
+    exec:
+      command: docker
+      args: ["rm", "{{container}}"]
     parameters:
-      - *container
-      - name: force
-        type: boolean
-        description: Force removal of a running container.
-        default: false
-    validation: *destructive
+      - name: container
+        type: string
+    validation:
+      require_confirm: true
 
   - name: docker_run
-    description: Create and start a new container from an image.
+    description: Run container from image
     group: docker_lifecycle
     access: write
-    timeout: 60
-    command: "docker run --name {{name}} {{#if detach}}-d{{/if}} {{#if remove}}--rm{{/if}} {{#if ports}}-p {{ports}}{{/if}} {{#if env_vars}}-e {{env_vars}}{{/if}} {{#if volumes}}-v {{volumes}}{{/if}} {{image}} {{command}}"
+    exec:
+      command: docker
+      args: ["run", "-d", "--name", "{{name}}", "{{image}}"]
     parameters:
-      - *image
+      - name: image
+        type: string
       - name: name
         type: string
-        description: Assign a name to the container. Leave empty for a generated name.
-        default: ""
-      - name: detach
-        type: boolean
-        description: Run container in the background.
-        default: true
-      - name: remove
-        type: boolean
-        description: Automatically remove the container when it exits.
-        default: false
-      - name: ports
-        type: string
-        description: Port mapping in host:container format (e.g. 8080:80). Separate multiple with spaces.
-        default: ""
-      - name: env_vars
-        type: string
-        description: Environment variables in KEY=VALUE format. Separate multiple with spaces.
-        default: ""
-      - name: volumes
-        type: string
-        description: Volume mount in host_path:container_path format. Separate multiple with spaces.
-        default: ""
-      - name: command
-        type: string
-        description: Command to run inside the container. Leave empty to use the image default.
-        default: ""
-    validation: *write
 
-  # ── IMAGES ──────────────────────────────────────────────────────────────────
+  # ── IMAGES ─────────────────────────────────────────────────────────────────
 
   - name: docker_build
-    description: Build an image from a Dockerfile in the given context directory.
+    description: Build image
     group: docker_images
     access: write
-    timeout: 300
-    command: "docker build --tag {{tag}} {{#if dockerfile}}--file {{dockerfile}}{{/if}} {{#if no_cache}}--no-cache{{/if}} {{context}}"
+    exec:
+      command: docker
+      args: ["build", "-t", "{{tag}}", "{{context}}"]
     parameters:
       - name: tag
         type: string
-        description: Name and optional tag for the image (e.g. myapp:latest).
       - name: context
         type: string
-        description: Path to the build context directory.
         default: "."
-      - name: dockerfile
-        type: string
-        description: Path to the Dockerfile. Leave empty to use Dockerfile in the context directory.
-        default: ""
-      - name: no_cache
-        type: boolean
-        description: Do not use the layer cache when building.
-        default: false
-    validation: *write
-
-  - name: docker_tag
-    description: Create an additional tag pointing to an existing image.
-    group: docker_images
-    access: write
-    timeout: 10
-    command: "docker tag {{source}} {{target}}"
-    parameters:
-      - name: source
-        type: string
-        description: Existing image name or ID to tag.
-      - name: target
-        type: string
-        description: New tag to apply (e.g. myrepo/myapp:v2).
-    validation: *write
-
-  - name: docker_rmi
-    description: Remove one or more local images by name or ID.
-    group: docker_images
-    access: write
-    timeout: 15
-    command: "docker rmi {{#if force}}--force{{/if}} {{image}}"
-    parameters:
-      - *image
-      - name: force
-        type: boolean
-        description: Force removal even if the image is referenced by stopped containers.
-        default: false
-    validation: *destructive
 
   - name: docker_pull
-    description: Pull an image from a registry.
+    description: Pull image
     group: docker_images
     access: write
-    timeout: 120
-    command: "docker pull {{image}}"
+    exec:
+      command: docker
+      args: ["pull", "{{image}}"]
     parameters:
-      - *image
-    validation: *write
+      - name: image
+        type: string
 
   - name: docker_push
-    description: Push a tagged image to a registry.
+    description: Push image
     group: docker_images
     access: write
-    timeout: 120
-    command: "docker push {{image}}"
+    exec:
+      command: docker
+      args: ["push", "{{image}}"]
     parameters:
-      - *image
-    validation: *write
+      - name: image
+        type: string
+
+  - name: docker_rmi
+    description: Remove image
+    group: docker_images
+    access: admin
+    exec:
+      command: docker
+      args: ["rmi", "{{image}}"]
+    parameters:
+      - name: image
+        type: string
+    validation:
+      require_confirm: true
 
   # ── COMPOSE ────────────────────────────────────────────────────────────────
 
   - name: docker_compose_up
-    description: Create and start services defined in a compose file.
+    description: Start services with docker compose
     group: docker_compose
     access: write
-    timeout: 120
-    command: "docker compose {{#if compose_file}}-f {{compose_file}}{{/if}} -p {{project}} up {{#if detach}}-d{{/if}} {{#if build}}--build{{/if}} {{service}}"
-    parameters:
-      - *working_dir
-      - name: compose_file
-        type: string
-        description: Path to the compose file. Leave empty for docker-compose.yml in working_dir.
-        default: ""
-      - name: project
-        type: string
-        description: Project name override. Leave empty to use the directory name.
-        default: ""
-      - name: service
-        type: string
-        description: Specific service to start. Leave empty for all services.
-        default: ""
-      - name: detach
-        type: boolean
-        description: Run in the background.
-        default: true
-      - name: build
-        type: boolean
-        description: Rebuild images before starting.
-        default: false
-    validation: *write
+    exec:
+      command: docker
+      args: ["compose", "up", "-d"]
+    parameters: []
 
   - name: docker_compose_down
-    description: Stop and remove containers, networks created by compose up.
+    description: Stop compose services
     group: docker_compose
-    access: write
-    timeout: 60
-    command: "docker compose {{#if compose_file}}-f {{compose_file}}{{/if}} down {{#if volumes}}--volumes{{/if}} {{#if remove_images}}--rmi all{{/if}}"
-    parameters:
-      - *working_dir
-      - name: compose_file
-        type: string
-        description: Path to the compose file.
-        default: ""
-      - name: volumes
-        type: boolean
-        description: Also remove named volumes declared in the compose file.
-        default: false
-      - name: remove_images
-        type: boolean
-        description: Also remove images used by services.
-        default: false
-    validation: *destructive
+    access: admin
+    exec:
+      command: docker
+      args: ["compose", "down"]
+    parameters: []
+    validation:
+      require_confirm: true
 
-  - name: docker_compose_ps
-    description: List containers managed by a compose project and their current state.
-    group: docker_compose
-    access: read
-    timeout: 10
-    command: "docker compose {{#if compose_file}}-f {{compose_file}}{{/if}} ps"
-    parameters:
-      - *working_dir
-      - name: compose_file
-        type: string
-        description: Path to the compose file.
-        default: ""
-    validation: *read
-
-  - name: docker_compose_logs
-    description: Fetch logs from compose services.
-    group: docker_compose
-    access: read
-    timeout: 30
-    command: "docker compose {{#if compose_file}}-f {{compose_file}}{{/if}} logs --tail {{tail}} {{#if timestamps}}--timestamps{{/if}} {{service}}"
-    parameters:
-      - *working_dir
-      - name: compose_file
-        type: string
-        description: Path to the compose file.
-        default: ""
-      - name: service
-        type: string
-        description: Specific service to fetch logs from. Leave empty for all services.
-        default: ""
-      - name: tail
-        type: integer
-        description: Number of lines from the end to show per service.
-        default: 100
-      - name: timestamps
-        type: boolean
-        description: Prefix each line with its timestamp.
-        default: false
-    validation: *read
-
-  - name: docker_compose_restart
-    description: Restart one or all services in a compose project.
-    group: docker_compose
-    access: write
-    timeout: 60
-    command: "docker compose {{#if compose_file}}-f {{compose_file}}{{/if}} restart {{service}}"
-    parameters:
-      - *working_dir
-      - name: compose_file
-        type: string
-        description: Path to the compose file.
-        default: ""
-      - name: service
-        type: string
-        description: Service to restart. Leave empty to restart all services.
-        default: ""
-    validation: *write
+  # ── RESOURCES ──────────────────────────────────────────────────────────────
 
   - name: docker_network_ls
-    description: List all Docker networks.
-    group: docker_resources # was docker_network
+    description: List networks
+    group: docker_resources
     access: read
-    timeout: 10
-    command: "docker network ls --format 'table {{.ID}}\t{{.Name}}\t{{.Driver}}\t{{.Scope}}'"
+    exec:
+      command: docker
+      args: ["network", "ls"]
     parameters: []
-    validation: *read
-
-  - name: docker_network_inspect
-    description: Return detailed JSON metadata for a Docker network, including connected containers.
-    group: docker_resources # was docker_network
-    access: read
-    timeout: 10
-    command: "docker network inspect {{network}}"
-    parameters:
-      - name: network
-        type: string
-        description: Network name or ID.
-    validation: *read
 
   - name: docker_volume_ls
-    description: List all Docker volumes.
-    group: docker_resources # was docker_volume
+    description: List volumes
+    group: docker_resources
     access: read
-    timeout: 10
-    command: "docker volume ls --format 'table {{.Name}}\t{{.Driver}}\t{{.Mountpoint}}'"
+    exec:
+      command: docker
+      args: ["volume", "ls"]
     parameters: []
-    validation: *read
-
-  - name: docker_volume_inspect
-    description: Return detailed metadata for a Docker volume including its mount point.
-    group: docker_resources # was docker_volume
-    access: read
-    timeout: 10
-    command: "docker volume inspect {{volume}}"
-    parameters:
-      - name: volume
-        type: string
-        description: Volume name to inspect.
-    validation: *read
 
   # ── PRUNE ──────────────────────────────────────────────────────────────────
 
   - name: docker_system_df
-    description: Show disk usage by images, containers, and volumes — safe read-only overview before pruning.
+    description: Show disk usage
     group: docker_prune
     access: read
-    timeout: 10
-    command: "docker system df"
+    exec:
+      command: docker
+      args: ["system", "df"]
     parameters: []
-    validation: *read
-
-  - name: docker_container_prune
-    description: Remove all stopped containers.
-    group: docker_prune
-    access: write
-    timeout: 30
-    command: "docker container prune --force"
-    parameters: []
-    validation: *destructive
-
-  - name: docker_image_prune
-    description: Remove dangling (untagged) images. Pass all=true to also remove images with no running container.
-    group: docker_prune
-    access: write
-    timeout: 30
-    command: "docker image prune --force {{#if all}}--all{{/if}}"
-    parameters:
-      - name: all
-        type: boolean
-        description: Remove all unused images, not just dangling ones.
-        default: false
-    validation: *destructive
-
-  - name: docker_volume_prune
-    description: Remove all volumes not referenced by any container.
-    group: docker_prune
-    access: write
-    timeout: 30
-    command: "docker volume prune --force"
-    parameters: []
-    validation: *destructive
 
   - name: docker_system_prune
-    description: Remove all stopped containers, dangling images, unused networks, and optionally volumes. Nuclear option — use docker_system_df first.
+    description: Remove unused resources
     group: docker_prune
-    access: write
-    timeout: 60
-    command: "docker system prune --force {{#if volumes}}--volumes{{/if}}"
-    parameters:
-      - name: volumes
-        type: boolean
-        description: Also remove unused volumes. Irreversible.
-        default: false
-    validation: *destructive
+    access: admin
+    exec:
+      command: docker
+      args: ["system", "prune", "-f"]
+    parameters: []
+    validation:
+      require_confirm: true
 
   # ── PASSTHROUGH ────────────────────────────────────────────────────────────
 
   - name: docker_passthrough
-    description: Run any docker subcommand not covered by the named tools. Use as a last resort when no specific tool fits.
+    description: Run arbitrary docker command
     group: docker_passthrough
     access: admin
-    timeout: 60
-    command: "docker {{args}}"
+    exec:
+      command: docker
+      args: ["{{args}}"]
     parameters:
       - name: args
         type: string
-        description: Full argument string to pass directly to docker (e.g. "system events --filter type=container").
     validation:
-      allowed_commands: [docker]
-      denied_patterns: ["rm -rf", "$(", "`", "&&", "||", ";", ">", ">>"]
-      max_output_size: 102400
       require_confirm: true
