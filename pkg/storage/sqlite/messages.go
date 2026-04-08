@@ -6,8 +6,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
 func (d *DB) SaveMessage(ctx context.Context, msg *message.Message) error {
@@ -70,8 +70,8 @@ func (d *DB) GetMessagesBetween(
 		  AND m.timestamp < ?
 	`
 	args := []any{
-		storage.DBTime{Time: from},
-		storage.DBTime{Time: to},
+		dbtypes.DBTime{Time: from},
+		dbtypes.DBTime{Time: to},
 	}
 
 	// Optional role filter
@@ -96,7 +96,7 @@ func (d *DB) GetMessagesBetween(
 }
 
 func (d *DB) DeleteOldMessages(ctx context.Context, olderThan time.Time) error {
-	val := storage.DBTime{Time: olderThan}
+	val := dbtypes.DBTime{Time: olderThan}
 	_, err := d.db.ExecContext(ctx, `DELETE FROM messages WHERE timestamp < ?`, val)
 	return wrap(err, "delete old messages")
 }

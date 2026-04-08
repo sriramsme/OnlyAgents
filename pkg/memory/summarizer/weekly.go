@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
@@ -43,8 +44,8 @@ func (s *Summarizer) SummarizeWeek(ctx context.Context, weekEnd time.Time) error
 
 	if err := s.store.SaveWeeklySummary(ctx, &storage.WeeklySummary{
 		ID:           uuid.NewString(),
-		WeekStart:    storage.DBTime{Time: weekStart.UTC()},
-		WeekEnd:      storage.DBTime{Time: weekEnd.UTC()},
+		WeekStart:    dbtypes.DBTime{Time: weekStart.UTC()},
+		WeekEnd:      dbtypes.DBTime{Time: weekEnd.UTC()},
 		Summary:      resp.Summary,
 		Themes:       resp.Themes,
 		Achievements: resp.Achievements,

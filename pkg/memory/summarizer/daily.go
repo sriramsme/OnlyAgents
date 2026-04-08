@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
@@ -84,7 +85,7 @@ func (s *Summarizer) SummarizeDay(ctx context.Context, date time.Time) error {
 	}
 
 	// Convert LLM topic entries to storage type.
-	topics := make(storage.JSONSlice[storage.TopicEntry], len(resp.Topics))
+	topics := make(dbtypes.JSONSlice[storage.TopicEntry], len(resp.Topics))
 	for i, t := range resp.Topics {
 		topics[i] = storage.TopicEntry{
 			Topic:        t.Topic,
@@ -97,7 +98,7 @@ func (s *Summarizer) SummarizeDay(ctx context.Context, date time.Time) error {
 
 	if err := s.store.SaveDailySummary(ctx, &storage.DailySummary{
 		ID:              uuid.NewString(),
-		Date:            storage.DBTime{Time: from},
+		Date:            dbtypes.DBTime{Time: from},
 		Summary:         resp.Summary,
 		KeyEvents:       resp.KeyEvents,
 		Topics:          topics,

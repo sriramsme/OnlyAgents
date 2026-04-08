@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
 // canonicalEntityTypes is the authoritative set of entity_type values.
@@ -59,9 +59,9 @@ func dayBounds(date time.Time, loc *time.Location) (from, to time.Time) {
 
 // uniqueConvIDs returns the deduplicated conversation IDs from msgs, preserving
 // first-seen order.
-func uniqueConvIDs(msgs []*message.Message) storage.JSONSlice[string] {
+func uniqueConvIDs(msgs []*message.Message) dbtypes.JSONSlice[string] {
 	seen := make(map[string]bool)
-	var ids storage.JSONSlice[string]
+	var ids dbtypes.JSONSlice[string]
 	for _, m := range msgs {
 		if !seen[m.ConversationID] {
 			seen[m.ConversationID] = true

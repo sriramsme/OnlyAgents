@@ -62,13 +62,3 @@ type Fact struct {
 	FirstSeen            DBTime  `db:"first_seen" json:"first_seen"`
 	LastConfirmed        DBTime  `db:"last_confirmed" json:"last_confirmed"`
 }
-
-// AgentState holds persistent per-agent runtime state.
-type AgentState struct {
-	AgentID               string            `db:"agent_id" json:"agent_id"`
-	CurrentConversationID string            `db:"current_conversation_id" json:"current_conversation_id,omitempty"`
-	Context               JSONMap           `db:"context" json:"context,omitempty"`
-	Preferences           JSONMap           `db:"preferences" json:"preferences,omitempty"`
-	Goals                 JSONSlice[string] `db:"goals" json:"goals,omitempty"`
-	LastActive            DBTime            `db:"last_active" json:"last_active"`
-}

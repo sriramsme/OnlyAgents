@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	calendarPkg "github.com/sriramsme/OnlyAgents/pkg/productivity/calendar"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -139,8 +139,8 @@ func (s *CalendarSkill) createEvents(ctx context.Context, args []byte) (any, err
 		event := &calendarPkg.CalendarEvent{
 			Title:       item.Title,
 			Description: item.Description,
-			StartTime:   storage.DBTime{Time: start},
-			EndTime:     storage.DBTime{Time: end},
+			StartTime:   dbtypes.DBTime{Time: start},
+			EndTime:     dbtypes.DBTime{Time: end},
 			AllDay:      item.AllDay,
 			Location:    item.Location,
 			Recurrence:  item.Recurrence,
@@ -192,14 +192,14 @@ func (s *CalendarSkill) updateEvent(ctx context.Context, args []byte) (any, erro
 		if err != nil {
 			return nil, fmt.Errorf("calendar: invalid start_time: %w", err)
 		}
-		event.StartTime = storage.DBTime{Time: t}
+		event.StartTime = dbtypes.DBTime{Time: t}
 	}
 	if input.EndTime != "" {
 		t, err := tools.ParseEventTime(input.EndTime)
 		if err != nil {
 			return nil, fmt.Errorf("calendar: invalid end_time: %w", err)
 		}
-		event.EndTime = storage.DBTime{Time: t}
+		event.EndTime = dbtypes.DBTime{Time: t}
 	}
 	return s.conn.UpdateEvent(ctx, event)
 }

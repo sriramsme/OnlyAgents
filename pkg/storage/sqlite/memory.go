@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
@@ -35,7 +36,7 @@ func (d *DB) GetDailySummary(ctx context.Context, date time.Time) (*storage.Dail
 	err := d.db.GetContext(ctx, &s, `
 		SELECT * FROM daily_summaries
 		WHERE date >= ? AND date < ?
-	`, storage.DBTime{Time: start}, storage.DBTime{Time: end})
+	`, dbtypes.DBTime{Time: start}, dbtypes.DBTime{Time: end})
 	if err != nil {
 		return nil, wrap(err, "get daily summary")
 	}
@@ -49,7 +50,7 @@ func (d *DB) GetDailySummaries(ctx context.Context, from, to time.Time) ([]*stor
 		SELECT * FROM daily_summaries
 		WHERE date >= ? AND date < ?
 		ORDER BY date ASC
-	`, storage.DBTime{Time: from}, storage.DBTime{Time: to})
+	`, dbtypes.DBTime{Time: from}, dbtypes.DBTime{Time: to})
 
 	return summaries, wrap(err, "get daily summaries")
 }
@@ -75,7 +76,7 @@ func (d *DB) GetWeeklySummaries(ctx context.Context, from, to time.Time) ([]*sto
 		SELECT * FROM weekly_summaries
 		WHERE week_start >= ? AND week_start <= ?
 		ORDER BY week_start ASC
-	`, storage.DBTime{Time: from}, storage.DBTime{Time: to})
+	`, dbtypes.DBTime{Time: from}, dbtypes.DBTime{Time: to})
 	return summaries, wrap(err, "get weekly summaries")
 }
 
@@ -191,31 +192,4 @@ func (d *DB) GetActiveFactsByEntity(ctx context.Context, entity string) ([]*stor
 		ORDER BY last_confirmed DESC
 	`, entity)
 	return facts, wrap(err, "get active facts by entity")
-}
-
-// ── AgentStateStore ───────────────────────────────────────────────────────────
-
-func (d *DB) GetAgentState(ctx context.Context, agentID string) (*storage.AgentState, error) {
-	var state storage.AgentState
-	err := d.db.GetContext(ctx, &state, `SELECT * FROM agent_state WHERE agent_id = ?`, agentID)
-	if err != nil {
-		return nil, wrap(err, "get agent state")
-	}
-	return &state, nil
-}
-
-func (d *DB) SaveAgentState(ctx context.Context, state *storage.AgentState) error {
-	_, err := d.db.NamedExecContext(ctx, `
-		INSERT INTO agent_state
-			(agent_id, current_conversation_id, context, preferences, goals, last_active)
-		VALUES
-			(:agent_id, :current_conversation_id, :context, :preferences, :goals, :last_active)
-		ON CONFLICT(agent_id) DO UPDATE SET
-			current_conversation_id = excluded.current_conversation_id,
-			context                 = excluded.context,
-			preferences             = excluded.preferences,
-			goals                   = excluded.goals,
-			last_active             = excluded.last_active
-	`, state)
-	return wrap(err, "save agent state")
 }

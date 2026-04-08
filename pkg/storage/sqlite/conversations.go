@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/conversation"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 )
 
 // ── ConversationStore ─────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ func (d *DB) GetConversationsBetween(ctx context.Context, from, to time.Time) ([
 		WHERE started_at < ?
 		  AND (ended_at IS NULL OR ended_at >= ?)
 		ORDER BY started_at ASC
-	`, storage.DBTime{Time: to}, storage.DBTime{Time: from})
+	`, dbtypes.DBTime{Time: to}, dbtypes.DBTime{Time: from})
 
 	return convs, wrap(err, "get conversations by day")
 }
@@ -104,7 +104,7 @@ func (d *DB) ListConversationsByChannel(ctx context.Context, channel string, lim
 }
 
 func (d *DB) EndConversation(ctx context.Context, id string, summary string) error {
-	now := storage.DBTime{Time: time.Now()}
+	now := dbtypes.DBTime{Time: time.Now()}
 	_, err := d.db.ExecContext(ctx, `
 		UPDATE conversations SET ended_at = ?, summary = ? WHERE id = ?
 	`, now, summary, id)

@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/productivity/task"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
 type TasksConnector struct {
@@ -58,7 +58,7 @@ func (c *TasksConnector) CreateProject(ctx context.Context, project *task.Projec
 	if project.Name == "" {
 		return nil, fmt.Errorf("tasks: project name is required")
 	}
-	now := storage.DBTime{Time: time.Now()}
+	now := dbtypes.DBTime{Time: time.Now()}
 	project.ID = uuid.NewString()
 	if project.Color == "" {
 		project.Color = "#6366f1"
@@ -99,7 +99,7 @@ func (c *TasksConnector) createTask(ctx context.Context, task *task.Task) (*task
 			return nil, fmt.Errorf("tasks: project %q not found", task.ProjectID)
 		}
 	}
-	now := storage.DBTime{Time: time.Now()}
+	now := dbtypes.DBTime{Time: time.Now()}
 	task.ID = uuid.NewString()
 	if task.Status == "" {
 		task.Status = "todo"

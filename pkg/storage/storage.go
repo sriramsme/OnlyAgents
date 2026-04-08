@@ -25,7 +25,6 @@ type Storage interface {
 	scheduler.Store
 	MemoryStore
 	FactStore
-	AgentStateStore
 	Close() error
 }
 
@@ -53,9 +52,4 @@ type FactStore interface {
 	// for conflict detection and reinforcement in saveFacts.
 	GetFactByKey(ctx context.Context, entity, fact string) (*Fact, error)
 	GetActiveFactsByEntity(ctx context.Context, entity string) ([]*Fact, error)
-}
-
-type AgentStateStore interface {
-	GetAgentState(ctx context.Context, agentID string) (*AgentState, error)
-	SaveAgentState(ctx context.Context, state *AgentState) error
 }
