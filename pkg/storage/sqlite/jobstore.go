@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 )
 
-func (d *DB) GetCronJob(ctx context.Context, id string) (*storage.CronJob, error) {
-	var job storage.CronJob
+func (d *DB) GetCronJob(ctx context.Context, id string) (*scheduler.CronJob, error) {
+	var job scheduler.CronJob
 	err := d.db.GetContext(ctx, &job, `SELECT * FROM cron_jobs WHERE id = ?`, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -20,15 +20,15 @@ func (d *DB) GetCronJob(ctx context.Context, id string) (*storage.CronJob, error
 	return &job, nil
 }
 
-func (d *DB) ListCronJobs(ctx context.Context) ([]*storage.CronJob, error) {
-	var jobs []*storage.CronJob
+func (d *DB) ListCronJobs(ctx context.Context) ([]*scheduler.CronJob, error) {
+	var jobs []*scheduler.CronJob
 	err := d.db.SelectContext(ctx, &jobs, `
 		SELECT * FROM cron_jobs ORDER BY created_at ASC
 	`)
 	return jobs, wrap(err, "list cron jobs")
 }
 
-func (d *DB) SaveCronJob(ctx context.Context, job *storage.CronJob) error {
+func (d *DB) SaveCronJob(ctx context.Context, job *scheduler.CronJob) error {
 	_, err := d.db.NamedExecContext(ctx, `
 		INSERT INTO cron_jobs
 			(id, name, description, schedule, enabled, event_type,

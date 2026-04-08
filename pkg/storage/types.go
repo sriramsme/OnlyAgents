@@ -72,18 +72,3 @@ type AgentState struct {
 	Goals                 JSONSlice[string] `db:"goals" json:"goals,omitempty"`
 	LastActive            DBTime            `db:"last_active" json:"last_active"`
 }
-
-type CronJob struct {
-	ID           string  `db:"id" json:"id"`
-	Name         string  `db:"name" json:"name"`
-	Description  string  `db:"description" json:"description,omitempty"`
-	Schedule     string  `db:"schedule" json:"schedule"`
-	Enabled      bool    `db:"enabled" json:"enabled,omitempty"`
-	EventType    string  `db:"event_type" json:"event_type"`
-	EventPayload string  `db:"event_payload" json:"event_payload,omitempty"`
-	LastRun      *DBTime `db:"last_run" json:"last_run,omitempty"` // pointer — nil means never ran
-	LastStatus   string  `db:"last_status" json:"last_status,omitempty"`
-	LastError    string  `db:"last_error" json:"last_error,omitempty"`
-	CreatedAt    DBTime  `db:"created_at" json:"created_at"`
-	UpdatedAt    DBTime  `db:"updated_at" json:"updated_at"`
-}

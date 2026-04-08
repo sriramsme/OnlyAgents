@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
@@ -33,15 +33,15 @@ func TestScheduler_EndToEnd(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	job := &storage.CronJob{
+	job := &scheduler.CronJob{
 		ID:           uuid.NewString(),
 		Name:         "daily newspaper",
 		Schedule:     "@every 1s",
 		Enabled:      true,
 		EventType:    string(core.AgentExecute),
 		EventPayload: string(eventJSON),
-		CreatedAt:    storage.DBTime{Time: time.Now()},
-		UpdatedAt:    storage.DBTime{Time: time.Now()},
+		CreatedAt:    dbtypes.DBTime{Time: time.Now()},
+		UpdatedAt:    dbtypes.DBTime{Time: time.Now()},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -108,7 +108,7 @@ func TestScheduler_WorkflowFire(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	job := &storage.CronJob{
+	job := &scheduler.CronJob{
 		ID:           uuid.NewString(),
 		Name:         "weekly report workflow",
 		Schedule:     "@every 1s",

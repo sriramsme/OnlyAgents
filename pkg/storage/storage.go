@@ -10,6 +10,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/productivity/notes"
 	"github.com/sriramsme/OnlyAgents/pkg/productivity/reminder"
 	"github.com/sriramsme/OnlyAgents/pkg/productivity/task"
+	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
@@ -21,10 +22,10 @@ type Storage interface {
 	calendar.Store
 	notes.Store
 	workflow.Store
+	scheduler.Store
 	MemoryStore
 	FactStore
 	AgentStateStore
-	CronJobStore
 	Close() error
 }
 
@@ -57,14 +58,4 @@ type FactStore interface {
 type AgentStateStore interface {
 	GetAgentState(ctx context.Context, agentID string) (*AgentState, error)
 	SaveAgentState(ctx context.Context, state *AgentState) error
-}
-
-// JobRunStore tracks the last successful execution of each scheduled background job.
-// Used by the memory scheduler for catch-up on startup. Reusable for any cron job.
-type CronJobStore interface {
-	GetCronJob(ctx context.Context, id string) (*CronJob, error)
-	SaveCronJob(ctx context.Context, job *CronJob) error
-	DeleteCronJob(ctx context.Context, id string) error
-	ListCronJobs(ctx context.Context) ([]*CronJob, error)
-	UpdateCronJobRun(ctx context.Context, id, status, lastError string) error
 }

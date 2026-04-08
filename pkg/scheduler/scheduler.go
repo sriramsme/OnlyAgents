@@ -12,7 +12,6 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
 // Scheduler is the single cron runtime for the whole system.
@@ -80,7 +79,7 @@ func (s *Scheduler) Stop() error {
 	return nil
 }
 
-func (s *Scheduler) RegisterDynamic(job *storage.CronJob) {
+func (s *Scheduler) RegisterDynamic(job *CronJob) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -95,7 +94,7 @@ func (s *Scheduler) RegisterDynamic(job *storage.CronJob) {
 	}
 }
 
-func (s *Scheduler) onFire(job *storage.CronJob) {
+func (s *Scheduler) onFire(job *CronJob) {
 	var evt core.Event
 	if err := json.Unmarshal([]byte(job.EventPayload), &evt); err != nil {
 		logger.Log.Error("scheduler: failed to deserialize event", "job", job.Name, "err", err)

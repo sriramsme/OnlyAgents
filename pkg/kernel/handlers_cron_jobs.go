@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
+	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 )
 
 func (k *Kernel) handleCronJobScheduled(evt core.Event) {
@@ -29,15 +30,15 @@ func (k *Kernel) handleCronJobScheduled(evt core.Event) {
 	if !strings.HasPrefix(schedule, "TZ=") && k.user.Identity.Timezone != "" {
 		schedule = fmt.Sprintf("TZ=%s %s", k.user.Identity.Timezone, schedule)
 	}
-	job := &storage.CronJob{
+	job := &scheduler.CronJob{
 		ID:           payload.ID,
 		Name:         payload.Name,
 		Schedule:     schedule,
 		Enabled:      true,
 		EventType:    string(payload.Event.Type),
 		EventPayload: string(eventJSON),
-		CreatedAt:    storage.DBTime{Time: time.Now()},
-		UpdatedAt:    storage.DBTime{Time: time.Now()},
+		CreatedAt:    dbtypes.DBTime{Time: time.Now()},
+		UpdatedAt:    dbtypes.DBTime{Time: time.Now()},
 	}
 
 	if err := k.store.SaveCronJob(k.ctx, job); err != nil {
