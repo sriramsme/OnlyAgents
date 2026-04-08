@@ -7,16 +7,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
+	calPkg "github.com/sriramsme/OnlyAgents/pkg/productivity/calendar"
 )
 
 type CalendarConnector struct {
-	store storage.CalendarStore
+	store calPkg.Store
 	name  string
 	id    string
 }
 
-func NewCalendarConnector(store storage.CalendarStore) connectors.CalendarConnector {
+func NewCalendarConnector(store calPkg.Store) connectors.CalendarConnector {
 	return &CalendarConnector{
 		store: store,
 		name:  "Local Calendar",
@@ -54,7 +55,7 @@ func (g *CalendarConnector) HealthCheck() error {
 }
 
 // createOne is internal — used by CreateEvents.
-func (c *CalendarConnector) createOne(ctx context.Context, event storage.CalendarEvent) (*storage.CalendarEvent, error) {
+func (c *CalendarConnector) createOne(ctx context.Context, event calPkg.CalendarEvent) (*calPkg.CalendarEvent, error) {
 	if event.Title == "" {
 		return nil, fmt.Errorf("calendar: title is required")
 	}
@@ -62,7 +63,7 @@ func (c *CalendarConnector) createOne(ctx context.Context, event storage.Calenda
 		return nil, fmt.Errorf("calendar: end_time must be after start_time")
 	}
 
-	now := storage.DBTime{Time: time.Now()}
+	now := dbtypes.DBTime{Time: time.Now()}
 	event.ID = uuid.NewString()
 	event.CreatedAt = now
 	event.UpdatedAt = now
@@ -75,8 +76,8 @@ func (c *CalendarConnector) createOne(ctx context.Context, event storage.Calenda
 
 // CreateEvents is the public batch method.
 // Returns all created events and a slice of errors for failures.
-func (c *CalendarConnector) CreateEvents(ctx context.Context, events []*storage.CalendarEvent) ([]*storage.CalendarEvent, []error) {
-	results := make([]*storage.CalendarEvent, 0, len(events))
+func (c *CalendarConnector) CreateEvents(ctx context.Context, events []*calPkg.CalendarEvent) ([]*calPkg.CalendarEvent, []error) {
+	results := make([]*calPkg.CalendarEvent, 0, len(events))
 	var errs []error
 
 	for _, e := range events {
@@ -91,11 +92,11 @@ func (c *CalendarConnector) CreateEvents(ctx context.Context, events []*storage.
 	return results, errs
 }
 
-func (c *CalendarConnector) GetEvent(ctx context.Context, id string) (*storage.CalendarEvent, error) {
+func (c *CalendarConnector) GetEvent(ctx context.Context, id string) (*calPkg.CalendarEvent, error) {
 	return c.store.GetEvent(ctx, id)
 }
 
-func (c *CalendarConnector) UpdateEvent(ctx context.Context, event *storage.CalendarEvent) (*storage.CalendarEvent, error) {
+func (c *CalendarConnector) UpdateEvent(ctx context.Context, event *calPkg.CalendarEvent) (*calPkg.CalendarEvent, error) {
 	if err := c.store.UpdateEvent(ctx, event); err != nil {
 		return nil, err
 	}
@@ -106,11 +107,11 @@ func (c *CalendarConnector) DeleteEvent(ctx context.Context, id string) error {
 	return c.store.DeleteEvent(ctx, id)
 }
 
-func (c *CalendarConnector) ListEvents(ctx context.Context, from, to time.Time) ([]*storage.CalendarEvent, error) {
+func (c *CalendarConnector) ListEvents(ctx context.Context, from, to time.Time) ([]*calPkg.CalendarEvent, error) {
 	return c.store.ListEvents(ctx, from, to)
 }
 
-func (c *CalendarConnector) GetUpcoming(ctx context.Context, limit int) ([]*storage.CalendarEvent, error) {
+func (c *CalendarConnector) GetUpcoming(ctx context.Context, limit int) ([]*calPkg.CalendarEvent, error) {
 	return c.store.GetUpcomingEvents(ctx, limit)
 }
 

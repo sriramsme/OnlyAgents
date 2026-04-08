@@ -8,11 +8,11 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/reminder"
 )
 
 type reminderNotifierJob struct {
-	store storage.Storage
+	store reminder.Store
 	bus   chan<- core.Event
 }
 
@@ -46,7 +46,7 @@ func (j *reminderNotifierJob) Run(ctx context.Context) error {
 	return nil
 }
 
-func formatReminderAlert(r *storage.Reminder) string {
+func formatReminderAlert(r *reminder.Reminder) string {
 	var sb strings.Builder
 
 	sb.WriteString("⏰ **")

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	remPkg "github.com/sriramsme/OnlyAgents/pkg/productivity/reminder"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
@@ -110,7 +111,7 @@ func (s *RemindersSkill) createReminders(ctx context.Context, args []byte) (any,
 		return nil, fmt.Errorf("reminders: at least one reminder is required")
 	}
 
-	reminders := make([]*storage.Reminder, 0, len(input.Reminders))
+	reminders := make([]*remPkg.Reminder, 0, len(input.Reminders))
 
 	for _, item := range input.Reminders {
 		dueAt, err := time.Parse(time.RFC3339, item.DueAt)
@@ -118,7 +119,7 @@ func (s *RemindersSkill) createReminders(ctx context.Context, args []byte) (any,
 			return nil, fmt.Errorf("reminders: invalid due_at for %q: %w", item.Title, err)
 		}
 
-		reminder := &storage.Reminder{
+		reminder := &remPkg.Reminder{
 			Title:     item.Title,
 			Body:      item.Body,
 			DueAt:     storage.DBTime{Time: dueAt},

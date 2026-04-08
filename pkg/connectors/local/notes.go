@@ -7,16 +7,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
+	notesPkg "github.com/sriramsme/OnlyAgents/pkg/productivity/notes"
 )
 
 type NotesConnector struct {
-	store storage.NoteStore
+	store notesPkg.Store
 	name  string
 	id    string
 }
 
-func NewNotesConnector(store storage.NoteStore) connectors.NotesConnector {
+func NewNotesConnector(store notesPkg.Store) connectors.NotesConnector {
 	return &NotesConnector{
 		store: store,
 		name:  "Local Notes",
@@ -54,12 +55,12 @@ func (g *NotesConnector) HealthCheck() error {
 }
 
 // createOne is internal — used by CreateNotes.
-func (n *NotesConnector) createOne(ctx context.Context, note storage.Note) (*storage.Note, error) {
+func (n *NotesConnector) createOne(ctx context.Context, note notesPkg.Note) (*notesPkg.Note, error) {
 	if note.Title == "" {
 		return nil, fmt.Errorf("notes: title is required")
 	}
 
-	now := storage.DBTime{Time: time.Now()}
+	now := dbtypes.DBTime{Time: time.Now()}
 	note.ID = uuid.NewString()
 	note.CreatedAt = now
 	note.UpdatedAt = now
@@ -73,8 +74,8 @@ func (n *NotesConnector) createOne(ctx context.Context, note storage.Note) (*sto
 
 // CreateNotes is the public batch method.
 // Returns all created notes and a slice of errors for failures.
-func (n *NotesConnector) CreateNotes(ctx context.Context, notes []*storage.Note) ([]*storage.Note, []error) {
-	results := make([]*storage.Note, 0, len(notes))
+func (n *NotesConnector) CreateNotes(ctx context.Context, notes []*notesPkg.Note) ([]*notesPkg.Note, []error) {
+	results := make([]*notesPkg.Note, 0, len(notes))
 	var errs []error
 
 	for _, note := range notes {
@@ -89,11 +90,11 @@ func (n *NotesConnector) CreateNotes(ctx context.Context, notes []*storage.Note)
 	return results, errs
 }
 
-func (n *NotesConnector) GetNote(ctx context.Context, id string) (*storage.Note, error) {
+func (n *NotesConnector) GetNote(ctx context.Context, id string) (*notesPkg.Note, error) {
 	return n.store.GetNote(ctx, id)
 }
 
-func (n *NotesConnector) UpdateNote(ctx context.Context, note *storage.Note) (*storage.Note, error) {
+func (n *NotesConnector) UpdateNote(ctx context.Context, note *notesPkg.Note) (*notesPkg.Note, error) {
 	if err := n.store.UpdateNote(ctx, note); err != nil {
 		return nil, err
 	}
@@ -104,11 +105,11 @@ func (n *NotesConnector) DeleteNote(ctx context.Context, id string) error {
 	return n.store.DeleteNote(ctx, id)
 }
 
-func (n *NotesConnector) ListNotes(ctx context.Context) ([]*storage.Note, error) {
+func (n *NotesConnector) ListNotes(ctx context.Context) ([]*notesPkg.Note, error) {
 	return n.store.ListNotes(ctx)
 }
 
-func (n *NotesConnector) SearchNotes(ctx context.Context, query string) ([]*storage.Note, error) {
+func (n *NotesConnector) SearchNotes(ctx context.Context, query string) ([]*notesPkg.Note, error) {
 	if query == "" {
 		return n.store.ListNotes(ctx)
 	}

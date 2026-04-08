@@ -7,16 +7,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
+	remPkg "github.com/sriramsme/OnlyAgents/pkg/productivity/reminder"
 )
 
 type RemindersConnector struct {
-	store storage.ReminderStore
+	store remPkg.Store
 	name  string
 	id    string
 }
 
-func NewRemindersConnector(store storage.ReminderStore) connectors.RemindersConnector {
+func NewRemindersConnector(store remPkg.Store) connectors.RemindersConnector {
 	return &RemindersConnector{
 		store: store,
 		name:  "Local Reminders",
@@ -54,7 +55,7 @@ func (g *RemindersConnector) HealthCheck() error {
 }
 
 // createOne is internal — used by CreateReminders.
-func (r *RemindersConnector) createOne(ctx context.Context, rem storage.Reminder) (*storage.Reminder, error) {
+func (r *RemindersConnector) createOne(ctx context.Context, rem remPkg.Reminder) (*remPkg.Reminder, error) {
 	if rem.Title == "" {
 		return nil, fmt.Errorf("reminders: title is required")
 	}
@@ -62,7 +63,7 @@ func (r *RemindersConnector) createOne(ctx context.Context, rem storage.Reminder
 		return nil, fmt.Errorf("reminders: due_at must be in the future")
 	}
 
-	now := storage.DBTime{Time: time.Now()}
+	now := dbtypes.DBTime{Time: time.Now()}
 	rem.ID = uuid.NewString()
 	rem.CreatedAt = now
 
@@ -75,8 +76,8 @@ func (r *RemindersConnector) createOne(ctx context.Context, rem storage.Reminder
 
 // CreateReminders is the public batch method.
 // Returns all created reminders and a slice of errors for failures.
-func (r *RemindersConnector) CreateReminders(ctx context.Context, reminders []*storage.Reminder) ([]*storage.Reminder, []error) {
-	results := make([]*storage.Reminder, 0, len(reminders))
+func (r *RemindersConnector) CreateReminders(ctx context.Context, reminders []*remPkg.Reminder) ([]*remPkg.Reminder, []error) {
+	results := make([]*remPkg.Reminder, 0, len(reminders))
 	var errs []error
 
 	for _, rem := range reminders {
@@ -91,11 +92,11 @@ func (r *RemindersConnector) CreateReminders(ctx context.Context, reminders []*s
 	return results, errs
 }
 
-func (r *RemindersConnector) GetReminder(ctx context.Context, id string) (*storage.Reminder, error) {
+func (r *RemindersConnector) GetReminder(ctx context.Context, id string) (*remPkg.Reminder, error) {
 	return r.store.GetReminder(ctx, id)
 }
 
-func (r *RemindersConnector) UpdateReminder(ctx context.Context, rem *storage.Reminder) (*storage.Reminder, error) {
+func (r *RemindersConnector) UpdateReminder(ctx context.Context, rem *remPkg.Reminder) (*remPkg.Reminder, error) {
 	if err := r.store.UpdateReminder(ctx, rem); err != nil {
 		return nil, err
 	}
@@ -106,6 +107,6 @@ func (r *RemindersConnector) DeleteReminder(ctx context.Context, id string) erro
 	return r.store.DeleteReminder(ctx, id)
 }
 
-func (r *RemindersConnector) ListReminders(ctx context.Context) ([]*storage.Reminder, error) {
+func (r *RemindersConnector) ListReminders(ctx context.Context) ([]*remPkg.Reminder, error) {
 	return r.store.ListReminders(ctx)
 }

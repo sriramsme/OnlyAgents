@@ -10,6 +10,8 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/reminder"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/task"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
@@ -43,7 +45,7 @@ func (j *dailyDigestJob) Run(ctx context.Context) error {
 		return fmt.Errorf("digest: reminders: %w", err)
 	}
 
-	var tomorrowReminders []*storage.Reminder
+	var tomorrowReminders []*reminder.Reminder
 	for _, r := range reminders {
 		if !r.DueAt.Before(tomorrowStart) {
 			tomorrowReminders = append(tomorrowReminders, r)
@@ -68,7 +70,7 @@ func (j *dailyDigestJob) Run(ctx context.Context) error {
 
 // formatDigest builds the digest message string.
 // Returns "" if there is nothing to report.
-func formatDigest(date time.Time, tasks []*storage.Task, reminders []*storage.Reminder) string {
+func formatDigest(date time.Time, tasks []*task.Task, reminders []*reminder.Reminder) string {
 	if len(tasks) == 0 && len(reminders) == 0 {
 		return ""
 	}

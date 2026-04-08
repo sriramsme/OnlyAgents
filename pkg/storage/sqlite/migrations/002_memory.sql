@@ -1,93 +1,93 @@
--- Hierarchical memory compression tables.
--- system-wide context, not scoped to individual agents.
-
-CREATE TABLE IF NOT EXISTS daily_summaries (
-    id               TEXT PRIMARY KEY,
-    date             TEXT NOT NULL,              -- UTC start-of-local-day, full ISO timestamp via DBTime
-    summary          TEXT NOT NULL DEFAULT '',
-    key_events       TEXT NOT NULL DEFAULT '[]', -- JSONSlice[string]
-    topics           TEXT NOT NULL DEFAULT '[]', -- JSONSlice[string]
-    conversation_ids TEXT NOT NULL DEFAULT '[]', -- JSONSlice[string]
-    UNIQUE (date)
-);
-
-CREATE TABLE IF NOT EXISTS weekly_summaries (
+CREATE TABLE episodes (
     id           TEXT PRIMARY KEY,
-    week_start   TEXT NOT NULL,                  -- UTC, full ISO timestamp via DBTime
-    week_end     TEXT NOT NULL,                  -- UTC, full ISO timestamp via DBTime
-    summary      TEXT NOT NULL DEFAULT '',
-    themes       TEXT NOT NULL DEFAULT '[]',     -- JSONSlice[string]
-    achievements TEXT NOT NULL DEFAULT '[]',     -- JSONSlice[string]
-    UNIQUE (week_start)
+    scope        TEXT NOT NULL CHECK (scope IN ('session','daily','weekly','monthly','yearly')),
+    summary      TEXT NOT NULL,
+    embedding    BLOB,                  -- float32 vector, NULL if no embedder configured
+    importance   REAL NOT NULL DEFAULT 0.5,
+    started_at   DATETIME NOT NULL,
+    ended_at     DATETIME NOT NULL,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS monthly_summaries (
-    id         TEXT PRIMARY KEY,
-    year       INTEGER NOT NULL,
-    month      INTEGER NOT NULL,
-    summary    TEXT NOT NULL DEFAULT '',
-    highlights TEXT NOT NULL DEFAULT '[]',       -- JSONSlice[string]
-    statistics TEXT NOT NULL DEFAULT '{}',       -- JSONMap
-    UNIQUE (year, month)
-);
-
-CREATE TABLE IF NOT EXISTS yearly_archives (
-    id           TEXT PRIMARY KEY,
-    year         INTEGER NOT NULL,
-    summary      TEXT NOT NULL DEFAULT '',
-    major_events TEXT NOT NULL DEFAULT '[]',     -- JSONSlice[string]
-    statistics   TEXT NOT NULL DEFAULT '{}',     -- JSONMap
-    UNIQUE (year)
-);
-
--- Facts: persistent entity knowledge extracted during summarisation.
--- superseded_by: ID of the newer fact that replaced this one, or '' if still active.
--- source_conversation_id: conversation from which this fact was extracted, or ''.
-CREATE TABLE IF NOT EXISTS facts (
-    id                   TEXT    PRIMARY KEY,
-    entity               TEXT    NOT NULL,
-    entity_type          TEXT    NOT NULL DEFAULT 'other',
-    fact                 TEXT    NOT NULL,
-    confidence           REAL    NOT NULL DEFAULT 1.0,
-    times_seen           INTEGER NOT NULL DEFAULT 1,      -- incremented on each re-confirmation
-    source_conversation_id TEXT  NOT NULL DEFAULT '',
-    source_summary_date  TEXT    NOT NULL DEFAULT '',     -- YYYY-MM-DD
-    superseded_by        TEXT    NOT NULL DEFAULT '',
-    first_seen           TEXT    NOT NULL,
-    last_confirmed       TEXT    NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_facts_entity            ON facts (entity);
-CREATE INDEX IF NOT EXISTS idx_facts_entity_type       ON facts (entity_type);
-CREATE INDEX IF NOT EXISTS idx_facts_last_confirmed    ON facts (last_confirmed);
-
-CREATE TRIGGER IF NOT EXISTS facts_ai AFTER INSERT ON facts BEGIN
-    INSERT INTO facts_fts (rowid, fact, entity)
-    VALUES (new.rowid, new.fact, new.entity);
-END;
-
--- FTS5 index for SearchFacts over active facts only.
--- Triggers keep it in sync automatically.
-CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5 (
-    fact,
-    entity,
-    content=facts,
+-- FTS over summaries for fallback search when no embedder
+CREATE VIRTUAL TABLE episodes_fts USING fts5(
+    summary,
+    content=episodes,
     content_rowid=rowid
 );
 
-CREATE TRIGGER IF NOT EXISTS facts_ad AFTER DELETE ON facts BEGIN
-    INSERT INTO facts_fts (facts_fts, rowid, fact, entity)
-    VALUES ('delete', old.rowid, old.fact, old.entity);
-END;
+CREATE INDEX idx_episodes_scope_time ON episodes(scope, started_at, ended_at);
+CREATE INDEX idx_episodes_importance ON episodes(importance);
 
-CREATE TRIGGER IF NOT EXISTS facts_au AFTER UPDATE ON facts BEGIN
-    INSERT INTO facts_fts (facts_fts, rowid, fact, entity)
-    VALUES ('delete', old.rowid, old.fact, old.entity);
-    INSERT INTO facts_fts (rowid, fact, entity)
-    VALUES (new.rowid, new.fact, new.entity);
-END;
 
-CREATE INDEX IF NOT EXISTS idx_daily_date          ON daily_summaries (date);
-CREATE INDEX IF NOT EXISTS idx_weekly_start        ON weekly_summaries (week_start);
-CREATE INDEX IF NOT EXISTS idx_monthly_year_month  ON monthly_summaries (year, month);
-CREATE INDEX IF NOT EXISTS idx_yearly_year         ON yearly_archives (year);
+-- NEXUS
+
+CREATE TABLE entities (
+    id             TEXT PRIMARY KEY,
+    canonical_name TEXT NOT NULL,
+    type           TEXT NOT NULL CHECK (type IN ('person','project','tool','concept','decision','preference')),
+    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE entity_aliases (
+    entity_id        TEXT NOT NULL REFERENCES entities(id),
+    alias            TEXT NOT NULL,
+    source_episode_id TEXT REFERENCES episodes(id),
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (entity_id, alias)
+);
+
+-- FTS for deduplication candidate lookup
+CREATE VIRTUAL TABLE entity_aliases_fts USING fts5(
+    alias,
+    content=entity_aliases
+);
+
+CREATE TABLE relations (
+    id               TEXT PRIMARY KEY,
+    subject_id       TEXT NOT NULL REFERENCES entities(id),
+    predicate        TEXT NOT NULL,   -- e.g. "works_on", "decided", "prefers", "avoids"
+    object_id        TEXT REFERENCES entities(id),    -- NULL if object is a literal
+    object_literal   TEXT,            -- used when object is not an entity (e.g. "postgres")
+    confidence       REAL NOT NULL DEFAULT 1.0,
+    valid_from       DATETIME NOT NULL,
+    valid_until      DATETIME,        -- NULL = currently true
+    source_episode_id TEXT REFERENCES episodes(id),
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CHECK (object_id IS NOT NULL OR object_literal IS NOT NULL)
+);
+
+CREATE INDEX idx_relations_subject    ON relations(subject_id, valid_until);
+CREATE INDEX idx_relations_object     ON relations(object_id, valid_until);
+CREATE INDEX idx_relations_predicate  ON relations(predicate, valid_until);
+
+
+-- EPISODE <-> ENTITY JOIN
+
+CREATE TABLE episode_entities (
+    episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+    entity_id  TEXT NOT NULL REFERENCES entities(id),
+    PRIMARY KEY (episode_id, entity_id)
+);
+
+
+-- PRAXIS (procedural/behavioral patterns)
+
+CREATE TABLE patterns (
+    id                TEXT PRIMARY KEY,
+    description       TEXT NOT NULL,
+    embedding         BLOB,           -- float32 vector for semantic match
+    confidence        REAL NOT NULL DEFAULT 0.5,
+    observation_count INTEGER NOT NULL DEFAULT 1,
+    first_observed_at DATETIME NOT NULL,
+    last_observed_at  DATETIME NOT NULL,
+    last_decayed_at   DATETIME,
+    created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE VIRTUAL TABLE patterns_fts USING fts5(
+    description,
+    content=patterns,
+    content_rowid=rowid
+);

@@ -7,20 +7,24 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/pkg/conversation"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/calendar"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/notes"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/reminder"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/task"
 )
 
 type Storage interface {
 	conversation.Store
 	message.Store
+	task.Store
+	reminder.Store
+	calendar.Store
+	notes.Store
 	MemoryStore
 	FactStore
 	AgentStateStore
-	CalendarStore
-	NoteStore
-	ReminderStore
 	WorkflowStore
 	CronJobStore
-	TaskStore
 	Close() error
 }
 
@@ -55,34 +59,6 @@ type AgentStateStore interface {
 	SaveAgentState(ctx context.Context, state *AgentState) error
 }
 
-type CalendarStore interface {
-	CreateEvent(ctx context.Context, event *CalendarEvent) error
-	GetEvent(ctx context.Context, id string) (*CalendarEvent, error)
-	UpdateEvent(ctx context.Context, event *CalendarEvent) error
-	DeleteEvent(ctx context.Context, id string) error
-	ListEvents(ctx context.Context, from, to time.Time) ([]*CalendarEvent, error)
-	GetUpcomingEvents(ctx context.Context, limit int) ([]*CalendarEvent, error)
-}
-
-type NoteStore interface {
-	CreateNote(ctx context.Context, note *Note) error
-	GetNote(ctx context.Context, id string) (*Note, error)
-	UpdateNote(ctx context.Context, note *Note) error
-	DeleteNote(ctx context.Context, id string) error
-	ListNotes(ctx context.Context) ([]*Note, error)
-	SearchNotes(ctx context.Context, query string) ([]*Note, error)
-}
-
-type ReminderStore interface {
-	CreateReminder(ctx context.Context, r *Reminder) error
-	GetReminder(ctx context.Context, id string) (*Reminder, error)
-	UpdateReminder(ctx context.Context, r *Reminder) error
-	DeleteReminder(ctx context.Context, id string) error
-	ListReminders(ctx context.Context) ([]*Reminder, error)
-	GetDueReminders(ctx context.Context, before time.Time) ([]*Reminder, error)
-	MarkReminderSent(ctx context.Context, id string, sentAt time.Time) error
-}
-
 // WorkflowStore manages workflow orchestration
 type WorkflowStore interface {
 	// Workflows
@@ -99,25 +75,6 @@ type WorkflowStore interface {
 	GetReadyWFTasks(ctx context.Context, limit int) ([]*WFTask, error)
 	GetDependentWFTasks(ctx context.Context, taskID string) ([]*WFTask, error)
 	AllDependenciesSatisfied(ctx context.Context, taskID string) (bool, error)
-}
-
-// TaskStore manages tasks with optional project grouping.
-// TaskFilter fields are all optional — nil means no filter on that field.
-type TaskStore interface {
-	CreateTask(ctx context.Context, task *Task) error
-	GetTask(ctx context.Context, id string) (*Task, error)
-	UpdateTask(ctx context.Context, task *Task) error
-	DeleteTask(ctx context.Context, id string) error
-	CompleteTask(ctx context.Context, id string) error
-	ListTasks(ctx context.Context, filter TaskFilter) ([]*Task, error)
-	SearchTasks(ctx context.Context, query string) ([]*Task, error)
-	GetTasksDueOn(ctx context.Context, date time.Time) ([]*Task, error)
-
-	CreateProject(ctx context.Context, project *Project) error
-	GetProject(ctx context.Context, id string) (*Project, error)
-	UpdateProject(ctx context.Context, project *Project) error
-	DeleteProject(ctx context.Context, id string) error
-	ListProjects(ctx context.Context) ([]*Project, error)
 }
 
 // JobRunStore tracks the last successful execution of each scheduled background job.

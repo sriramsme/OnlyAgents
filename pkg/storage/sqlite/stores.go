@@ -1,10 +1,13 @@
 package sqlite
 
 import (
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/calendar"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/notes"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/reminder"
+	"github.com/sriramsme/OnlyAgents/pkg/productivity/task"
 )
 
-func NewRemindersStore(path string) (storage.ReminderStore, error) {
+func NewRemindersStore(path string) (reminder.Store, error) {
 	db, err := openDB(path)
 	if err != nil {
 		return nil, err
@@ -17,7 +20,7 @@ func NewRemindersStore(path string) (storage.ReminderStore, error) {
 	return &DB{db: db}, nil
 }
 
-func NewCalendarStore(path string) (storage.CalendarStore, error) {
+func NewCalendarStore(path string) (calendar.Store, error) {
 	db, err := openDB(path)
 	if err != nil {
 		return nil, err
@@ -30,7 +33,7 @@ func NewCalendarStore(path string) (storage.CalendarStore, error) {
 	return &DB{db: db}, nil
 }
 
-func NewNotesStore(path string) (storage.NoteStore, error) {
+func NewNotesStore(path string) (notes.Store, error) {
 	db, err := openDB(path)
 	if err != nil {
 		return nil, err
@@ -43,7 +46,7 @@ func NewNotesStore(path string) (storage.NoteStore, error) {
 	return &DB{db: db}, nil
 }
 
-func NewTasksStore(path string) (storage.TaskStore, error) {
+func NewTasksStore(path string) (task.Store, error) {
 	db, err := openDB(path)
 	if err != nil {
 		return nil, err

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	calendarPkg "github.com/sriramsme/OnlyAgents/pkg/productivity/calendar"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
@@ -122,7 +123,7 @@ func (s *CalendarSkill) createEvents(ctx context.Context, args []byte) (any, err
 		return nil, fmt.Errorf("calendar: at least one event is required")
 	}
 
-	events := make([]*storage.CalendarEvent, 0, len(input.Events))
+	events := make([]*calendarPkg.CalendarEvent, 0, len(input.Events))
 
 	for _, item := range input.Events {
 		start, err := tools.ParseEventTime(item.StartTime)
@@ -135,7 +136,7 @@ func (s *CalendarSkill) createEvents(ctx context.Context, args []byte) (any, err
 			return nil, fmt.Errorf("calendar: invalid end_time for %q: %w", item.Title, err)
 		}
 
-		event := &storage.CalendarEvent{
+		event := &calendarPkg.CalendarEvent{
 			Title:       item.Title,
 			Description: item.Description,
 			StartTime:   storage.DBTime{Time: start},

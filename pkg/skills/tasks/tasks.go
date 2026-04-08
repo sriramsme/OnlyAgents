@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
+	taskPkg "github.com/sriramsme/OnlyAgents/pkg/productivity/task"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -138,7 +139,7 @@ func (s *TasksSkill) createProject(ctx context.Context, args []byte) (any, error
 	if err != nil {
 		return nil, err
 	}
-	return s.conn.CreateProject(ctx, &storage.Project{
+	return s.conn.CreateProject(ctx, &taskPkg.Project{
 		Name:        input.Name,
 		Description: input.Description,
 		Color:       input.Color,
@@ -197,9 +198,9 @@ func (s *TasksSkill) createTasks(ctx context.Context, args []byte) (any, error) 
 		return nil, fmt.Errorf("tasks: at least one task is required")
 	}
 
-	tasks := make([]*storage.Task, 0, len(input.Tasks))
+	tasks := make([]*taskPkg.Task, 0, len(input.Tasks))
 	for _, item := range input.Tasks {
-		task := &storage.Task{
+		task := &taskPkg.Task{
 			Title:     item.Title,
 			Body:      item.Body,
 			ProjectID: item.ProjectID,
@@ -211,7 +212,7 @@ func (s *TasksSkill) createTasks(ctx context.Context, args []byte) (any, error) 
 			if err != nil {
 				return nil, fmt.Errorf("tasks: invalid due_at for %q: %w", item.Title, err)
 			}
-			task.DueAt = storage.NullDBTime{Time: t, Valid: true}
+			task.DueAt = dbtypes.NullDBTime{Time: t, Valid: true}
 		}
 		tasks = append(tasks, task)
 	}
@@ -266,7 +267,7 @@ func (s *TasksSkill) updateTask(ctx context.Context, args []byte) (any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("tasks: invalid due_at: %w", err)
 		}
-		task.DueAt = storage.NullDBTime{Time: t, Valid: true}
+		task.DueAt = dbtypes.NullDBTime{Time: t, Valid: true}
 	}
 	return s.conn.UpdateTask(ctx, task)
 }
@@ -306,7 +307,7 @@ func (s *TasksSkill) listTasks(ctx context.Context, args []byte) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	filter := storage.TaskFilter{}
+	filter := taskPkg.TaskFilter{}
 	if input.ProjectID != "" {
 		filter.ProjectID = &input.ProjectID
 	}

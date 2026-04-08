@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	notesPkg "github.com/sriramsme/OnlyAgents/pkg/productivity/notes"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
@@ -120,10 +120,10 @@ func (s *NotesSkill) createNotes(ctx context.Context, args []byte) (any, error) 
 		return nil, fmt.Errorf("notes: at least one note is required")
 	}
 
-	notes := make([]*storage.Note, 0, len(input.Notes))
+	notes := make([]*notesPkg.Note, 0, len(input.Notes))
 
 	for _, item := range input.Notes {
-		note := &storage.Note{
+		note := &notesPkg.Note{
 			Title:   item.Title,
 			Content: item.Content,
 			Tags:    item.Tags,
