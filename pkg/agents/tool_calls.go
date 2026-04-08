@@ -28,7 +28,7 @@ func (a *Agent) processToolCalls(
 	perResultBudget int, // 0 = no limiti
 ) (updated []llm.Message, produced []*media.Attachment, halt bool, err error) {
 	// Persist assistant turn with tool calls
-	if _, err := a.cm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
+	if _, err := a.mm.SaveAssistantMessage(ctx, sessionID, a.id, resp.Content, resp.ReasoningContent, resp.ToolCalls); err != nil {
 		a.logger.Warn("failed to save assistant tool-call message", "err", err, "correlation_id", correlationID)
 	}
 
@@ -97,7 +97,7 @@ func (a *Agent) processToolCalls(
 				"error", exec.Err,
 				"correlation_id", correlationID)
 			errContent := fmt.Sprintf(`{"error": "%s"}`, exec.Err.Error())
-			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, exec.Err.Error(), true); err != nil {
+			if err := a.mm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, exec.Err.Error(), true); err != nil {
 				a.logger.Warn("failed to save tool error result", "err", err)
 			}
 			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, errContent))
@@ -108,7 +108,7 @@ func (a *Agent) processToolCalls(
 			if haltMsg == "" {
 				haltMsg = fmt.Sprintf(`{"status": "halted", "tool": "%s"}`, tc.Function.Name)
 			}
-			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, haltMsg, false); err != nil {
+			if err := a.mm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, haltMsg, false); err != nil {
 				a.logger.Warn("failed to save tool result (halt)", "err", err)
 			}
 			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, haltMsg))
@@ -132,7 +132,7 @@ func (a *Agent) processToolCalls(
 				)
 				resultStr = resultStr[:perResultBudget]
 			}
-			if err := a.cm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
+			if err := a.mm.SaveToolResult(ctx, sessionID, a.id, tc.ID, tc.Function.Name, resultStr, false); err != nil {
 				a.logger.Warn("failed to save tool result", "err", err)
 			}
 			messages = append(messages, llm.ToolResultMessage(tc.ID, tc.Function.Name, resultStr))

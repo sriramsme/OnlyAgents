@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/message"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
@@ -39,7 +40,7 @@ const maxAssistantMsgLen = 300
 type msgSession struct {
 	start    time.Time
 	end      time.Time
-	messages []*storage.Message
+	messages []*message.Message
 	agents   []string // deduplicated agent IDs that sent messages in this session
 }
 
@@ -123,7 +124,7 @@ func (s *Summarizer) SummarizeDay(ctx context.Context, date time.Time) error {
 
 // groupIntoSessions splits a chronologically ordered message slice into
 // sessions delimited by gaps of at least sessionGap.
-func groupIntoSessions(msgs []*storage.Message) []msgSession {
+func groupIntoSessions(msgs []*message.Message) []msgSession {
 	if len(msgs) == 0 {
 		return nil
 	}
@@ -131,7 +132,7 @@ func groupIntoSessions(msgs []*storage.Message) []msgSession {
 	var sessions []msgSession
 	cur := msgSession{
 		start:    msgs[0].Timestamp.Time,
-		messages: []*storage.Message{msgs[0]},
+		messages: []*message.Message{msgs[0]},
 	}
 
 	for _, m := range msgs[1:] {
@@ -142,7 +143,7 @@ func groupIntoSessions(msgs []*storage.Message) []msgSession {
 			sessions = append(sessions, cur)
 			cur = msgSession{
 				start:    m.Timestamp.Time,
-				messages: []*storage.Message{m},
+				messages: []*message.Message{m},
 			}
 		} else {
 			cur.messages = append(cur.messages, m)
@@ -155,7 +156,7 @@ func groupIntoSessions(msgs []*storage.Message) []msgSession {
 }
 
 // sessionAgents returns deduplicated agent IDs from assistant-role messages.
-func sessionAgents(msgs []*storage.Message) []string {
+func sessionAgents(msgs []*message.Message) []string {
 	seen := make(map[string]bool)
 	var agents []string
 	for _, m := range msgs {

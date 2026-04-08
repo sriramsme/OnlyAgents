@@ -6,7 +6,7 @@ import (
 
 func (k *Kernel) handleSessionGet(evt core.Event) {
 	p := evt.Payload.(core.SessionGetPayload)
-	conv, err := k.store.GetConversationByChannel(k.ctx, p.Channel, p.AgentID)
+	conv, err := k.cm.GetActiveConversationByChannel(k.ctx, p.Channel, p.AgentID)
 	if err != nil {
 		k.logger.Error("session.get failed", "err", err)
 		if evt.ReplyTo != nil {
@@ -28,7 +28,7 @@ func (k *Kernel) handleSessionNew(evt core.Event) {
 		return
 	}
 	// End existing if any
-	if existing, err := k.store.GetConversationByChannel(k.ctx, payload.Channel, payload.AgentID); err == nil {
+	if existing, err := k.cm.GetActiveConversationByChannel(k.ctx, payload.Channel, payload.AgentID); err == nil {
 		err := k.cm.EndSession(k.ctx, existing.ID)
 		if err != nil {
 			k.logger.Error("failed to end existing session",
@@ -63,7 +63,7 @@ func (k *Kernel) handleSessionEnsure(evt core.Event) {
 	p := evt.Payload.(core.SessionEnsurePayload)
 
 	// 1. Try existing session
-	conv, err := k.store.GetConversationByChannel(k.ctx, p.Channel, p.AgentID)
+	conv, err := k.cm.GetActiveConversationByChannel(k.ctx, p.Channel, p.AgentID)
 	if err == nil && conv != nil {
 		if evt.ReplyTo != nil {
 			evt.ReplyTo <- core.Event{Payload: conv.ID}

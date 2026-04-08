@@ -12,7 +12,7 @@ func (k *Kernel) GetActiveChannelMetadata() (*core.ChannelMetadata, error) {
 		return nil, fmt.Errorf("no active channel")
 	}
 	agentID := k.agents.GetExecutive().ID() // TODO: Get agent ID from active channel
-	conv, err := k.store.GetConversationByChannel(k.ctx, active.PlatformName(), agentID)
+	conv, err := k.cm.GetActiveConversationByChannel(k.ctx, active.PlatformName(), agentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session for channel: %s", active.PlatformName())
 	}

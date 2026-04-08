@@ -20,21 +20,29 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/message"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
 // Summarizer is the single entry-point for all memory compression passes.
 type Summarizer struct {
-	store     storage.Storage
+	store     SummarizerStore
 	llmClient llm.Client
 	loc       *time.Location
 }
 
+type SummarizerStore interface {
+	storage.MemoryStore
+	message.Store
+	storage.FactStore
+}
+
 // New creates a Summarizer. tz is an IANA timezone string (e.g. "America/New_York").
 // If tz is empty or invalid, UTC is used.
-func New(store storage.Storage, llmClient llm.Client, tz string) *Summarizer {
+func New(store SummarizerStore, llmClient llm.Client, tz string) *Summarizer {
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
 		loc = time.UTC
@@ -81,7 +89,7 @@ func (s *Summarizer) callLLM(ctx context.Context, system, user string) (string, 
 // confidence is clamped to [0.0, 1.0].
 // sourceConvID and sourceSummaryDate are best-effort provenance.
 func (s *Summarizer) saveFacts(ctx context.Context, facts []extractedFact, sourceConvID, sourceSummaryDate string) error {
-	now := storage.DBTime{Time: time.Now()}
+	now := dbtypes.DBTime{Time: time.Now()}
 	for _, f := range facts {
 		f.EntityType = normalizeEntityType(f.EntityType)
 		f.Confidence = clampConfidence(f.Confidence)
@@ -137,11 +145,11 @@ type weeklySummaryResponse struct {
 type monthlySummaryResponse struct {
 	Summary    string          `json:"summary"`
 	Highlights []string        `json:"highlights"`
-	Statistics storage.JSONMap `json:"statistics"`
+	Statistics dbtypes.JSONMap `json:"statistics"`
 }
 
 type yearlySummaryResponse struct {
 	Summary     string          `json:"summary"`
 	MajorEvents []string        `json:"major_events"`
-	Statistics  storage.JSONMap `json:"statistics"`
+	Statistics  dbtypes.JSONMap `json:"statistics"`
 }

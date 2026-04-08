@@ -5,33 +5,6 @@ import (
 	"time"
 )
 
-// Conversation is a single session between a user and an agent.
-type Conversation struct {
-	ID          string     `db:"id" json:"id"`
-	Channel     string     `db:"channel" json:"channel"`
-	AgentID     string     `db:"agent_id" json:"agent_id"`
-	ChatID      string     `db:"chat_id" json:"chat_id"`
-	StartedAt   DBTime     `db:"started_at" json:"started_at"`
-	EndedAt     NullDBTime `db:"ended_at" json:"ended_at"`
-	Context     JSONMap    `db:"context" json:"context,omitempty"`
-	Summary     string     `db:"summary" json:"summary,omitempty"`
-	PeerAgentID string     `db:"peer_agent_id" json:"peer_agent_id,omitempty"`
-}
-
-// Message is one turn within a Conversation.
-type Message struct {
-	ID                string `db:"id" json:"id"`
-	ConversationID    string `db:"conversation_id" json:"conversation_id"`
-	PlatformMessageID string `db:"platform_message_id" json:"platform_message_id,omitempty"`
-	AgentID           string `db:"agent_id" json:"agent_id"`
-	Role              string `db:"role" json:"role"`
-	Content           string `db:"content" json:"content,omitempty"`
-	ReasoningContent  string `db:"reasoning_content" json:"reasoning_content,omitempty"`
-	ToolCalls         string `db:"tool_calls" json:"tool_calls,omitempty"`
-	ToolCallID        string `db:"tool_call_id" json:"tool_call_id,omitempty"`
-	Timestamp         DBTime `db:"timestamp" json:"timestamp"`
-}
-
 // TopicEntry is a topic extracted from a day's conversation along with
 // its relative share of the day's message volume and the user's sentiment.
 type TopicEntry struct {

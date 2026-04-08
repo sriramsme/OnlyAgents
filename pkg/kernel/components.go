@@ -10,10 +10,12 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	"github.com/sriramsme/OnlyAgents/pkg/conversation"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
+	"github.com/sriramsme/OnlyAgents/pkg/message"
 	"github.com/sriramsme/OnlyAgents/pkg/notify"
 	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
@@ -32,14 +34,16 @@ type kernelComponents struct {
 	user                    *config.User
 	skillMarketplaceManager *marketplace.Manager
 	cliExecutor             *cli.CLIExecutor
-	cm                      *memory.ConversationManager
-	mm                      *memory.MemoryManager
+	cm                      *conversation.Manager
+	mm                      *message.Manager
+	memManager              *memory.MemoryManager
 	notifier                *notify.Notifier
 	workflow                *workflow.Engine
 	store                   storage.Storage
 	scheduler               *scheduler.Scheduler
 }
 
+//nolint:gocyclo
 func loadComponents(
 	ctx context.Context,
 	paths *paths.Paths,
@@ -62,7 +66,7 @@ func loadComponents(
 
 	c.scheduler = scheduler.New(kernelBus)
 
-	c.cm, err = loadConversationManager(ctx, c.store)
+	c.cm, err = loadConversationManager(c.store)
 	if err != nil {
 		return c, fmt.Errorf("load conversation manager: %w", err)
 	}
@@ -72,9 +76,14 @@ func loadComponents(
 		return c, fmt.Errorf("load notifier: %w", err)
 	}
 
-	c.mm, err = loadMemoryManager(cfg.Memory, c.store, c.user.Identity.Timezone)
+	c.memManager, err = loadMemoryManager(cfg.Memory, c.store, c.user.Identity.Timezone)
 	if err != nil {
 		return c, fmt.Errorf("load memory manager: %w", err)
+	}
+
+	c.mm, err = loadMessageManager(c.store)
+	if err != nil {
+		return c, fmt.Errorf("load message manager: %w", err)
 	}
 
 	v, err := vault.Load(paths.VaultPath)
@@ -103,7 +112,7 @@ func loadComponents(
 		}
 	}
 
-	c.agents, err = loadAgents(ctx, kernelBus, uiBus, c.cm, c.mm)
+	c.agents, err = loadAgents(ctx, kernelBus, uiBus, c.cm, c.mm, c.memManager)
 	if err != nil {
 		return c, fmt.Errorf("load agents: %w", err)
 	}
@@ -151,22 +160,31 @@ func loadStore(ctx context.Context, path string) (storage.Storage, error) {
 
 // loadConversationManager loads the ConversationManager.
 // It is shared by all agents, so they can persist messages and tool results.
-func loadConversationManager(ctx context.Context, store storage.Storage) (*memory.ConversationManager, error) {
-	cm, err := memory.New(ctx, store)
+func loadConversationManager(store storage.Storage) (*conversation.Manager, error) {
+	cm, err := conversation.New(store)
 	if err != nil {
 		return nil, fmt.Errorf("create conversation manager: %w", err)
 	}
 	return cm, nil
 }
 
+func loadMessageManager(store storage.Storage) (*message.Manager, error) {
+	mm, err := message.New(store)
+	if err != nil {
+		return nil, fmt.Errorf("create message manager: %w", err)
+	}
+	return mm, nil
+}
+
 // bootstrap.go
 func loadAgents(
 	ctx context.Context,
 	kernelBus chan<- core.Event, uiBus core.UIBus,
-	cm *memory.ConversationManager,
-	mm *memory.MemoryManager,
+	cm *conversation.Manager,
+	mm *message.Manager,
+	memManager *memory.MemoryManager,
 ) (*agents.Registry, error) {
-	registry, err := agents.NewRegistry(ctx, kernelBus, uiBus, cm, mm)
+	registry, err := agents.NewRegistry(ctx, kernelBus, uiBus, cm, mm, memManager)
 	if err != nil {
 		return nil, fmt.Errorf("create agents registry: %w", err)
 	}

@@ -41,7 +41,7 @@ func (k *Kernel) handleMessageReceived(evt core.Event) {
 		return
 	}
 
-	if err := k.cm.SaveUserMessage(k.ctx, payload.Channel.SessionID, target.ID(), payload.PlatformMessageID, payload.Content); err != nil {
+	if err := k.mm.SaveUserMessage(k.ctx, payload.Channel.SessionID, target.ID(), payload.PlatformMessageID, payload.Content); err != nil {
 		k.logger.Warn("failed to save user message", "err", err)
 	}
 
@@ -123,7 +123,7 @@ func (k *Kernel) handleOutboundMessage(evt core.Event) {
 	defer cancel()
 
 	if payload.IsNotification {
-		msgID, err := k.cm.SaveNotificationMessage(ctx, payload.Channel.SessionID, k.agents.GetExecutive().ID(), payload.Content)
+		msgID, err := k.mm.SaveNotificationMessage(ctx, payload.Channel.SessionID, k.agents.GetExecutive().ID(), payload.Content)
 		if err != nil {
 			k.logger.Warn("failed to save notification message", "err", err)
 		}

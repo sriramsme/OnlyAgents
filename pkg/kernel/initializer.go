@@ -52,7 +52,7 @@ func (i promptsInitializer) Init(ctx context.Context, k *Kernel) error {
 
 // memoryInitializer is the last initializer — it must be the last one to run.
 func (i memoryInitializer) Init(ctx context.Context, k *Kernel) error {
-	k.mm.RegisterJobs(k.scheduler)
+	k.mem.RegisterJobs(k.scheduler)
 	return nil
 }
 

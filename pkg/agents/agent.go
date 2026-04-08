@@ -18,9 +18,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/conversation"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
+	"github.com/sriramsme/OnlyAgents/pkg/message"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
@@ -67,8 +69,9 @@ type Agent struct {
 	// Inbox — kernel sends events here (execute requests, tool results)
 	inbox chan core.Event
 
-	cm *memory.ConversationManager // shared across all agents, injected by kernel
-	mm *memory.MemoryManager       // shared across all agents, injected by kernel
+	cm         *conversation.Manager // shared across all agents, injected by kernel
+	mm         *message.Manager
+	memManager *memory.MemoryManager // shared across all agents, injected by kernel
 
 	handleFindSkill  handleFindSkillFunc // injected by kernel only for general agents
 	resolveAgentName AgentNameResolver
@@ -99,8 +102,9 @@ func NewAgent(
 	llmClient llm.Client,
 	outbox chan<- core.Event,
 	uiBus core.UIBus,
-	cm *memory.ConversationManager,
-	mm *memory.MemoryManager,
+	cm *conversation.Manager,
+	mm *message.Manager,
+	memManager *memory.MemoryManager,
 ) (*Agent, error) {
 	if llmClient == nil {
 		return nil, fmt.Errorf("llm client is required")
@@ -138,6 +142,7 @@ func NewAgent(
 		availableAgents:        make(map[string]AgentInfo), // only populated for executive
 		cm:                     cm,
 		mm:                     mm,
+		memManager:             memManager,
 		inbox:                  make(chan core.Event, cfg.BufferSize),
 		ctx:                    agentCtx,
 		cancel:                 cancel,

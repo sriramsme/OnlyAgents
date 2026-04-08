@@ -10,7 +10,9 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 
+	"github.com/sriramsme/OnlyAgents/pkg/conversation"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
+	"github.com/sriramsme/OnlyAgents/pkg/message"
 )
 
 // Accept parent context to pass to agents
@@ -18,8 +20,9 @@ func NewRegistry(
 	ctx context.Context,
 	outbox chan<- core.Event,
 	uiBus core.UIBus,
-	cm *memory.ConversationManager,
-	mm *memory.MemoryManager,
+	cm *conversation.Manager,
+	mm *message.Manager,
+	memManager *memory.MemoryManager,
 ) (*Registry, error) {
 	configs, err := LoadAllConfigs("")
 	if err != nil {
@@ -41,7 +44,7 @@ func NewRegistry(
 		}
 
 		// Pass parent context to agent
-		agent, err := NewAgent(ctx, *cfg, llmClient, outbox, uiBus, cm, mm)
+		agent, err := NewAgent(ctx, *cfg, llmClient, outbox, uiBus, cm, mm, memManager)
 		if err != nil {
 			return nil, fmt.Errorf("agent %s: init: %w", id, err)
 		}

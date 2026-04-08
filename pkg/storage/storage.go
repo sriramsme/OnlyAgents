@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/sriramsme/OnlyAgents/pkg/conversation"
+	"github.com/sriramsme/OnlyAgents/pkg/message"
 )
 
 type Storage interface {
-	ConversationStore
-	MessageStore
+	conversation.Store
+	message.Store
 	MemoryStore
 	FactStore
 	AgentStateStore
@@ -19,30 +22,6 @@ type Storage interface {
 	CronJobStore
 	TaskStore
 	Close() error
-}
-
-type ConversationStore interface {
-	CreateConversation(ctx context.Context, conv *Conversation) error
-	GetConversation(ctx context.Context, id string) (*Conversation, error)
-	GetConversationByChannel(ctx context.Context, channel, agentID string) (*Conversation, error)
-	GetConversationsByDay(ctx context.Context, from, to time.Time) ([]*Conversation, error)
-	UpdateConversation(ctx context.Context, conv *Conversation) error
-	ListConversations(ctx context.Context, limit int) ([]*Conversation, error)
-	ListConversationsByChannel(ctx context.Context, channel string, limit int) ([]*Conversation, error)
-	EndConversation(ctx context.Context, id string, summary string) error
-}
-
-type MessageStore interface {
-	SaveMessage(ctx context.Context, msg *Message) error
-	GetMessages(ctx context.Context, conversationID string) ([]*Message, error)
-	GetMessagesByAgent(ctx context.Context, conversationID, agentID string) ([]*Message, error)
-	GetMessagesBetween(ctx context.Context, roles []string, from, to time.Time) ([]*Message, error)
-	DeleteOldMessages(ctx context.Context, olderThan time.Time) error
-	// After send, update the existing message record with the platform ID
-	UpdateMessagePlatformID(ctx context.Context, messageID, platformMessageID string) error
-
-	// Lookup by platform ID — caller reads .AgentID from the result
-	GetMessageByPlatformID(ctx context.Context, platformMessageID string) (*Message, error)
 }
 
 type MemoryStore interface {

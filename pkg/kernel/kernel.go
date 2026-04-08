@@ -27,10 +27,12 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
+	"github.com/sriramsme/OnlyAgents/pkg/conversation"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/media"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
+	"github.com/sriramsme/OnlyAgents/pkg/message"
 	"github.com/sriramsme/OnlyAgents/pkg/notify"
 	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 	"github.com/sriramsme/OnlyAgents/pkg/skills"
@@ -52,8 +54,9 @@ type Kernel struct {
 
 	skillMarketplaceManager *marketplace.Manager
 	cliExecutor             *cli.CLIExecutor
-	cm                      *memory.ConversationManager
-	mm                      *memory.MemoryManager
+	cm                      *conversation.Manager
+	mm                      *message.Manager
+	mem                     *memory.MemoryManager
 	notifier                *notify.Notifier
 	store                   storage.Storage
 
@@ -117,6 +120,7 @@ func NewKernel(ctx context.Context, cancel context.CancelFunc, uiBus core.UIBus)
 		cliExecutor:             components.cliExecutor,
 		cm:                      components.cm,
 		mm:                      components.mm,
+		mem:                     components.memManager,
 		notifier:                components.notifier,
 		store:                   components.store,
 		scheduler:               components.scheduler,

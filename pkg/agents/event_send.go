@@ -98,7 +98,7 @@ type OutboundMessageInput struct {
 }
 
 func (a *Agent) sendOutboundMessage(input OutboundMessageInput) {
-	msgID, err := a.cm.SaveAssistantMessage(
+	msgID, err := a.mm.SaveAssistantMessage(
 		a.ctx,
 		input.Channel.SessionID,
 		a.id,

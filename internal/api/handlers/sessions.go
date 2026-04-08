@@ -6,12 +6,13 @@ import (
 	"net/http"
 
 	"github.com/sriramsme/OnlyAgents/internal/api/httpx"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
+	"github.com/sriramsme/OnlyAgents/pkg/conversation"
+	"github.com/sriramsme/OnlyAgents/pkg/message"
 )
 
 type SessionsHandler struct {
-	store  storage.ConversationStore
-	msgs   storage.MessageStore
+	store  conversation.Store
+	msgs   message.Store
 	logger *slog.Logger
 }
 

@@ -189,9 +189,9 @@ func (a *Agent) prepareExecution(
 	var history []llm.Message
 	var histErr error
 	if a.isExecutive {
-		history, histErr = a.cm.GetFullHistory(ctx, sessionID, a.id, memory.DefaultHistoryTurns)
+		history, histErr = a.mm.GetFullHistory(ctx, sessionID, a.id)
 	} else {
-		history, histErr = a.cm.GetHistory(ctx, sessionID, a.id, memory.DefaultHistoryTurns)
+		history, histErr = a.mm.GetHistory(ctx, sessionID, a.id)
 	}
 
 	if histErr != nil {
@@ -200,7 +200,7 @@ func (a *Agent) prepareExecution(
 	}
 
 	// TODO: review this
-	memCtx, memErr := a.mm.GetRelevantMemory(ctx, payload.Message)
+	memCtx, memErr := a.memManager.GetRelevantMemory(ctx, payload.Message)
 	if memErr != nil {
 		a.logger.Warn("failed to load memory context", "err", memErr)
 	}

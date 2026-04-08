@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/message"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
@@ -58,7 +59,7 @@ func dayBounds(date time.Time, loc *time.Location) (from, to time.Time) {
 
 // uniqueConvIDs returns the deduplicated conversation IDs from msgs, preserving
 // first-seen order.
-func uniqueConvIDs(msgs []*storage.Message) storage.JSONSlice[string] {
+func uniqueConvIDs(msgs []*message.Message) storage.JSONSlice[string] {
 	seen := make(map[string]bool)
 	var ids storage.JSONSlice[string]
 	for _, m := range msgs {
@@ -72,7 +73,7 @@ func uniqueConvIDs(msgs []*storage.Message) storage.JSONSlice[string] {
 
 // firstConvID returns the conversation ID of the first message, or "" if msgs
 // is empty. Used as best-effort provenance for extracted facts.
-func firstConvID(msgs []*storage.Message) string {
+func firstConvID(msgs []*message.Message) string {
 	if len(msgs) == 0 {
 		return ""
 	}
