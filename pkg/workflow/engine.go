@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/media"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
 
 // Engine manages workflow orchestration
 type Engine struct {
-	store  storage.Storage
+	store  Store
 	bus    chan<- core.Event
 	logger *slog.Logger
 	ctx    context.Context
@@ -22,7 +22,7 @@ type Engine struct {
 }
 
 // NewEngine creates a workflow engine
-func NewEngine(store storage.Storage, bus chan<- core.Event) *Engine {
+func NewEngine(store Store, bus chan<- core.Event) *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Engine{
 		store:  store,
@@ -73,17 +73,17 @@ func (e *Engine) SubmitWorkflow(ctx context.Context, workflow *WorkflowDefinitio
 		channelJSON = string(b)
 	}
 
-	w := &storage.Workflow{
+	w := &Workflow{
 		ID:              workflow.ID,
 		Name:            workflow.Name,
 		Description:     workflow.Description,
 		CreatedBy:       workflow.CreatedBy,
-		Status:          storage.WorkflowStatusRunning,
+		Status:          WorkflowStatusRunning,
 		ChannelJSON:     channelJSON,
 		OriginalMessage: workflow.OriginalMessage,
 		Metadata:        string(metadataJSON),
-		CreatedAt:       storage.DBTime{Time: time.Now()},
-		UpdatedAt:       storage.DBTime{Time: time.Now()},
+		CreatedAt:       dbtypes.DBTime{Time: time.Now()},
+		UpdatedAt:       dbtypes.DBTime{Time: time.Now()},
 	}
 
 	if err := e.store.CreateWorkflow(ctx, w); err != nil {
@@ -142,7 +142,7 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload WFTaskComplete
 			"task_id", payload.TaskID,
 			"error", payload.Error)
 
-		if err := e.store.UpdateWFTaskStatus(ctx, payload.TaskID, storage.WFTaskStatusFailed, payload.Error); err != nil {
+		if err := e.store.UpdateWFTaskStatus(ctx, payload.TaskID, WFTaskStatusFailed, payload.Error); err != nil {
 			e.logger.Warn("failed to update task status to failed",
 				"task_id", payload.TaskID,
 				"error", err)
@@ -166,7 +166,7 @@ func (e *Engine) HandleTaskCompleted(ctx context.Context, payload WFTaskComplete
 			"error", err)
 	}
 
-	if err := e.store.UpdateWFTaskStatus(ctx, payload.TaskID, storage.WFTaskStatusCompleted, ""); err != nil {
+	if err := e.store.UpdateWFTaskStatus(ctx, payload.TaskID, WFTaskStatusCompleted, ""); err != nil {
 		e.logger.Warn("failed to update task status to completed",
 			"task_id", payload.TaskID,
 			"error", err)
@@ -249,12 +249,12 @@ func (e *Engine) checkWorkflowCompletion(ctx context.Context, workflowID string)
 	results := make(map[string]json.RawMessage)
 
 	for _, task := range tasks {
-		if task.Status == storage.WFTaskStatusFailed {
+		if task.Status == WFTaskStatusFailed {
 			anyFailed = true
 			allComplete = false
 			break
 		}
-		if task.Status != storage.WFTaskStatusCompleted {
+		if task.Status != WFTaskStatusCompleted {
 			allComplete = false
 			break
 		}
@@ -316,9 +316,9 @@ func (e *Engine) checkWorkflowCompletion(ctx context.Context, workflowID string)
 		},
 	}
 
-	workflowStatus := storage.WorkflowStatusCompleted
+	workflowStatus := WorkflowStatusCompleted
 	if anyFailed {
-		workflowStatus = storage.WorkflowStatusFailed
+		workflowStatus = WorkflowStatusFailed
 	}
 
 	if err := e.store.UpdateWorkflowStatus(ctx, workflowID, workflowStatus); err != nil {
@@ -353,8 +353,8 @@ func (e *Engine) fireTaskAssigned(taskDef *WFTaskDefinition, workflowID string) 
 	}
 }
 
-// taskDefToStorage converts WFTaskDefinition to storage.Task
-func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *storage.WFTask {
+// taskDefToStorage converts WFTaskDefinition to Task
+func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *WFTask {
 	depsJSON, err := json.Marshal(def.DependsOn)
 	if err != nil {
 		e.logger.Warn("failed to marshal depends_on", "error", err)
@@ -390,28 +390,28 @@ func (e *Engine) taskDefToStorage(def *WFTaskDefinition, workflowID string) *sto
 		attachmentsJSON = []byte("[]")
 	}
 
-	return &storage.WFTask{
+	return &WFTask{
 		ID:              def.ID,
 		WorkflowID:      workflowID,
 		Name:            def.Name,
 		Description:     def.Description,
-		Type:            storage.WFTaskType(def.Type),
+		Type:            WFTaskType(def.Type),
 		DependsOn:       string(depsJSON),
 		ChannelJSON:     string(channelJSON),
 		Attachments:     string(attachmentsJSON),
 		Payload:         string(payloadJSON),
-		Status:          storage.WFTaskStatusPending,
+		Status:          WFTaskStatusPending,
 		AssignedAgentID: def.AssignedAgentID,
-		CreatedAt:       storage.DBTime{Time: time.Now()},
+		CreatedAt:       dbtypes.DBTime{Time: time.Now()},
 		RetryCount:      0,
 		MaxRetries:      maxRetries,
 		TimeoutSeconds:  int(def.Timeout.Seconds()),
 		Metadata:        string(metadataJSON),
-		UpdatedAt:       storage.DBTime{Time: time.Now()},
+		UpdatedAt:       dbtypes.DBTime{Time: time.Now()},
 	}
 }
 
-func (e *Engine) StorageToTaskDef(t *storage.WFTask) *WFTaskDefinition {
+func (e *Engine) StorageToTaskDef(t *WFTask) *WFTaskDefinition {
 	var dependsOn []string
 	if t.DependsOn != "" {
 		if err := json.Unmarshal([]byte(t.DependsOn), &dependsOn); err != nil {

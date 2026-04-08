@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/conversation"
@@ -11,6 +10,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/productivity/notes"
 	"github.com/sriramsme/OnlyAgents/pkg/productivity/reminder"
 	"github.com/sriramsme/OnlyAgents/pkg/productivity/task"
+	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
 type Storage interface {
@@ -20,10 +20,10 @@ type Storage interface {
 	reminder.Store
 	calendar.Store
 	notes.Store
+	workflow.Store
 	MemoryStore
 	FactStore
 	AgentStateStore
-	WorkflowStore
 	CronJobStore
 	Close() error
 }
@@ -57,24 +57,6 @@ type FactStore interface {
 type AgentStateStore interface {
 	GetAgentState(ctx context.Context, agentID string) (*AgentState, error)
 	SaveAgentState(ctx context.Context, state *AgentState) error
-}
-
-// WorkflowStore manages workflow orchestration
-type WorkflowStore interface {
-	// Workflows
-	CreateWorkflow(ctx context.Context, workflow *Workflow) error
-	GetWorkflow(ctx context.Context, id string) (*Workflow, error)
-	UpdateWorkflowStatus(ctx context.Context, id string, status WorkflowStatus) error
-
-	// Tasks
-	CreateWFTask(ctx context.Context, task *WFTask) error
-	GetWFTask(ctx context.Context, id string) (*WFTask, error)
-	UpdateWFTaskStatus(ctx context.Context, id string, status WFTaskStatus, errorMsg string) error
-	UpdateWFTaskResult(ctx context.Context, id string, result json.RawMessage) error
-	GetWFTasks(ctx context.Context, workflowID string) ([]*WFTask, error)
-	GetReadyWFTasks(ctx context.Context, limit int) ([]*WFTask, error)
-	GetDependentWFTasks(ctx context.Context, taskID string) ([]*WFTask, error)
-	AllDependenciesSatisfied(ctx context.Context, taskID string) (bool, error)
 }
 
 // JobRunStore tracks the last successful execution of each scheduled background job.
