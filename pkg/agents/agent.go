@@ -71,7 +71,7 @@ type Agent struct {
 
 	cm         *conversation.Manager // shared across all agents, injected by kernel
 	mm         *message.Manager
-	memManager *memory.MemoryManager // shared across all agents, injected by kernel
+	memManager *memory.Manager // shared across all agents, injected by kernel
 
 	handleFindSkill  handleFindSkillFunc // injected by kernel only for general agents
 	resolveAgentName AgentNameResolver
@@ -104,7 +104,7 @@ func NewAgent(
 	uiBus core.UIBus,
 	cm *conversation.Manager,
 	mm *message.Manager,
-	memManager *memory.MemoryManager,
+	memManager *memory.Manager,
 ) (*Agent, error) {
 	if llmClient == nil {
 		return nil, fmt.Errorf("llm client is required")

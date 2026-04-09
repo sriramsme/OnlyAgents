@@ -1,9 +1,16 @@
 // Package summarizer runs LLM-based compression passes over conversation
-// messages and lower-level summaries.
+// messages and episode summaries.
 //
-// Summary tables (daily/weekly/monthly/yearly) are system-wide — they are not
-// scoped to individual agents. agentID on the Summarizer is used only for
-// fact attribution (which agent extracted the fact).
+// Compression hierarchy (each level feeds the next):
+//
+//	SummarizeSessions — raw messages → ScopeSession episodes (fundamental unit)
+//	SummarizeDay      — ScopeSession episodes → ScopeDaily episode
+//	SummarizeWeek     — ScopeDaily episodes   → ScopeWeekly episode
+//	SummarizeMonth    — ScopeWeekly episodes  → ScopeMonthly episode
+//	SummarizeYear     — ScopeMonthly episodes → ScopeYearly episode
+//
+// Call order within a period matters: each level must complete before the next
+// is invoked. All episodes are stored via EpisodeStore with a scope tag.
 //
 // Cron schedule (all times are local to the configured timezone):
 //
@@ -19,25 +26,41 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
-	"github.com/sriramsme/OnlyAgents/pkg/logger"
+	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
-	"github.com/sriramsme/OnlyAgents/pkg/storage"
 )
+
+// Type aliases so sibling files don't need to import memory directly.
+type (
+	Episode      = memory.Episode
+	EpisodeScope = memory.EpisodeScope
+)
+
+const (
+	ScopeSession = memory.ScopeSession
+	ScopeDaily   = memory.ScopeDaily
+	ScopeWeekly  = memory.ScopeWeekly
+	ScopeMonthly = memory.ScopeMonthly
+	ScopeYearly  = memory.ScopeYearly
+)
+
+// SummarizerStore is the combined store interface required by the Summarizer.
+// Implementors must satisfy both EpisodeStore (for reading/writing episodes)
+// and message.Store (for reading raw conversation messages).
+type SummarizerStore interface {
+	memory.EpisodeStore
+	memory.PraxisStore
+	memory.NexusStore
+	message.Store
+}
 
 // Summarizer is the single entry-point for all memory compression passes.
 type Summarizer struct {
 	store     SummarizerStore
 	llmClient llm.Client
 	loc       *time.Location
-}
-
-type SummarizerStore interface {
-	storage.MemoryStore
-	message.Store
-	storage.FactStore
+	embedder  memory.Embedder
 }
 
 // New creates a Summarizer. tz is an IANA timezone string (e.g. "America/New_York").
@@ -74,82 +97,18 @@ func (s *Summarizer) callLLM(ctx context.Context, system, user string) (string, 
 	return resp.Content, nil
 }
 
-// saveFacts upserts extracted facts.
-//
-// TODO: replace with semantic similarity once embeddings are available.
-// Per-fact logic:
-//   - Same (agentID, entity, fact) seen again → reinforce: bump times_seen, nudge
-//     confidence toward 1.0, update last_confirmed.
-//   - New fact, but a conflicting active fact exists for the same entity with the
-//     same leading verb phrase (e.g. two "prefers …" facts) → mark the old one
-//     superseded and lower its confidence.
-//   - Otherwise → insert new.
-//
-// entity_type is normalised to the canonical set before storage.
-// confidence is clamped to [0.0, 1.0].
-// sourceConvID and sourceSummaryDate are best-effort provenance.
-func (s *Summarizer) saveFacts(ctx context.Context, facts []extractedFact, sourceConvID, sourceSummaryDate string) error {
-	now := dbtypes.DBTime{Time: time.Now()}
-	for _, f := range facts {
-		f.EntityType = normalizeEntityType(f.EntityType)
-		f.Confidence = clampConfidence(f.Confidence)
-		if err := s.store.InsertFact(ctx, &storage.Fact{
-			ID:                   uuid.NewString(),
-			Entity:               f.Entity,
-			EntityType:           f.EntityType,
-			Fact:                 f.Fact,
-			Confidence:           f.Confidence,
-			TimesSeen:            1,
-			SourceConversationID: sourceConvID,
-			SourceSummaryDate:    sourceSummaryDate,
-			SupersededBy:         "",
-			FirstSeen:            now,
-			LastConfirmed:        now,
-		}); err != nil {
-			logger.Log.Warn("summarizer: insert fact", "entity", f.Entity, "err", err)
-		}
+// lastEpisodeBefore fetches up to n episodes of the given scope whose window
+// ends before cutoff. Used to inject prior-period context into prompts.
+// Results are ordered newest-first. Returns nil (no error) when none exist.
+func (s *Summarizer) lastEpisodeBefore(ctx context.Context, scope EpisodeScope, cutoff time.Time, n int) ([]*Episode, error) {
+	q := memory.EpisodeQuery{
+		Scope: &scope,
+		To:    &cutoff,
+		Limit: n,
 	}
-	return nil
-}
-
-// extractedFact is the JSON shape returned by the LLM for individual facts.
-type extractedFact struct {
-	Entity     string  `json:"entity"`
-	EntityType string  `json:"entity_type"`
-	Fact       string  `json:"fact"`
-	Confidence float64 `json:"confidence"`
-}
-
-// Response types for each summarisation tier.
-
-type dailySummaryResponse struct {
-	Summary   string          `json:"summary"`
-	KeyEvents []string        `json:"key_events"`
-	Topics    []topicEntry    `json:"topics"`
-	Facts     []extractedFact `json:"facts"`
-}
-
-// topicEntry mirrors storage.TopicEntry and is used for JSON decode.
-type topicEntry struct {
-	Topic        string  `json:"topic"`
-	MessageShare float64 `json:"message_share"`
-	Sentiment    string  `json:"sentiment"`
-}
-
-type weeklySummaryResponse struct {
-	Summary      string   `json:"summary"`
-	Themes       []string `json:"themes"`
-	Achievements []string `json:"achievements"`
-}
-
-type monthlySummaryResponse struct {
-	Summary    string          `json:"summary"`
-	Highlights []string        `json:"highlights"`
-	Statistics dbtypes.JSONMap `json:"statistics"`
-}
-
-type yearlySummaryResponse struct {
-	Summary     string          `json:"summary"`
-	MajorEvents []string        `json:"major_events"`
-	Statistics  dbtypes.JSONMap `json:"statistics"`
+	eps, err := s.store.SearchEpisodes(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return eps, nil
 }

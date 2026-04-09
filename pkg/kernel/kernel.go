@@ -56,7 +56,7 @@ type Kernel struct {
 	cliExecutor             *cli.CLIExecutor
 	cm                      *conversation.Manager
 	mm                      *message.Manager
-	mem                     *memory.MemoryManager
+	mem                     *memory.Manager
 	notifier                *notify.Notifier
 	store                   storage.Storage
 

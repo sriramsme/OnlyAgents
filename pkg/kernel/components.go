@@ -12,7 +12,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/conversation"
 	"github.com/sriramsme/OnlyAgents/pkg/core"
-	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
@@ -36,7 +35,7 @@ type kernelComponents struct {
 	cliExecutor             *cli.CLIExecutor
 	cm                      *conversation.Manager
 	mm                      *message.Manager
-	memManager              *memory.MemoryManager
+	memManager              *memory.Manager
 	notifier                *notify.Notifier
 	workflow                *workflow.Engine
 	store                   storage.Storage
@@ -138,12 +137,12 @@ func loadComponents(
 }
 
 // loadMemoryManager loads the MemoryManager.
-func loadMemoryManager(cfg config.Memory, store storage.Storage, userTZ string) (*memory.MemoryManager, error) {
-	llmClient, err := llm.New(cfg.LLM)
-	if err != nil {
-		return nil, fmt.Errorf("create llm client for memory manager: %w", err)
-	}
-	mm := memory.NewMemoryManager(store, llmClient, userTZ)
+func loadMemoryManager(cfg config.Memory, store storage.Storage, userTZ string) (*memory.Manager, error) {
+	// llmClient, err := llm.New(cfg.LLM)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("create llm client for memory manager: %w", err)
+	// }
+	mm := memory.NewManager(store)
 	return mm, nil
 }
 
@@ -182,7 +181,7 @@ func loadAgents(
 	kernelBus chan<- core.Event, uiBus core.UIBus,
 	cm *conversation.Manager,
 	mm *message.Manager,
-	memManager *memory.MemoryManager,
+	memManager *memory.Manager,
 ) (*agents.Registry, error) {
 	registry, err := agents.NewRegistry(ctx, kernelBus, uiBus, cm, mm, memManager)
 	if err != nil {

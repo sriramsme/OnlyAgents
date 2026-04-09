@@ -22,7 +22,7 @@ func NewRegistry(
 	uiBus core.UIBus,
 	cm *conversation.Manager,
 	mm *message.Manager,
-	memManager *memory.MemoryManager,
+	memManager *memory.Manager,
 ) (*Registry, error) {
 	configs, err := LoadAllConfigs("")
 	if err != nil {

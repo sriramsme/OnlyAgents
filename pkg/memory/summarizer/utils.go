@@ -1,46 +1,10 @@
 package summarizer
 
 import (
-	"encoding/json"
-	"fmt"
-	"strings"
 	"time"
 
-	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
 )
-
-// canonicalEntityTypes is the authoritative set of entity_type values.
-// The LLM may return anything; normalizeEntityType maps unknowns to "other".
-var canonicalEntityTypes = map[string]bool{
-	"person":       true,
-	"place":        true,
-	"preference":   true,
-	"project":      true,
-	"organization": true,
-	"other":        true,
-}
-
-// normalizeEntityType lowercases and trims t, then maps it to the canonical
-// set. Unknown values become "other".
-func normalizeEntityType(t string) string {
-	t = strings.ToLower(strings.TrimSpace(t))
-	if canonicalEntityTypes[t] {
-		return t
-	}
-	return "other"
-}
-
-// clampConfidence ensures c is in [0.0, 1.0].
-func clampConfidence(c float64) float64 {
-	if c < 0 {
-		return 0
-	}
-	if c > 1 {
-		return 1
-	}
-	return c
-}
 
 // estimateTokens returns a rough token count using the 4-chars-per-token
 // heuristic. Accurate enough for budget gating; not suitable for billing.
@@ -57,43 +21,50 @@ func dayBounds(date time.Time, loc *time.Location) (from, to time.Time) {
 	return start.UTC(), start.Add(24 * time.Hour).UTC()
 }
 
-// uniqueConvIDs returns the deduplicated conversation IDs from msgs, preserving
-// first-seen order.
-func uniqueConvIDs(msgs []*message.Message) dbtypes.JSONSlice[string] {
-	seen := make(map[string]bool)
-	var ids dbtypes.JSONSlice[string]
-	for _, m := range msgs {
-		if !seen[m.ConversationID] {
-			seen[m.ConversationID] = true
-			ids = append(ids, m.ConversationID)
+// groupIntoSessions partitions msgs into contiguous sessions separated by
+// gaps of at least sessionGap. msgs must be ordered by CreatedAt ascending.
+func groupIntoSessions(msgs []*message.Message) []msgSession {
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	var sessions []msgSession
+	cur := msgSession{
+		start:    msgs[0].Timestamp.Time,
+		end:      msgs[0].Timestamp.Time,
+		messages: []*message.Message{msgs[0]},
+	}
+	if msgs[0].AgentID != "" {
+		cur.agents = []string{msgs[0].AgentID}
+	}
+
+	agentSeen := map[string]bool{}
+	if msgs[0].AgentID != "" {
+		agentSeen[msgs[0].AgentID] = true
+	}
+
+	for _, m := range msgs[1:] {
+		if m.Timestamp.Sub(cur.end) >= sessionGap {
+			sessions = append(sessions, cur)
+			cur = msgSession{
+				start:    m.Timestamp.Time,
+				end:      m.Timestamp.Time,
+				messages: []*message.Message{m},
+			}
+			agentSeen = map[string]bool{}
+			if m.AgentID != "" {
+				agentSeen[m.AgentID] = true
+				cur.agents = []string{m.AgentID}
+			}
+		} else {
+			cur.end = m.Timestamp.Time
+			cur.messages = append(cur.messages, m)
+			if m.AgentID != "" && !agentSeen[m.AgentID] {
+				agentSeen[m.AgentID] = true
+				cur.agents = append(cur.agents, m.AgentID)
+			}
 		}
 	}
-	return ids
-}
 
-// firstConvID returns the conversation ID of the first message, or "" if msgs
-// is empty. Used as best-effort provenance for extracted facts.
-func firstConvID(msgs []*message.Message) string {
-	if len(msgs) == 0 {
-		return ""
-	}
-	return msgs[0].ConversationID
-}
-
-// parseJSON unmarshals raw into v after stripping any markdown code fences the
-// LLM occasionally emits despite being instructed not to.
-func parseJSON(raw string, v any) error {
-	s := strings.TrimSpace(raw)
-	// Strip leading non-JSON content (e.g. "```json\n").
-	if i := strings.Index(s, "{"); i > 0 {
-		s = s[i:]
-	}
-	// Strip trailing non-JSON content (e.g. "\n```").
-	if i := strings.LastIndex(s, "}"); i >= 0 && i < len(s)-1 {
-		s = s[:i+1]
-	}
-	if err := json.Unmarshal([]byte(s), v); err != nil {
-		return fmt.Errorf("parseJSON: %w (raw: %.200s)", err, raw)
-	}
-	return nil
+	return append(sessions, cur)
 }
