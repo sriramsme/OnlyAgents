@@ -1,4 +1,4 @@
-package summarizer
+package memory
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
-	"github.com/sriramsme/OnlyAgents/pkg/memory"
 )
 
 // SummarizeWeek reads session episodes for the 7-day window ending on weekEnd
@@ -103,7 +102,7 @@ func (s *Summarizer) extractPatterns(ctx context.Context, sessions []*Episode, w
 	now := time.Now()
 
 	for _, p := range result.New {
-		pat := &memory.Pattern{
+		pat := &Pattern{
 			ID:               uuid.New().String(),
 			Description:      p.Description,
 			Confidence:       0.5, // starts conservative, rises with reinforcement
@@ -217,7 +216,7 @@ func buildWeeklyPrompt(input string, prior []*Episode, weekStart time.Time, loc 
 	return b.String()
 }
 
-func buildPraxisPrompt(sessions []*Episode, existing []*memory.Pattern, weekStart time.Time, loc *time.Location) string {
+func buildPraxisPrompt(sessions []*Episode, existing []*Pattern, weekStart time.Time, loc *time.Location) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "WEEK: %s – %s\n\n",

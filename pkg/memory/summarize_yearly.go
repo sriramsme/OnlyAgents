@@ -1,4 +1,4 @@
-package summarizer
+package memory
 
 import (
 	"context"

@@ -20,38 +20,24 @@
 //	Yearly  — 23:59 on Dec 31
 //
 // On startup, catch-up logic in the Manager runs any missed jobs.
-package summarizer
+package memory
 
 import (
 	"context"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/embedder"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
-	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
-)
-
-// Type aliases so sibling files don't need to import memory directly.
-type (
-	Episode      = memory.Episode
-	EpisodeScope = memory.EpisodeScope
-)
-
-const (
-	ScopeSession = memory.ScopeSession
-	ScopeDaily   = memory.ScopeDaily
-	ScopeWeekly  = memory.ScopeWeekly
-	ScopeMonthly = memory.ScopeMonthly
-	ScopeYearly  = memory.ScopeYearly
 )
 
 // SummarizerStore is the combined store interface required by the Summarizer.
 // Implementors must satisfy both EpisodeStore (for reading/writing episodes)
 // and message.Store (for reading raw conversation messages).
 type SummarizerStore interface {
-	memory.EpisodeStore
-	memory.PraxisStore
-	memory.NexusStore
+	EpisodeStore
+	PraxisStore
+	NexusStore
 	message.Store
 }
 
@@ -60,12 +46,12 @@ type Summarizer struct {
 	store     SummarizerStore
 	llmClient llm.Client
 	loc       *time.Location
-	embedder  memory.Embedder
+	embedder  embedder.Embedder
 }
 
 // New creates a Summarizer. tz is an IANA timezone string (e.g. "America/New_York").
 // If tz is empty or invalid, UTC is used.
-func New(store SummarizerStore, llmClient llm.Client, tz string) *Summarizer {
+func NewSummarizer(store SummarizerStore, llmClient llm.Client, embdeder embedder.Embedder, tz string) *Summarizer {
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
 		loc = time.UTC
@@ -74,6 +60,7 @@ func New(store SummarizerStore, llmClient llm.Client, tz string) *Summarizer {
 		store:     store,
 		llmClient: llmClient,
 		loc:       loc,
+		embedder:  embdeder,
 	}
 }
 
@@ -101,7 +88,7 @@ func (s *Summarizer) callLLM(ctx context.Context, system, user string) (string, 
 // ends before cutoff. Used to inject prior-period context into prompts.
 // Results are ordered newest-first. Returns nil (no error) when none exist.
 func (s *Summarizer) lastEpisodeBefore(ctx context.Context, scope EpisodeScope, cutoff time.Time, n int) ([]*Episode, error) {
-	q := memory.EpisodeQuery{
+	q := EpisodeQuery{
 		Scope: &scope,
 		To:    &cutoff,
 		Limit: n,

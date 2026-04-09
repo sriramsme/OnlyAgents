@@ -1,4 +1,4 @@
-package summarizer
+package memory
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
-	"github.com/sriramsme/OnlyAgents/pkg/memory"
 )
 
 // ingestIntoNexus processes the entities, relations, decisions, and
@@ -68,7 +67,7 @@ func (s *Summarizer) ingestIntoNexus(ctx context.Context, episodeID string, ext 
 
 type slot struct {
 	extracted  extractedEntity
-	candidates []*memory.Entity
+	candidates []*Entity
 }
 
 // resolveEntities deduplicates all extracted entities in a single batched LLM
@@ -109,10 +108,10 @@ func (s *Summarizer) resolveEntities(ctx context.Context, entities []extractedEn
 			continue
 		}
 
-		entity := &memory.Entity{
+		entity := &Entity{
 			ID:            newID(),
 			CanonicalName: sl.extracted.Name,
-			Type:          memory.EntityType(sl.extracted.Type),
+			Type:          EntityType(sl.extracted.Type),
 			CreatedAt:     time.Now().UTC(),
 		}
 		saved, err := s.store.UpsertEntity(ctx, entity)
@@ -130,14 +129,14 @@ func (s *Summarizer) resolveEntities(ctx context.Context, entities []extractedEn
 type dedupSlot struct {
 	slotIndex  int // index back into the original slots slice
 	name       string
-	candidates []*memory.Entity
+	candidates []*Entity
 }
 
 // batchConfirmMatches sends ONE LLM call for all entities that have FTS
 // candidates. Returns a slice parallel to slots: confirmed[i] is the matched
 // entity for slots[i], or nil if no match or no candidates.
-func (s *Summarizer) batchConfirmMatches(ctx context.Context, slots []slot) []*memory.Entity {
-	results := make([]*memory.Entity, len(slots))
+func (s *Summarizer) batchConfirmMatches(ctx context.Context, slots []slot) []*Entity {
+	results := make([]*Entity, len(slots))
 
 	var toConfirm []dedupSlot
 	for i, sl := range slots {
@@ -240,13 +239,13 @@ func buildRelation(
 	isStillTrue bool,
 	episodeID string,
 	nameToID map[string]string,
-) (*memory.Relation, bool) {
+) (*Relation, bool) {
 	subjectID, ok := nameToID[subject]
 	if !ok {
 		return nil, false
 	}
 
-	rel := &memory.Relation{
+	rel := &Relation{
 		ID:              newID(),
 		SubjectID:       subjectID,
 		Predicate:       predicate,
@@ -277,13 +276,13 @@ func buildLiteralRelation(
 	confidence float32,
 	episodeID string,
 	nameToID map[string]string,
-) (*memory.Relation, bool) {
+) (*Relation, bool) {
 	subjectID, ok := nameToID[subject]
 	if !ok {
 		return nil, false
 	}
 
-	rel := &memory.Relation{
+	rel := &Relation{
 		ID:              newID(),
 		SubjectID:       subjectID,
 		Predicate:       predicate,

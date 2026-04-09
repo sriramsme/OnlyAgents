@@ -1,4 +1,4 @@
-package summarizer
+package memory
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
-	"github.com/sriramsme/OnlyAgents/pkg/memory"
 	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
 )
 
@@ -122,8 +121,8 @@ func (j *yearlySummaryJob) Run(ctx context.Context) error {
 // CatchUp runs SummarizeYear for last year if no yearly episode exists.
 func (j *yearlySummaryJob) CatchUp(ctx context.Context) error {
 	lastYear := time.Now().Year() - 1
-	scope := memory.ScopeYearly
-	eps, err := j.s.store.SearchEpisodes(ctx, memory.EpisodeQuery{
+	scope := ScopeYearly
+	eps, err := j.s.store.SearchEpisodes(ctx, EpisodeQuery{
 		Scope: &scope,
 		Limit: 1,
 	})
