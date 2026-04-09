@@ -88,6 +88,10 @@ func New(cfg Config) (Client, error) {
 	return reg.Constructor(providerCfg)
 }
 
+func ResolveAPIKey(cfg Config) (string, error) {
+	return resolveAPIKey(cfg)
+}
+
 func resolveAPIKey(cfg Config) (string, error) {
 	// 1️⃣ Direct key (highest priority)
 	if cfg.APIKey != "" {

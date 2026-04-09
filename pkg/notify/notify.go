@@ -22,7 +22,9 @@ func New(store storage.Storage, bus chan<- core.Event, tz string) (*Notifier, er
 	return &Notifier{store: store, loc: loc, bus: bus}, nil
 }
 
-func (n *Notifier) RegisterJobs(s *scheduler.Scheduler) {
-	s.Register(&reminderNotifierJob{store: n.store, bus: n.bus})
-	s.Register(&dailyDigestJob{store: n.store, bus: n.bus, loc: n.loc})
+func (n *Notifier) Jobs() []scheduler.Job {
+	return []scheduler.Job{
+		&reminderNotifierJob{store: n.store, bus: n.bus},
+		&dailyDigestJob{store: n.store, bus: n.bus, loc: n.loc},
+	}
 }

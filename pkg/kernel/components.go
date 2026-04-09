@@ -137,13 +137,9 @@ func loadComponents(
 }
 
 // loadMemoryManager loads the MemoryManager.
-func loadMemoryManager(cfg config.Memory, store storage.Storage, userTZ string) (*memory.Manager, error) {
-	// llmClient, err := llm.New(cfg.LLM)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("create llm client for memory manager: %w", err)
-	// }
-	mm := memory.NewManager(store)
-	return mm, nil
+func loadMemoryManager(cfg memory.Config, store storage.Storage, userTZ string) (*memory.Manager, error) {
+	mm, err := memory.NewManager(store, cfg, userTZ)
+	return mm, err
 }
 
 // loadStore loads the SQLite storage.

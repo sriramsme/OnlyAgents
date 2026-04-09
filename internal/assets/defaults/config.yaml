@@ -14,6 +14,10 @@ memory:
     provider: openai
     model: gpt-5-mini
     api_key_path: openai/api_key
+  embedder: # embedder used for memory summarization
+    provider: openai  # openai | ollama | none
+    model: text-embedding-3-small
+    api_key_path: openai/api_key
 
 # skill marketplaces
 marketplaces:

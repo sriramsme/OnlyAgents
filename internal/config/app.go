@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
-	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/memory"
 )
 
 type AppConfig struct {
@@ -17,11 +17,7 @@ type AppConfig struct {
 	BusBufferSize int                 `mapstructure:"bus_buffer_size"`
 	Security      SecurityConfig      `mapstructure:"security"`
 	Marketplaces  []MarketplaceConfig `mapstructure:"marketplaces"`
-	Memory        Memory              `mapstructure:"memory"`
-}
-
-type Memory struct {
-	LLM llm.Config `mapstructure:"llm"`
+	Memory        memory.Config       `mapstructure:"memory"`
 }
 
 type SecurityConfig struct {

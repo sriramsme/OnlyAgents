@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/sriramsme/OnlyAgents/internal/paths"
 )
 
 func init() {
@@ -142,7 +144,7 @@ func (e *EnvVault) toEnvKeyWithoutPrefix(key string) string {
 func LoadDotEnv(filePath string) error {
 	// If no path specified, try default .env
 	if filePath == "" {
-		filePath = ".env"
+		filePath = paths.EnvPath()
 	}
 
 	cleanPath := filepath.Clean(filePath)

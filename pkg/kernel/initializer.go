@@ -52,8 +52,10 @@ func (i promptsInitializer) Init(ctx context.Context, k *Kernel) error {
 
 // memoryInitializer is the last initializer — it must be the last one to run.
 func (i memoryInitializer) Init(ctx context.Context, k *Kernel) error {
-	// TODO: Call RegisterJobs on pkg/memory/summarizer/summarizer.go
-	// k.mem.RegisterJobs(k.scheduler)
+	// Register all memory jobs with the scheduler.
+	for _, job := range k.mem.Jobs() {
+		k.scheduler.Register(job)
+	}
 	return nil
 }
 
@@ -63,6 +65,9 @@ func (i cronInitializer) Init(ctx context.Context, k *Kernel) error {
 }
 
 func (i notifyInitializer) Init(ctx context.Context, k *Kernel) error {
-	k.notifier.RegisterJobs(k.scheduler)
+	// Register all notification jobs with the scheduler.
+	for _, job := range k.notifier.Jobs() {
+		k.scheduler.Register(job)
+	}
 	return nil
 }

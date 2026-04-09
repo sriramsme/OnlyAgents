@@ -11,11 +11,13 @@ import (
 
 // RegisterJobs registers all memory compression jobs with the provided
 // scheduler. Call this during kernel boot, before scheduler.Start.
-func (s *Summarizer) RegisterJobs(sched *scheduler.Scheduler) {
-	sched.Register(&dailySummaryJob{s: s})
-	sched.Register(&weeklySummaryJob{s: s})
-	sched.Register(&monthlySummaryJob{s: s})
-	sched.Register(&yearlySummaryJob{s: s})
+func (s *Summarizer) Jobs() []scheduler.Job {
+	return []scheduler.Job{
+		&dailySummaryJob{s: s},
+		&weeklySummaryJob{s: s},
+		&monthlySummaryJob{s: s},
+		&yearlySummaryJob{s: s},
+	}
 }
 
 // ── Daily summary ─────────────────────────────────────────────────────────────

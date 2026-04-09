@@ -11,12 +11,12 @@ type Config struct {
 	// authentication sources (choose one)
 	APIKey string `mapstructure:"api_key" json:"-"` // direct key value
 
-	APIKeyName string `json:"api_key_name,omitempty"` // e.g. "OPENAI_API_KEY"
+	APIKeyName string `mapstructure:"api_key_name" json:"api_key_name,omitempty"` // e.g. "OPENAI_API_KEY"
 
 	Vault      vault.Vault
 	APIKeyPath string `mapstructure:"api_key_path" json:"api_key_path,omitempty"` // vault path
 
-	EnvPath string `json:"env_path,omitempty"` // optional .env path
+	EnvPath string `mapstructure:"env_path" json:"env_path,omitempty"` // optional .env path
 
 	// optional runtime settings
 	BaseURL string   `mapstructure:"base_url" json:"base_url,omitempty"`

@@ -118,6 +118,18 @@ func (s *Summarizer) summarizeAndStoreSession(ctx context.Context, sess msgSessi
 		CreatedAt:  time.Now(),
 	}
 
+	// Embed the session summary for semantic recall.
+	if s.embedder != nil {
+		if vec, err := s.embedder.Embed(ctx, ext.Summary); err != nil {
+			logger.Log.Warn("session summarizer: embed failed, storing without vector",
+				"err", err,
+				"session_start", sess.start.Format(time.RFC3339),
+			)
+		} else {
+			ep.Embedding = vec
+		}
+	}
+
 	s.ingestIntoNexus(ctx, ep.ID, ext)
 
 	// Note: ingestIntoNexus logs individual failures and never returns an error —

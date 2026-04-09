@@ -25,25 +25,28 @@ type Embedder interface {
 //  3. APIKeyName (env var name)
 //  4. Default provider env var (e.g. OPENAI_API_KEY)
 type Config struct {
-	Provider string // "openai" | "ollama" | "none"  (default: "none")
-	Model    string // optional — provider defaults applied if empty
+	Provider string `mapstructure:"provider" json:"provider"` // "openai" | "ollama" | "none"  (default: "none")
+	Model    string `mapstructure:"model" json:"model"`       // optional — provider defaults applied if empty
 
-	// Auth
-	APIKey     string
-	APIKeyName string // e.g. "MY_OPENAI_KEY"
+	// authentication sources (choose one)
+	APIKey string `mapstructure:"api_key" json:"-"` // direct key value
+
+	APIKeyName string `mapstructure:"api_key_name" json:"api_key_name,omitempty"` // e.g. "OPENAI_API_KEY"
+
 	Vault      vault.Vault
-	APIKeyPath string
-	EnvPath    string
+	APIKeyPath string `mapstructure:"api_key_path" json:"api_key_path,omitempty"` // vault path
+
+	EnvPath string `mapstructure:"env_path" json:"env_path,omitempty"` // optional .env path
 
 	// BaseURL is used as the Ollama endpoint.
 	// Default: http://localhost:11434
-	BaseURL string
+	BaseURL string `mapstructure:"base_url" json:"base_url,omitempty"`
 }
 
 // NewEmbedder constructs the appropriate Embedder from cfg.
 // Only returns an error for misconfigured non-noop providers
 // (e.g. missing API key, unreachable Ollama).
-func NewEmbedder(cfg Config) (Embedder, error) {
+func New(cfg Config) (Embedder, error) {
 	switch cfg.Provider {
 	case "openai":
 		apiKey, err := resolveAPIKey(cfg)
@@ -68,11 +71,9 @@ func resolveAPIKey(cfg Config) (string, error) {
 		return cfg.APIKey, nil
 	}
 
-	// Load .env if path provided
-	if cfg.EnvPath != "" {
-		if err := vault.LoadDotEnv(cfg.EnvPath); err != nil {
-			return "", fmt.Errorf("failed to load .env: %w", err)
-		}
+	// Load .env (setup phase)
+	if err := vault.LoadDotEnv(cfg.EnvPath); err != nil {
+		return "", fmt.Errorf("failed to load .env: %w", err)
 	}
 
 	// 2. Vault
