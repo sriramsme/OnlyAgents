@@ -6,6 +6,7 @@ import (
 
 	"github.com/sriramsme/OnlyAgents/internal/config"
 	"github.com/sriramsme/OnlyAgents/internal/paths"
+	"github.com/sriramsme/OnlyAgents/internal/storage/sqlite"
 	"github.com/sriramsme/OnlyAgents/pkg/agents"
 	"github.com/sriramsme/OnlyAgents/pkg/asec/vault"
 	"github.com/sriramsme/OnlyAgents/pkg/channels"
@@ -21,7 +22,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/skills/cli"
 	"github.com/sriramsme/OnlyAgents/pkg/skills/marketplace"
 	"github.com/sriramsme/OnlyAgents/pkg/storage"
-	"github.com/sriramsme/OnlyAgents/pkg/storage/sqlite"
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 

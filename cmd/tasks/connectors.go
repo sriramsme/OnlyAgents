@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
+	"github.com/sriramsme/OnlyAgents/internal/storage/sqlite"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors"
 	"github.com/sriramsme/OnlyAgents/pkg/connectors/local"
-	"github.com/sriramsme/OnlyAgents/pkg/storage/sqlite"
 )
 
 var connectorRegistry = map[string]func() (connectors.TasksConnector, error){}
