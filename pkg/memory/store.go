@@ -21,6 +21,7 @@ type NexusStore interface {
 	QueryEntity(ctx context.Context, entityID string, asOf *time.Time) ([]*Relation, error)
 	Timeline(ctx context.Context, entityID string) ([]*Relation, error)
 	LinkEpisodeEntities(ctx context.Context, episodeID string, entityIDs []string) error
+	AddAlias(ctx context.Context, entityID, alias, sourceEpisodeID string) error
 }
 
 type PraxisStore interface {

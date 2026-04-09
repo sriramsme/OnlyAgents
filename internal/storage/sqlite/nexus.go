@@ -280,6 +280,14 @@ func (d *DB) LinkEpisodeEntities(ctx context.Context, episodeID string, entityID
 	return wrap(err, "link episode entities")
 }
 
+func (d *DB) AddAlias(ctx context.Context, entityID, alias, sourceEpisodeID string) error {
+	_, err := d.db.ExecContext(ctx, `
+		INSERT OR IGNORE INTO entity_aliases (entity_id, alias, source_episode_id)
+		VALUES (?, ?, ?)
+	`, entityID, alias, sourceEpisodeID)
+	return wrap(err, "add alias")
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func relationRowsToDomain(rows []relationRow) []*memory.Relation {

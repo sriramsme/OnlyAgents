@@ -13,7 +13,7 @@ import (
 // sessionExtraction is the structured payload returned by the session LLM call.
 // The summary field feeds Episode.Summary for the daily rollup chain.
 // The entity/relation/decision/preference fields are intended for NexusStore
-// ingestion (TODO: wire up once NexusStore is implemented).
+// ingestion.
 type sessionExtraction struct {
 	Summary     string              `json:"summary"`
 	Importance  float32             `json:"importance"` // 0.0–1.0
@@ -108,9 +108,6 @@ func (s *Summarizer) summarizeAndStoreSession(ctx context.Context, sess msgSessi
 		ext.Importance = computeSessionImportance(sess)
 	}
 
-	// TODO: feed ext.Entities, ext.Relations, ext.Decisions, ext.Preferences
-	// into NexusStore once that store is wired up.
-
 	ep := &Episode{
 		ID:         SessionEpisodeID(sess.start),
 		Scope:      ScopeSession,
@@ -121,6 +118,11 @@ func (s *Summarizer) summarizeAndStoreSession(ctx context.Context, sess msgSessi
 		CreatedAt:  time.Now(),
 	}
 
+	s.ingestIntoNexus(ctx, ep.ID, ext)
+
+	// Note: ingestIntoNexus logs individual failures and never returns an error —
+	// Nexus ingestion is best-effort and must not block episode storage.
+	// The SaveEpisode call below remains the critical path.
 	return s.store.SaveEpisode(ctx, ep)
 }
 
