@@ -49,6 +49,9 @@ type relationRow struct {
 	ValidUntil      dbtypes.NullDBTime `db:"valid_until"`
 	SourceEpisodeID sql.NullString     `db:"source_episode_id"`
 	CreatedAt       dbtypes.DBTime     `db:"created_at"`
+
+	SubjectName string `db:"subject_name"`
+	ObjectName  string `db:"object_name"`
 }
 
 func toRelationRow(r *memory.Relation) relationRow {
@@ -77,12 +80,14 @@ func toRelationRow(r *memory.Relation) relationRow {
 
 func (r relationRow) toDomain() *memory.Relation {
 	rel := &memory.Relation{
-		ID:         r.ID,
-		SubjectID:  r.SubjectID,
-		Predicate:  r.Predicate,
-		Confidence: r.Confidence,
-		ValidFrom:  r.ValidFrom.Time,
-		CreatedAt:  r.CreatedAt.Time,
+		ID:          r.ID,
+		SubjectID:   r.SubjectID,
+		Predicate:   r.Predicate,
+		Confidence:  r.Confidence,
+		ValidFrom:   r.ValidFrom.Time,
+		CreatedAt:   r.CreatedAt.Time,
+		SubjectName: r.SubjectName,
+		ObjectName:  r.ObjectName,
 	}
 	if r.ObjectID.Valid {
 		rel.ObjectID = &r.ObjectID.String
@@ -226,19 +231,29 @@ func (d *DB) QueryEntity(ctx context.Context, entityID string, asOf *time.Time) 
 
 	if asOf == nil {
 		err = d.db.SelectContext(ctx, &rows, `
-			SELECT * FROM relations
-			WHERE subject_id = ? AND valid_until IS NULL
-			ORDER BY valid_from DESC
-		`, entityID)
+    SELECT r.*,
+        s.canonical_name as subject_name,
+        o.canonical_name as object_name
+    FROM relations r
+    JOIN entities s ON s.id = r.subject_id
+    LEFT JOIN entities o ON o.id = r.object_id
+    WHERE r.subject_id = ? AND r.valid_until IS NULL
+    ORDER BY r.valid_from DESC
+`, entityID)
 	} else {
 		t := dbtypes.DBTime{Time: *asOf}
 		err = d.db.SelectContext(ctx, &rows, `
-			SELECT * FROM relations
-			WHERE subject_id = ?
-			  AND valid_from <= ?
-			  AND (valid_until IS NULL OR valid_until > ?)
-			ORDER BY valid_from DESC
-		`, entityID, t, t)
+    SELECT r.*,
+        s.canonical_name as subject_name,
+        o.canonical_name as object_name
+    FROM relations r
+    JOIN entities s ON s.id = r.subject_id
+    LEFT JOIN entities o ON o.id = r.object_id
+    WHERE r.subject_id = ?
+      AND r.valid_from <= ?
+      AND (r.valid_until IS NULL OR r.valid_until > ?)
+    ORDER BY r.valid_from DESC
+`, entityID, t, t)
 	}
 	if err != nil {
 		return nil, wrap(err, "query entity")
@@ -286,6 +301,26 @@ func (d *DB) AddAlias(ctx context.Context, entityID, alias, sourceEpisodeID stri
 		VALUES (?, ?, ?)
 	`, entityID, alias, sourceEpisodeID)
 	return wrap(err, "add alias")
+}
+
+func (d *DB) GetEpisodeEntityIDs(ctx context.Context, episodeID string) ([]string, error) {
+	rows, err := d.db.QueryContext(ctx, `
+		SELECT entity_id FROM episode_entities
+		WHERE episode_id = ?
+	`, episodeID)
+	if err != nil {
+		return nil, wrap(err, "get episode entity IDs")
+	}
+	var out []string
+	for rows.Next() {
+		var id string
+		err := rows.Scan(&id)
+		if err != nil {
+			return nil, wrap(err, "get episode entity IDs")
+		}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

@@ -13,11 +13,22 @@ import (
 // scheduler. Call this during kernel boot, before scheduler.Start.
 func (s *Summarizer) Jobs() []scheduler.Job {
 	return []scheduler.Job{
+		&sessionDetectionJob{s: s},
 		&dailySummaryJob{s: s},
 		&weeklySummaryJob{s: s},
 		&monthlySummaryJob{s: s},
 		&yearlySummaryJob{s: s},
 	}
+}
+
+// ── Session detection ─────────────────────────────────────────────────────────────
+
+type sessionDetectionJob struct{ s *Summarizer }
+
+func (j *sessionDetectionJob) Name() string     { return "session_detection" }
+func (j *sessionDetectionJob) Schedule() string { return "*/15 * * * *" }
+func (j *sessionDetectionJob) Run(ctx context.Context) error {
+	return j.s.DetectAndSummarizeSessions(ctx)
 }
 
 // ── Daily summary ─────────────────────────────────────────────────────────────

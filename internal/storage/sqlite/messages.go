@@ -100,3 +100,15 @@ func (d *DB) DeleteOldMessages(ctx context.Context, olderThan time.Time) error {
 	_, err := d.db.ExecContext(ctx, `DELETE FROM messages WHERE timestamp < ?`, val)
 	return wrap(err, "delete old messages")
 }
+
+func (d *DB) LastMessageBefore(ctx context.Context, before time.Time, roles []string) (*message.Message, error) {
+	var msg message.Message
+	err := d.db.GetContext(ctx, &msg, `
+		SELECT * FROM messages
+		WHERE timestamp < ?
+		  AND role IN (?)
+		ORDER BY timestamp DESC
+		LIMIT 1
+	`, dbtypes.DBTime{Time: before}, roles)
+	return &msg, wrap(err, "last message before")
+}

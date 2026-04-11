@@ -18,6 +18,7 @@ type Store interface {
 
 	// Lookup by platform ID — caller reads .AgentID from the result
 	GetMessageByPlatformID(ctx context.Context, platformMessageID string) (*Message, error)
+	LastMessageBefore(ctx context.Context, before time.Time, roles []string) (*Message, error)
 }
 
 // Message is one turn within a Conversation.

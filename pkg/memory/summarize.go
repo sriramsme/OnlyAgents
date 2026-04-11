@@ -24,10 +24,12 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/sriramsme/OnlyAgents/pkg/embedder"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
+	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
 )
 
@@ -82,6 +84,52 @@ func (s *Summarizer) callLLM(ctx context.Context, system, user string) (string, 
 		return "", err
 	}
 	return resp.Content, nil
+}
+
+// detectUnprocessedWindow returns the (from, to) time window containing
+// messages that have gone quiet but haven't been summarized into a session
+// episode yet. Returns found=false if nothing needs processing.
+func (s *Summarizer) detectUnprocessedWindow(ctx context.Context) (from, to time.Time, found bool, err error) {
+	// High watermark: where did we last finish processing?
+	lastProcessed, err := s.store.LastSessionEpisodeEndedAt(ctx)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, fmt.Errorf("detect session: last episode: %w", err)
+	}
+
+	// Last message that's old enough to be considered part of a closed session.
+	cutoff := time.Now().Add(-sessionGap)
+	lastMsg, err := s.store.LastMessageBefore(ctx, cutoff, []string{"user", "assistant"})
+	if err != nil {
+		return time.Time{}, time.Time{}, false, fmt.Errorf("detect session: last message: %w", err)
+	}
+	if lastMsg == nil {
+		return time.Time{}, time.Time{}, false, nil // no messages at all
+	}
+
+	// Nothing new since last processed window.
+	if !lastMsg.Timestamp.After(lastProcessed) {
+		return time.Time{}, time.Time{}, false, nil
+	}
+
+	return lastProcessed, cutoff, true, nil
+}
+
+// DetectAndSummarizeSessions is called by the session detection cron job.
+func (s *Summarizer) DetectAndSummarizeSessions(ctx context.Context) error {
+	from, to, found, err := s.detectUnprocessedWindow(ctx)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+
+	logger.Log.Info("summarizer: detected unprocessed session window",
+		"from", from.Format(time.RFC3339),
+		"to", to.Format(time.RFC3339),
+	)
+
+	return s.SummarizeSessions(ctx, from, to)
 }
 
 // lastEpisodeBefore fetches up to n episodes of the given scope whose window

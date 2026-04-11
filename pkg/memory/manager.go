@@ -16,8 +16,9 @@ type Config struct {
 
 // Manager orchestrates memory operations including summarization and retrieval.
 type Manager struct {
-	store      EpisodeStore
-	summarizer *Summarizer
+	store        EpisodeStore
+	recallEngine *RecallEngine
+	summarizer   *Summarizer
 }
 
 // MemoryStore is the combined store interface required by the Memory and its child components..
@@ -42,9 +43,12 @@ func NewManager(store Store, cfg Config, tz string) (*Manager, error) {
 
 	summarizer := NewSummarizer(store, llmClient, embedder, tz)
 
+	recallEngine := newRecallEngine(store, embedder)
+
 	return &Manager{
-		store:      store,
-		summarizer: summarizer,
+		store:        store,
+		summarizer:   summarizer,
+		recallEngine: recallEngine,
 	}, nil
 }
 

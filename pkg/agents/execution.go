@@ -9,7 +9,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/media"
-	"github.com/sriramsme/OnlyAgents/pkg/memory"
 )
 
 // llmCaller is the function signature shared by callLLM and callLLMStream.
@@ -207,7 +206,7 @@ func (a *Agent) prepareExecution(
 
 	messages = make([]llm.Message, 0, len(history)+2)
 	messages = append(messages, llm.SystemMessage(a.systemPrompt))
-	if formatted := memory.FormatMemoryContext(memCtx); formatted != "" {
+	if formatted := memCtx.Render(); formatted != "" {
 		messages = append(messages, llm.SystemMessage(formatted))
 	}
 	messages = append(messages, history...)

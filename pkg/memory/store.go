@@ -11,6 +11,7 @@ type EpisodeStore interface {
 	SearchEpisodes(ctx context.Context, q EpisodeQuery) ([]*Episode, error)
 	GetEpisodesByScope(ctx context.Context, scope EpisodeScope, from, to time.Time) ([]*Episode, error)
 	PruneEpisodes(ctx context.Context, before time.Time, maxImportance float32) (int, error)
+	LastSessionEpisodeEndedAt(ctx context.Context) (time.Time, error)
 }
 
 type NexusStore interface {
@@ -22,6 +23,7 @@ type NexusStore interface {
 	Timeline(ctx context.Context, entityID string) ([]*Relation, error)
 	LinkEpisodeEntities(ctx context.Context, episodeID string, entityIDs []string) error
 	AddAlias(ctx context.Context, entityID, alias, sourceEpisodeID string) error
+	GetEpisodeEntityIDs(ctx context.Context, episodeID string) ([]string, error)
 }
 
 type PraxisStore interface {
@@ -91,6 +93,9 @@ type Relation struct {
 	ValidUntil      *time.Time // nil = currently true
 	SourceEpisodeID *string
 	CreatedAt       time.Time
+
+	SubjectName string // denormalized for rendering
+	ObjectName  string // empty if object is a literal
 }
 
 type Pattern struct {

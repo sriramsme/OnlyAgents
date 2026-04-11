@@ -183,6 +183,15 @@ func (d *DB) PruneEpisodes(ctx context.Context, before time.Time, maxImportance 
 	return int(n), nil
 }
 
+func (d *DB) LastSessionEpisodeEndedAt(ctx context.Context) (time.Time, error) {
+	var lastEnd time.Time
+	err := d.db.GetContext(ctx, &lastEnd, `
+		SELECT COALESCE(MAX(ended_at), '1970-01-01') FROM episodes
+		WHERE scope = ?
+	`, string(memory.ScopeSession))
+	return lastEnd, wrap(err, "last session episode ended at")
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 // episodeFilterClauses builds WHERE clause fragments from an EpisodeQuery,
