@@ -33,6 +33,8 @@ func (t *DBTime) Scan(src any) error {
 		t.Time = time.Time{}
 	case int64:
 		t.Time = time.Unix(v, 0).UTC()
+	case time.Time:
+		t.Time = v.UTC()
 	case string:
 		return t.parse(v)
 	case []byte:

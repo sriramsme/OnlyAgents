@@ -30,8 +30,8 @@ func groupIntoSessions(msgs []*message.Message) []msgSession {
 
 	var sessions []msgSession
 	cur := msgSession{
-		start:    msgs[0].Timestamp.Time,
-		end:      msgs[0].Timestamp.Time,
+		start:    msgs[0].Timestamp,
+		end:      msgs[0].Timestamp,
 		messages: []*message.Message{msgs[0]},
 	}
 	if msgs[0].AgentID != "" {
@@ -44,11 +44,11 @@ func groupIntoSessions(msgs []*message.Message) []msgSession {
 	}
 
 	for _, m := range msgs[1:] {
-		if m.Timestamp.Sub(cur.end) >= sessionGap {
+		if m.Timestamp.Sub(cur.end.Time) >= sessionGap {
 			sessions = append(sessions, cur)
 			cur = msgSession{
-				start:    m.Timestamp.Time,
-				end:      m.Timestamp.Time,
+				start:    m.Timestamp,
+				end:      m.Timestamp,
 				messages: []*message.Message{m},
 			}
 			agentSeen = map[string]bool{}
@@ -57,7 +57,7 @@ func groupIntoSessions(msgs []*message.Message) []msgSession {
 				cur.agents = []string{m.AgentID}
 			}
 		} else {
-			cur.end = m.Timestamp.Time
+			cur.end = m.Timestamp
 			cur.messages = append(cur.messages, m)
 			if m.AgentID != "" && !agentSeen[m.AgentID] {
 				agentSeen[m.AgentID] = true

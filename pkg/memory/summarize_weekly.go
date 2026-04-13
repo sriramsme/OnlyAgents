@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
@@ -56,9 +57,9 @@ func (s *Summarizer) SummarizeWeek(ctx context.Context, weekEnd time.Time) error
 		Scope:      ScopeWeekly,
 		Summary:    strings.TrimSpace(raw),
 		Importance: 0.8,
-		StartedAt:  weekStart,
-		EndedAt:    weekEnd,
-		CreatedAt:  time.Now(),
+		StartedAt:  dbtypes.DBTime{Time: weekStart},
+		EndedAt:    dbtypes.DBTime{Time: weekEnd},
+		CreatedAt:  dbtypes.DBTime{Time: time.Now()},
 	}
 	if err := s.store.SaveEpisode(ctx, ep); err != nil {
 		return fmt.Errorf("summarizer: save weekly: %w", err)
@@ -107,9 +108,9 @@ func (s *Summarizer) extractPatterns(ctx context.Context, sessions []*Episode, w
 			Description:      p.Description,
 			Confidence:       0.5, // starts conservative, rises with reinforcement
 			ObservationCount: p.ObservationCount,
-			FirstObservedAt:  weekStart,
-			LastObservedAt:   now,
-			CreatedAt:        now,
+			FirstObservedAt:  dbtypes.DBTime{Time: weekStart},
+			LastObservedAt:   dbtypes.DBTime{Time: now},
+			CreatedAt:        dbtypes.DBTime{Time: now},
 		}
 		if s.embedder != nil {
 			pat.Embedding, err = s.embedder.Embed(ctx, p.Description)

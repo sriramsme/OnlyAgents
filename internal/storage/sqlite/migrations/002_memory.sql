@@ -25,7 +25,7 @@ CREATE INDEX idx_episodes_importance ON episodes(importance);
 CREATE TABLE entities (
     id             TEXT PRIMARY KEY,
     canonical_name TEXT NOT NULL,
-    type           TEXT NOT NULL CHECK (type IN ('person','project','tool','concept','decision','preference')),
+    type           TEXT NOT NULL CHECK (type IN ('person','project','tool','concept','decision','preference', 'other')),
     created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

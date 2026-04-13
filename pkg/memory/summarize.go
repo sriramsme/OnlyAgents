@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/embedder"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
@@ -138,7 +139,7 @@ func (s *Summarizer) DetectAndSummarizeSessions(ctx context.Context) error {
 func (s *Summarizer) lastEpisodeBefore(ctx context.Context, scope EpisodeScope, cutoff time.Time, n int) ([]*Episode, error) {
 	q := EpisodeQuery{
 		Scope: &scope,
-		To:    &cutoff,
+		To:    &dbtypes.DBTime{Time: cutoff},
 		Limit: n,
 	}
 	eps, err := s.store.SearchEpisodes(ctx, q)

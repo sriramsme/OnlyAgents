@@ -55,3 +55,11 @@ func NewManager(store Store, cfg Config, tz string) (*Manager, error) {
 func (m *Manager) Jobs() []scheduler.Job {
 	return m.summarizer.Jobs()
 }
+
+func (m *Manager) Summarizer() *Summarizer {
+	return m.summarizer
+}
+
+func (m *Manager) RecallEngine() *RecallEngine {
+	return m.recallEngine
+}

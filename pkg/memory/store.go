@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"time"
+
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 )
 
 type EpisodeStore interface {
@@ -51,15 +53,15 @@ type Episode struct {
 	Summary    string
 	Embedding  []float32
 	Importance float32
-	StartedAt  time.Time
-	EndedAt    time.Time
-	CreatedAt  time.Time
+	StartedAt  dbtypes.DBTime
+	EndedAt    dbtypes.DBTime
+	CreatedAt  dbtypes.DBTime
 }
 
 type EpisodeQuery struct {
 	Scope     *EpisodeScope
-	From      *time.Time
-	To        *time.Time
+	From      *dbtypes.DBTime
+	To        *dbtypes.DBTime
 	Embedding []float32 // if set, do vector/FTS search
 	Limit     int
 }
@@ -69,17 +71,18 @@ type EntityType string
 const (
 	EntityPerson     EntityType = "person"
 	EntityProject    EntityType = "project"
-	EntityTool       EntityType = "tool"
-	EntityConcept    EntityType = "concept"
+	EntityTool       EntityType = "tool"    // libraries, frameworks, CLIs
+	EntityConcept    EntityType = "concept" // architecture patterns, ideas
 	EntityDecision   EntityType = "decision"
 	EntityPreference EntityType = "preference"
+	EntityOther      EntityType = "other" // escape hatch
 )
 
 type Entity struct {
 	ID            string
 	CanonicalName string
 	Type          EntityType
-	CreatedAt     time.Time
+	CreatedAt     dbtypes.DBTime
 }
 
 type Relation struct {
@@ -89,10 +92,10 @@ type Relation struct {
 	ObjectID        *string // nil if object is a literal
 	ObjectLiteral   *string // nil if object is an entity
 	Confidence      float32
-	ValidFrom       time.Time
-	ValidUntil      *time.Time // nil = currently true
+	ValidFrom       dbtypes.DBTime
+	ValidUntil      dbtypes.NullDBTime // nil = currently true
 	SourceEpisodeID *string
-	CreatedAt       time.Time
+	CreatedAt       dbtypes.DBTime
 
 	SubjectName string // denormalized for rendering
 	ObjectName  string // empty if object is a literal
@@ -104,7 +107,8 @@ type Pattern struct {
 	Embedding        []float32
 	Confidence       float32
 	ObservationCount int
-	FirstObservedAt  time.Time
-	LastObservedAt   time.Time
-	CreatedAt        time.Time
+	FirstObservedAt  dbtypes.DBTime
+	LastObservedAt   dbtypes.DBTime
+	LastDecayedAt    dbtypes.DBTime
+	CreatedAt        dbtypes.DBTime
 }

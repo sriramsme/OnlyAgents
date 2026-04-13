@@ -2,6 +2,8 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -103,12 +105,27 @@ func (d *DB) DeleteOldMessages(ctx context.Context, olderThan time.Time) error {
 
 func (d *DB) LastMessageBefore(ctx context.Context, before time.Time, roles []string) (*message.Message, error) {
 	var msg message.Message
-	err := d.db.GetContext(ctx, &msg, `
+
+	query, args, err := sqlx.In(`
 		SELECT * FROM messages
 		WHERE timestamp < ?
 		  AND role IN (?)
 		ORDER BY timestamp DESC
 		LIMIT 1
 	`, dbtypes.DBTime{Time: before}, roles)
-	return &msg, wrap(err, "last message before")
+	if err != nil {
+		return nil, wrap(err, "build query")
+	}
+
+	query = d.db.Rebind(query)
+
+	err = d.db.GetContext(ctx, &msg, query, args...)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, wrap(err, "last message before")
+	}
+
+	return &msg, nil
 }

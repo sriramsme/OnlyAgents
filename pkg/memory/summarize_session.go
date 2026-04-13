@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
@@ -109,13 +110,13 @@ func (s *Summarizer) summarizeAndStoreSession(ctx context.Context, sess msgSessi
 	}
 
 	ep := &Episode{
-		ID:         SessionEpisodeID(sess.start),
+		ID:         SessionEpisodeID(sess.start.Time),
 		Scope:      ScopeSession,
 		Summary:    ext.Summary,
 		Importance: ext.Importance,
 		StartedAt:  sess.start,
 		EndedAt:    sess.end,
-		CreatedAt:  time.Now(),
+		CreatedAt:  dbtypes.DBTime{Time: time.Now()},
 	}
 
 	// Embed the session summary for semantic recall.
@@ -129,13 +130,17 @@ func (s *Summarizer) summarizeAndStoreSession(ctx context.Context, sess msgSessi
 			ep.Embedding = vec
 		}
 	}
-
-	s.ingestIntoNexus(ctx, ep.ID, ext)
-
 	// Note: ingestIntoNexus logs individual failures and never returns an error —
 	// Nexus ingestion is best-effort and must not block episode storage.
 	// The SaveEpisode call below remains the critical path.
-	return s.store.SaveEpisode(ctx, ep)
+	err = s.store.SaveEpisode(ctx, ep)
+	if err != nil {
+		return fmt.Errorf("session summarizer: save episode: %w", err)
+	}
+
+	s.ingestIntoNexus(ctx, ep.ID, ext)
+
+	return nil
 }
 
 // buildSessionPrompt assembles the user-turn for the session extraction call.
@@ -195,18 +200,68 @@ const sessionSystemPrompt = `You are a memory extraction system for OnlyAgents, 
 
 If a PREVIOUS SESSION CONTEXT block is provided, use it to understand continuity —
 references like "that project" or "what we discussed earlier" should be resolved against it.
-Do NOT summarise the previous context itself; only use it to inform the current session.
+Do NOT extract or summarise the previous context itself; only use it to inform the current session.
 
-Extract the following from the CURRENT SESSION:
-1. summary      — 3-5 sentences: what was discussed, decided, and left open
-2. importance   — float 0.0–1.0 (how significant is this session for long-term memory)
-3. entities     — people, projects, tools, concepts mentioned (name + type)
-4. relations    — relationships between entities (subject, predicate, object, is_still_true)
-5. decisions    — explicit decisions made (entity affected, decision text, confidence 0–1)
-6. preferences  — preferences expressed by any participant (who, what preference)
+You are STRICT and CONSERVATIVE.
+If information is weak, implied, speculative, or mentioned only once, DO NOT extract it.
 
-Be conservative. Only extract what is explicitly stated.
-Return ONLY a single JSON object matching this schema — no markdown fences, no explanation:
+SHORT OR LOW-SIGNAL SESSIONS:
+If the session is brief, casual, or contains little concrete information:
+- summary should be minimal (1–2 sentences max)
+- importance should be ≤ 0.2
+- entities, relations, decisions, preferences should usually be EMPTY ARRAYS
+
+Only extract when there is CLEAR and REPEATED or ACTIONABLE signal.
+
+---
+
+Extract from the CURRENT SESSION:
+
+1. summary (1–5 sentences)
+   - Only include concrete discussion, decisions, or unresolved work
+   - Avoid filler or conversational fluff
+
+2. importance (0.0–1.0):
+   Use this scale strictly:
+   - 0.0–0.2 → trivial, short, or low-signal session
+   - 0.3–0.5 → moderate discussion, some useful context
+   - 0.6–0.8 → important planning, decisions, or ongoing work
+   - 0.9–1.0 → critical, long-term memory (major decisions, goals, identity)
+
+Default to LOWER values unless clearly justified.
+
+3. entities:
+   Extract ONLY if:
+   - explicitly named AND
+   - important to understanding future context
+   Do NOT extract generic terms (e.g., "task", "idea", "system")
+
+4. relations:
+   - relationships between entities (subject, predicate, object, is_still_true)
+   Extract ONLY if:
+   - relationship is explicitly stated (not inferred)
+   - and meaningful beyond this session
+   Weak or obvious relations should be omitted
+
+5. decisions:
+   Extract ONLY explicit decisions (not suggestions or brainstorming)
+
+6. preferences:
+   Extract ONLY clear, repeated, or strongly stated preferences
+
+---
+
+CRITICAL RULES:
+- It is VALID to return EMPTY arrays for any section
+- Do NOT invent importance
+- Do NOT infer relationships
+- Do NOT extract from single weak mentions
+- When in doubt → OMIT
+- Only use one of these entity types: person, project, tool, concept, decision, preference, other.
+If none fit, use "other" — do not invent new types.
+---
+
+Return ONLY a single JSON object:
 
 {
   "summary": "string",

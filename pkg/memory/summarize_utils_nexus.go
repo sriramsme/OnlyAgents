@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
@@ -112,7 +113,7 @@ func (s *Summarizer) resolveEntities(ctx context.Context, entities []extractedEn
 			ID:            newID(),
 			CanonicalName: sl.extracted.Name,
 			Type:          EntityType(sl.extracted.Type),
-			CreatedAt:     time.Now().UTC(),
+			CreatedAt:     dbtypes.DBTime{Time: time.Now().UTC()},
 		}
 		saved, err := s.store.UpsertEntity(ctx, entity)
 		if err != nil {
@@ -250,14 +251,14 @@ func buildRelation(
 		SubjectID:       subjectID,
 		Predicate:       predicate,
 		Confidence:      1.0,
-		ValidFrom:       time.Now().UTC(),
+		ValidFrom:       dbtypes.DBTime{Time: time.Now().UTC()},
 		SourceEpisodeID: &episodeID,
-		CreatedAt:       time.Now().UTC(),
+		CreatedAt:       dbtypes.DBTime{Time: time.Now().UTC()},
 	}
 
 	if !isStillTrue {
 		now := time.Now().UTC()
-		rel.ValidUntil = &now
+		rel.ValidUntil = dbtypes.NullDBTime{Time: now, Valid: true}
 	}
 
 	if objectID, found := nameToID[object]; found {
@@ -288,9 +289,9 @@ func buildLiteralRelation(
 		Predicate:       predicate,
 		ObjectLiteral:   &literal,
 		Confidence:      confidence,
-		ValidFrom:       time.Now().UTC(),
+		ValidFrom:       dbtypes.DBTime{Time: time.Now().UTC()},
 		SourceEpisodeID: &episodeID,
-		CreatedAt:       time.Now().UTC(),
+		CreatedAt:       dbtypes.DBTime{Time: time.Now().UTC()},
 	}
 	return rel, true
 }

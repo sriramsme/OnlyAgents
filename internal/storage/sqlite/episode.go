@@ -33,9 +33,9 @@ func toEpisodeRow(e *memory.Episode) episodeRow {
 		Summary:    e.Summary,
 		Embedding:  encodeEmbedding(e.Embedding),
 		Importance: e.Importance,
-		StartedAt:  dbtypes.DBTime{Time: e.StartedAt},
-		EndedAt:    dbtypes.DBTime{Time: e.EndedAt},
-		CreatedAt:  dbtypes.DBTime{Time: e.CreatedAt},
+		StartedAt:  e.StartedAt,
+		EndedAt:    e.EndedAt,
+		CreatedAt:  e.CreatedAt,
 	}
 }
 
@@ -46,9 +46,9 @@ func (r episodeRow) toDomain() *memory.Episode {
 		Summary:    r.Summary,
 		Embedding:  decodeEmbedding(r.Embedding),
 		Importance: r.Importance,
-		StartedAt:  r.StartedAt.Time,
-		EndedAt:    r.EndedAt.Time,
-		CreatedAt:  r.CreatedAt.Time,
+		StartedAt:  r.StartedAt,
+		EndedAt:    r.EndedAt,
+		CreatedAt:  r.CreatedAt,
 	}
 }
 
@@ -100,13 +100,13 @@ func (d *DB) searchEpisodesByVector(ctx context.Context, q memory.EpisodeQuery, 
 	where, args := episodeFilterClauses(q)
 
 	query := `SELECT * FROM episodes`
-	if len(where) > 0 {
-		query += " WHERE " + strings.Join(where, " AND ")
-	}
-	if len(where) > 0 {
-		query += " WHERE " + strings.Join(where, " AND ") + " AND embedding IS NOT NULL"
-	} else {
-		query += " WHERE embedding IS NOT NULL"
+	clauses := where
+
+	// Always require embedding
+	clauses = append(clauses, "embedding IS NOT NULL")
+
+	if len(clauses) > 0 {
+		query += " WHERE " + strings.Join(clauses, " AND ")
 	}
 	var rows []episodeRow
 	if err := d.db.SelectContext(ctx, &rows, query, args...); err != nil {
@@ -184,12 +184,21 @@ func (d *DB) PruneEpisodes(ctx context.Context, before time.Time, maxImportance 
 }
 
 func (d *DB) LastSessionEpisodeEndedAt(ctx context.Context) (time.Time, error) {
-	var lastEnd time.Time
+	var lastEnd dbtypes.NullDBTime
+
 	err := d.db.GetContext(ctx, &lastEnd, `
-		SELECT COALESCE(MAX(ended_at), '1970-01-01') FROM episodes
+		SELECT MAX(ended_at) FROM episodes
 		WHERE scope = ?
 	`, string(memory.ScopeSession))
-	return lastEnd, wrap(err, "last session episode ended at")
+	if err != nil {
+		return time.Time{}, wrap(err, "last session episode ended at")
+	}
+
+	if !lastEnd.Valid {
+		return time.Unix(0, 0), nil // 1970-01-01
+	}
+
+	return lastEnd.Time, nil
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -203,11 +212,11 @@ func episodeFilterClauses(q memory.EpisodeQuery) (clauses []string, args []any) 
 	}
 	if q.From != nil {
 		clauses = append(clauses, "started_at >= ?")
-		args = append(args, dbtypes.DBTime{Time: *q.From})
+		args = append(args, *q.From)
 	}
 	if q.To != nil {
 		clauses = append(clauses, "ended_at <= ?")
-		args = append(args, dbtypes.DBTime{Time: *q.To})
+		args = append(args, *q.To)
 	}
 	return
 }

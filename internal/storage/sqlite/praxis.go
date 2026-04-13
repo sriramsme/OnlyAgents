@@ -30,9 +30,9 @@ func toPatternRow(p *memory.Pattern) patternRow {
 		Embedding:        encodeEmbedding(p.Embedding),
 		Confidence:       p.Confidence,
 		ObservationCount: p.ObservationCount,
-		FirstObservedAt:  dbtypes.DBTime{Time: p.FirstObservedAt},
-		LastObservedAt:   dbtypes.DBTime{Time: p.LastObservedAt},
-		CreatedAt:        dbtypes.DBTime{Time: p.CreatedAt},
+		FirstObservedAt:  p.FirstObservedAt,
+		LastObservedAt:   p.LastObservedAt,
+		CreatedAt:        p.CreatedAt,
 	}
 }
 
@@ -43,9 +43,9 @@ func (r patternRow) toDomain() *memory.Pattern {
 		Embedding:        decodeEmbedding(r.Embedding),
 		Confidence:       r.Confidence,
 		ObservationCount: r.ObservationCount,
-		FirstObservedAt:  r.FirstObservedAt.Time,
-		LastObservedAt:   r.LastObservedAt.Time,
-		CreatedAt:        r.CreatedAt.Time,
+		FirstObservedAt:  r.FirstObservedAt,
+		LastObservedAt:   r.LastObservedAt,
+		CreatedAt:        r.CreatedAt,
 	}
 }
 

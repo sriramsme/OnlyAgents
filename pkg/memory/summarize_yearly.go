@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
@@ -42,9 +43,9 @@ func (s *Summarizer) SummarizeYear(ctx context.Context, year int) error {
 		Scope:      ScopeYearly,
 		Summary:    strings.TrimSpace(summary),
 		Importance: 1.0,
-		StartedAt:  from,
-		EndedAt:    to,
-		CreatedAt:  time.Now(),
+		StartedAt:  dbtypes.DBTime{Time: from},
+		EndedAt:    dbtypes.DBTime{Time: to},
+		CreatedAt:  dbtypes.DBTime{Time: time.Now()},
 	}
 
 	if err := s.store.SaveEpisode(ctx, ep); err != nil {

@@ -25,7 +25,7 @@ func toEntityRow(e *memory.Entity) entityRow {
 		ID:            e.ID,
 		CanonicalName: e.CanonicalName,
 		Type:          string(e.Type),
-		CreatedAt:     dbtypes.DBTime{Time: e.CreatedAt},
+		CreatedAt:     e.CreatedAt,
 	}
 }
 
@@ -34,7 +34,7 @@ func (r entityRow) toDomain() *memory.Entity {
 		ID:            r.ID,
 		CanonicalName: r.CanonicalName,
 		Type:          memory.EntityType(r.Type),
-		CreatedAt:     r.CreatedAt.Time,
+		CreatedAt:     r.CreatedAt,
 	}
 }
 
@@ -60,8 +60,8 @@ func toRelationRow(r *memory.Relation) relationRow {
 		SubjectID:  r.SubjectID,
 		Predicate:  r.Predicate,
 		Confidence: r.Confidence,
-		ValidFrom:  dbtypes.DBTime{Time: r.ValidFrom},
-		CreatedAt:  dbtypes.DBTime{Time: r.CreatedAt},
+		ValidFrom:  r.ValidFrom,
+		CreatedAt:  r.CreatedAt,
 	}
 	if r.ObjectID != nil {
 		row.ObjectID = sql.NullString{String: *r.ObjectID, Valid: true}
@@ -69,8 +69,8 @@ func toRelationRow(r *memory.Relation) relationRow {
 	if r.ObjectLiteral != nil {
 		row.ObjectLiteral = sql.NullString{String: *r.ObjectLiteral, Valid: true}
 	}
-	if r.ValidUntil != nil {
-		row.ValidUntil = dbtypes.NullDBTime{Time: *r.ValidUntil, Valid: true}
+	if r.ValidUntil.Valid {
+		row.ValidUntil = r.ValidUntil
 	}
 	if r.SourceEpisodeID != nil {
 		row.SourceEpisodeID = sql.NullString{String: *r.SourceEpisodeID, Valid: true}
@@ -84,8 +84,8 @@ func (r relationRow) toDomain() *memory.Relation {
 		SubjectID:   r.SubjectID,
 		Predicate:   r.Predicate,
 		Confidence:  r.Confidence,
-		ValidFrom:   r.ValidFrom.Time,
-		CreatedAt:   r.CreatedAt.Time,
+		ValidFrom:   r.ValidFrom,
+		CreatedAt:   r.CreatedAt,
 		SubjectName: r.SubjectName,
 		ObjectName:  r.ObjectName,
 	}
@@ -96,7 +96,7 @@ func (r relationRow) toDomain() *memory.Relation {
 		rel.ObjectLiteral = &r.ObjectLiteral.String
 	}
 	if r.ValidUntil.Valid {
-		rel.ValidUntil = &r.ValidUntil.Time
+		rel.ValidUntil = r.ValidUntil
 	}
 	if r.SourceEpisodeID.Valid {
 		rel.SourceEpisodeID = &r.SourceEpisodeID.String
@@ -126,7 +126,7 @@ func (d *DB) UpsertEntity(ctx context.Context, e *memory.Entity) (*memory.Entity
 	_, err = d.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO entity_aliases (entity_id, alias, created_at)
 		VALUES (?, ?, ?)
-	`, e.ID, e.CanonicalName, dbtypes.DBTime{Time: e.CreatedAt})
+	`, e.ID, e.CanonicalName, e.CreatedAt)
 	if err != nil {
 		return nil, wrap(err, "upsert entity alias (canonical)")
 	}

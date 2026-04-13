@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sriramsme/OnlyAgents/pkg/dbtypes"
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
 )
@@ -28,8 +29,8 @@ const maxAssistantMsgLen = 300
 // msgSession is a contiguous block of messages with no inter-message gap
 // reaching sessionGap. Sessions are the primary unit of the daily prompt.
 type msgSession struct {
-	start    time.Time
-	end      time.Time
+	start    dbtypes.DBTime
+	end      dbtypes.DBTime
 	messages []*message.Message
 	agents   []string // deduplicated agent IDs that sent messages in this session
 }
@@ -81,9 +82,9 @@ func (s *Summarizer) SummarizeDay(ctx context.Context, date time.Time) error {
 		Scope:      ScopeDaily,
 		Summary:    strings.TrimSpace(raw),
 		Importance: 0.7,
-		StartedAt:  from,
-		EndedAt:    to,
-		CreatedAt:  time.Now(),
+		StartedAt:  dbtypes.DBTime{Time: from},
+		EndedAt:    dbtypes.DBTime{Time: to},
+		CreatedAt:  dbtypes.DBTime{Time: time.Now()},
 	}
 
 	if err := s.store.SaveEpisode(ctx, ep); err != nil {
