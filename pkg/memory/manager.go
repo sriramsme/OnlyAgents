@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/sriramsme/OnlyAgents/pkg/embedder"
@@ -16,9 +17,9 @@ type Config struct {
 
 // Manager orchestrates memory operations including summarization and retrieval.
 type Manager struct {
-	store        EpisodeStore
-	recallEngine *RecallEngine
-	summarizer   *Summarizer
+	store      EpisodeStore
+	engine     *Engine
+	summarizer *Summarizer
 }
 
 // MemoryStore is the combined store interface required by the Memory and its child components..
@@ -43,12 +44,12 @@ func NewManager(store Store, cfg Config, tz string) (*Manager, error) {
 
 	summarizer := NewSummarizer(store, llmClient, embedder, tz)
 
-	recallEngine := newRecallEngine(store, embedder)
+	engine := newEngine(store, embedder, llmClient)
 
 	return &Manager{
-		store:        store,
-		summarizer:   summarizer,
-		recallEngine: recallEngine,
+		store:      store,
+		summarizer: summarizer,
+		engine:     engine,
 	}, nil
 }
 
@@ -60,6 +61,13 @@ func (m *Manager) Summarizer() *Summarizer {
 	return m.summarizer
 }
 
-func (m *Manager) RecallEngine() *RecallEngine {
-	return m.recallEngine
+func (m *Manager) Engine() *Engine {
+	return m.engine
+}
+
+// GetRelevantMemory assembles long-term memory context relevant to the given
+// query. Called by the agent in execute() before building the messages slice.
+// query is typically the user's current message — used for FTS fact search.
+func (mm *Manager) GetRelevantMemory(ctx context.Context, query string) (*Context, error) {
+	return mm.engine.Recall(ctx, query)
 }

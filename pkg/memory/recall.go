@@ -5,111 +5,13 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/sriramsme/OnlyAgents/pkg/embedder"
 )
 
-// RecallStore is the storage interface RecallEngine needs.
-// Subset of the full Storage interface — only what retrieval requires.
-type RecallStore interface {
-	EpisodeStore
-	NexusStore
-	PraxisStore
-}
-
-// MemoryContext is the structured output of a recall query.
-// Rendered into the agent's system prompt before each LLM call.
-type MemoryContext struct {
-	WakeUp   string      // identity snapshot — always included
-	Episodes []*Episode  // relevant session summaries
-	Facts    []*Relation // current Nexus facts for relevant entities
-	Patterns []*Pattern  // applicable behavioral patterns
-}
-
-// Render formats MemoryContext into a prompt-injectable string.
-// Returns empty string if there is nothing meaningful to inject.
-func (mc *MemoryContext) Render() string {
-	if mc == nil {
-		return ""
-	}
-	var b strings.Builder
-
-	if mc.WakeUp != "" {
-		b.WriteString("## Context\n")
-		b.WriteString(mc.WakeUp)
-		b.WriteString("\n\n")
-	}
-
-	if len(mc.Facts) > 0 {
-		b.WriteString("## Current Facts\n")
-		for _, f := range mc.Facts {
-			if f.ObjectLiteral != nil {
-				fmt.Fprintf(&b, "- %s %s %s\n", f.SubjectID, f.Predicate, *f.ObjectLiteral)
-			} else if f.ObjectID != nil {
-				fmt.Fprintf(&b, "- %s %s %s\n", f.SubjectID, f.Predicate, *f.ObjectID)
-			}
-		}
-		b.WriteString("\n")
-	}
-
-	if len(mc.Episodes) > 0 {
-		b.WriteString("## Relevant History\n")
-		for _, ep := range mc.Episodes {
-			fmt.Fprintf(&b, "[%s] %s\n\n",
-				ep.StartedAt.Format("Jan 2 3:04PM"),
-				ep.Summary,
-			)
-		}
-	}
-
-	if len(mc.Patterns) > 0 {
-		b.WriteString("## Behavioral Patterns\n")
-		for _, p := range mc.Patterns {
-			fmt.Fprintf(&b, "- %s\n", p.Description)
-		}
-		b.WriteString("\n")
-	}
-
-	return strings.TrimSpace(b.String())
-}
-
-// recallConfig controls retrieval budgets. Sensible defaults, all overridable.
-type recallConfig struct {
-	MaxEpisodes  int           // max session episodes to return
-	MaxFacts     int           // max Nexus facts to return
-	MaxPatterns  int           // max Praxis patterns to return
-	RecentWindow time.Duration // how far back "recent" episodes go for wake-up
-}
-
-func defaultRecallConfig() recallConfig {
-	return recallConfig{
-		MaxEpisodes:  5,
-		MaxFacts:     20,
-		MaxPatterns:  10,
-		RecentWindow: 48 * time.Hour,
-	}
-}
-
-// RecallEngine assembles MemoryContext for a given query.
-type RecallEngine struct {
-	store    RecallStore
-	embedder embedder.Embedder // nil-safe — falls back to FTS/filter
-	cfg      recallConfig
-}
-
-func newRecallEngine(store RecallStore, emb embedder.Embedder) *RecallEngine {
-	return &RecallEngine{
-		store:    store,
-		embedder: emb,
-		cfg:      defaultRecallConfig(),
-	}
-}
-
-// Recall is the main entry point. Called by Manager.GetRelevantMemory.
+// Called by Manager.GetRelevantMemory.
 // query is the user's current message or a natural language description
 // of what context is needed.
-func (re *RecallEngine) Recall(ctx context.Context, query string) (*MemoryContext, error) {
-	mc := &MemoryContext{}
+func (re *Engine) Recall(ctx context.Context, query string) (*Context, error) {
+	mc := &Context{}
 
 	// Step 1: Wake-up snapshot — always included regardless of query.
 	wakeUp, err := re.buildWakeUp(ctx)
@@ -165,7 +67,7 @@ func (re *RecallEngine) Recall(ctx context.Context, query string) (*MemoryContex
 
 // buildWakeUp assembles the lightweight identity snapshot loaded every session.
 // Reads recent episodes + high-confidence facts — no query embedding needed.
-func (re *RecallEngine) buildWakeUp(ctx context.Context) (string, error) {
+func (re *Engine) buildWakeUp(ctx context.Context) (string, error) {
 	var b strings.Builder
 
 	// Recent sessions for conversational continuity.
@@ -196,7 +98,7 @@ func (re *RecallEngine) buildWakeUp(ctx context.Context) (string, error) {
 
 // factsForEpisodes collects entity IDs from the episode_entities join table
 // for each retrieved episode, then fetches current Nexus facts for those entities.
-func (re *RecallEngine) factsForEpisodes(ctx context.Context, episodes []*Episode) ([]*Relation, error) {
+func (re *Engine) factsForEpisodes(ctx context.Context, episodes []*Episode) ([]*Relation, error) {
 	// Collect unique entity IDs across all retrieved episodes.
 	seen := make(map[string]struct{})
 	var entityIDs []string
