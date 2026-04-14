@@ -114,32 +114,49 @@ Read more [here](docs/ARCHITECTURE.md).
 A **skill defines the capability**, while a **connector defines where the data or service comes from**.
 
 ## Memory
-
 > Implemented. Integration testing in progress.
 
-Agents remember. Automatically. No configuration required.
+Agents remember across conversations — decisions, preferences, projects, and behavioral patterns — without any configuration.
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│  Working Memory  ·  current conversation messages              │
-│                          ↓  saved on every message             │
-│  Short-term      ·  last 4 hours  ·  30-day retention          │
-│                          ↓  LLM summarization at 23:59 daily   │
-│  Daily Summaries ·  key events, topics  ·  90-day retention    │
-│                          ↓  every Sunday                       │
-│  Weekly Summaries  ·  themes, patterns  ·  1-year retention    │
-│                          ↓  1st of month                       │
-│  Monthly Summaries  ·  highlights, stats  ·  5-year retention  │
-│                          ↓  Dec 31                             │
-│  Yearly Archives  ·  compressed  ·  permanent                  │
-├────────────────────────────────────────────────────────────────┤
-│  Facts Database  ·  entity knowledge  ·  permanent             │
-│  Extracted during daily summarization. Confidence-scored.      │
-│  Example: "prefers morning meetings", "works in Go"            │
-└────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  Working Memory  ·  active conversation window (20 messages)    │
+├─────────────────────────────────────────────────────────────────┤
+│  Episodes  ·  session summaries + semantic embeddings           │
+│  Extracted automatically after each conversation session ends.  │
+│  Searchable by meaning, not just keywords.                      │
+├─────────────────────────────────────────────────────────────────┤
+│  Nexus  ·  knowledge graph  ·  entity-relationship triples      │
+│  Entities: people, projects, tools, concepts, decisions.        │
+│  Relations are time-scoped — facts can become outdated.         │
+│  Example: (user)-[prefers]->(short responses during debugging)  │
+├─────────────────────────────────────────────────────────────────┤
+│  Praxis  ·  behavioral patterns  ·  extracted weekly            │
+│  How the user works, not just what they said.                   │
+│  Confidence-scored. Decays if no longer observed.               │
+│  Example: "wants tests included with every code change"         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-All summarization runs in-process via a cron scheduler. On startup, catch-up logic runs any missed jobs. The facts database uses SQLite FTS5 for search - no vector embeddings required.
+### How it works
+
+Every conversation is a session. When a session goes quiet for 30 minutes, a background job extracts entities and relations into the knowledge graph, generates a semantic embedding of the summary, and stores it for later retrieval.
+
+Weekly, behavioral patterns are extracted from the week's sessions and merged into Praxis — reinforcing what's consistent, contradicting what's changed.
+
+When an agent needs context, it queries the memory engine with the user's message. The engine runs parallel retrieval across all three stores — semantic episode search, knowledge graph traversal, and pattern matching — and assembles a `MemoryContext` injected into the agent's system prompt before each LLM call.
+
+### Summarization schedule
+
+All jobs run in-process. On startup, catch-up logic runs any missed jobs.
+
+```
+every 15 min   session detection — find idle conversations, trigger extraction
+daily 23:59    daily narrative rollup
+Sunday 00:00   weekly Praxis pattern extraction
+1st 00:00      monthly narrative archive
+Dec 31 23:59   yearly archive
+```
 
 ## Default Agents
 
