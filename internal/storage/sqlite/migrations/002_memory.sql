@@ -28,6 +28,8 @@ CREATE TABLE entities (
     type           TEXT NOT NULL CHECK (type IN ('person','project','tool','concept','decision','preference', 'other')),
     created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE UNIQUE INDEX idx_entities_name_type
+ON entities(canonical_name, type);
 
 CREATE TABLE entity_aliases (
     entity_id        TEXT NOT NULL REFERENCES entities(id),

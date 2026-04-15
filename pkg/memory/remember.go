@@ -7,7 +7,7 @@ import (
 )
 
 func (e *Engine) Remember(ctx context.Context, input tools.RememberInput) error {
-	e.nexus.ingest(ctx, "", fromRememberInput(input))
+	e.nexus.ingest(ctx, fromRememberInput(input), "")
 	return nil
 }
 

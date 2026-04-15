@@ -138,7 +138,7 @@ func (s *Summarizer) summarizeAndStoreSession(ctx context.Context, sess msgSessi
 		return fmt.Errorf("session summarizer: save episode: %w", err)
 	}
 
-	s.nexus.ingest(ctx, ep.ID, fromSessionExtraction(ext))
+	s.nexus.ingest(ctx, fromSessionExtraction(ext), ep.ID)
 
 	return nil
 }

@@ -32,7 +32,7 @@ type NexusInput struct {
 //
 // Entity deduplication is batched: one FTS lookup per entity (cheap SQL),
 // then a SINGLE LLM call to confirm all candidate matches at once.
-func (r *nexusResolver) ingest(ctx context.Context, episodeID string, input NexusInput) {
+func (r *nexusResolver) ingest(ctx context.Context, input NexusInput, episodeID string) {
 	nameToID := r.resolveEntities(ctx, input.Entities, episodeID)
 
 	entityIDs := make([]string, 0, len(nameToID))
@@ -59,14 +59,16 @@ func (nr *nexusResolver) ingestRelation(ctx context.Context, rel extractedRelati
 	}
 
 	r := &Relation{
-		ID:              newID(),
-		SubjectID:       subjectID,
-		Predicate:       rel.Predicate,
-		Confidence:      1.0,
-		ValidFrom:       dbtypes.DBTime{Time: time.Now().UTC()},
-		SourceEpisodeID: &episodeID,
+		ID:         newID(),
+		SubjectID:  subjectID,
+		Predicate:  rel.Predicate,
+		Confidence: 1.0,
+		ValidFrom:  dbtypes.DBTime{Time: time.Now().UTC()},
 	}
 
+	if episodeID != "" {
+		r.SourceEpisodeID = &episodeID
+	}
 	// Determine if object is a known entity or a literal.
 	if objectID, ok := nameToID[rel.Object]; ok {
 		r.ObjectID = &objectID
@@ -111,6 +113,8 @@ func (nr *nexusResolver) resolveEntities(ctx context.Context, entities []extract
 	// Step 1 — FTS lookups (SQL only, no LLM).
 	slots := make([]slot, 0, len(entities))
 	for _, ee := range entities {
+		ee.Name = normalizeEntityName(ee.Name)
+
 		candidates, err := nr.store.FindSimilarEntities(ctx, ee.Name)
 		if err != nil {
 			logger.Log.Warn("nexus: FTS lookup failed", "entity", ee.Name, "err", err)
@@ -181,6 +185,9 @@ func (nr *nexusResolver) batchConfirmMatches(ctx context.Context, slots []slot) 
 	}
 
 	parsed := parseBatchDedupResponse(raw)
+	if parsed == nil {
+		return results
+	}
 	for _, ds := range toConfirm {
 		candidateIdx, ok := parsed[ds.slotIndex]
 		if !ok || candidateIdx < 0 || candidateIdx >= len(ds.candidates) {
@@ -199,16 +206,18 @@ func buildBatchDedupPrompt(items []dedupSlot) string {
 	b.WriteString("For each numbered entity, identify which candidate (if any) is the same real-world entity.\n\n")
 
 	for _, item := range items {
-		fmt.Printf("Entity %d: %q\nCandidates:\n", item.slotIndex, item.name)
+		fmt.Fprintf(&b, "Entity %d: %q\nCandidates:\n", item.slotIndex, item.name)
 		for j, c := range item.candidates {
-			fmt.Printf("  [%d] %q (type: %s)\n", j, c.CanonicalName, c.Type)
+			fmt.Fprintf(&b, "  [%d] %q (type: %s)\n", j, c.CanonicalName, c.Type)
 		}
 		b.WriteString("\n")
 	}
 
-	b.WriteString("Reply with a single JSON object. Keys are entity numbers (as strings). " +
-		"Values are the matching candidate index (0-based), or -1 if none match.\n" +
-		"Example: {\"0\": 1, \"3\": -1}\nNo explanation. No markdown.")
+	b.WriteString(
+		"Reply with a single JSON object. Keys are entity numbers (as strings). " +
+			"Values are the matching candidate index (0-based), or -1 if none match.\n" +
+			"Example: {\"0\": 1, \"3\": -1}\nNo explanation. No markdown.",
+	)
 
 	return b.String()
 }
@@ -238,6 +247,17 @@ func parseBatchDedupResponse(raw string) map[int]int {
 		}
 	}
 	return out
+}
+
+func normalizeEntityName(name string) string {
+	n := strings.ToLower(strings.TrimSpace(name))
+
+	switch n {
+	case "i", "me", "my", "mine", "myself", "the user":
+		return "user"
+	default:
+		return name
+	}
 }
 
 const entityDeduplicationSystemPrompt = `You are a named-entity deduplication assistant.

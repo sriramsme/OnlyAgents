@@ -20,14 +20,14 @@ type entityRow struct {
 	CreatedAt     dbtypes.DBTime `db:"created_at"`
 }
 
-func toEntityRow(e *memory.Entity) entityRow {
-	return entityRow{
-		ID:            e.ID,
-		CanonicalName: e.CanonicalName,
-		Type:          string(e.Type),
-		CreatedAt:     e.CreatedAt,
-	}
-}
+// func toEntityRow(e *memory.Entity) entityRow {
+// 	return entityRow{
+// 		ID:            e.ID,
+// 		CanonicalName: e.CanonicalName,
+// 		Type:          string(e.Type),
+// 		CreatedAt:     e.CreatedAt,
+// 	}
+// }
 
 func (r entityRow) toDomain() *memory.Entity {
 	return &memory.Entity{
@@ -110,19 +110,22 @@ func (r relationRow) toDomain() *memory.Relation {
 // canonical_name and type. The canonical name is also written as an alias
 // so it participates in FTS deduplication searches.
 func (d *DB) UpsertEntity(ctx context.Context, e *memory.Entity) (*memory.Entity, error) {
-	row := toEntityRow(e)
-	_, err := d.db.NamedExecContext(ctx, `
+	var id string
+
+	err := d.db.QueryRowContext(ctx, `
 		INSERT INTO entities (id, canonical_name, type, created_at)
-		VALUES (:id, :canonical_name, :type, :created_at)
-		ON CONFLICT(id) DO UPDATE SET
-			canonical_name = excluded.canonical_name,
-			type           = excluded.type
-	`, row)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(canonical_name, type) DO UPDATE SET
+			canonical_name = excluded.canonical_name
+		RETURNING id;
+	`, e.ID, e.CanonicalName, e.Type, e.CreatedAt).Scan(&id)
 	if err != nil {
 		return nil, wrap(err, "upsert entity")
 	}
 
-	// Keep canonical name in alias table so FTS covers it.
+	e.ID = id
+
+	// Keep canonical name in alias table
 	_, err = d.db.ExecContext(ctx, `
 		INSERT OR IGNORE INTO entity_aliases (entity_id, alias, created_at)
 		VALUES (?, ?, ?)
@@ -279,7 +282,7 @@ func (d *DB) Timeline(ctx context.Context, entityID string) ([]*memory.Relation,
 // LinkEpisodeEntities writes rows into the episode_entities join table.
 // Duplicate pairs are silently ignored.
 func (d *DB) LinkEpisodeEntities(ctx context.Context, episodeID string, entityIDs []string) error {
-	if len(entityIDs) == 0 {
+	if episodeID == "" || len(entityIDs) == 0 {
 		return nil
 	}
 	// Build a single multi-row insert for efficiency.

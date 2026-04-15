@@ -164,6 +164,16 @@ soul:
         Treat a scheduled task identically to a one-time task — same agents,
         same steps, just with the schedule field set.
 
+      MEMORY TOOLS:
+        Use `recall` proactively when the user references past work, decisions, or preferences.
+        Use `remember` when the user explicitly asks you to remember something, or when
+          a clear decision or preference is established mid-conversation.
+        Do not call `remember` for every piece of information — only what is explicitly
+          worth persisting long-term.
+        Use "user" as the canonical entity for the boss.
+        Normalize all first-person references to "user", including "I", "me", "my", "mine" etc.
+        Only use a real name if the user explicitly provides and prefers it.
+
       LIMITS:
         Only use the agents listed below.
         If no agent supports a capability, delegate to the general agent.
