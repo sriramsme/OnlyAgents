@@ -50,10 +50,15 @@ func (a *Agent) processToolCalls(
 
 		var exec tools.ToolExecution
 
-		if a.isExecutive && isExecutiveMetaTool(tc.Function.Name) {
-			exec = a.handleExecutiveMetaTool(ctx, correlationID, tc, payload.Message, payload.Channel, payload.Attachments)
-		} else if a.isGeneral && isGeneralMetaTool(tc.Function.Name) {
-			exec = a.handleGeneralMetaTool(ctx, correlationID, tc)
+		if isMetaTool(tc.Function.Name) {
+			exec = a.handleMetaTool(ctx, MetaToolInput{
+				SessionID:       sessionID,
+				CorrelationID:   correlationID,
+				Call:            tc,
+				OriginalMessage: payload.Message,
+				ChannelMetadata: payload.Channel,
+				Attachments:     payload.Attachments,
+			})
 		} else {
 			exec = a.requestToolCall(ctx, sessionID, correlationID, tc)
 		}
@@ -149,8 +154,12 @@ func (a *Agent) requestToolCall(
 	tc tools.ToolCall,
 ) tools.ToolExecution {
 	// Meta tools are handled internally — never routed to a skill
-	if isSubAgentMetaTool(tc.Function.Name) {
-		return a.handleMetaTool(ctx, sessionID, tc)
+	if isMetaTool(tc.Function.Name) {
+		return a.handleMetaTool(ctx, MetaToolInput{
+			SessionID:     sessionID,
+			CorrelationID: correlationID,
+			Call:          tc,
+		})
 	}
 
 	skill, ok := a.skills[a.toolSkillMap[tc.Function.Name]]

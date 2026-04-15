@@ -102,5 +102,7 @@ func GetExecutiveTools() []ToolDef {
 			workflowSchema,
 			"",
 		),
+		recallTool(),
+		rememberTool(),
 	}
 }

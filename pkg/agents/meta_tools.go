@@ -5,43 +5,74 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/sriramsme/OnlyAgents/pkg/core"
+	"github.com/sriramsme/OnlyAgents/pkg/media"
 	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
-var executiveMetaTools = map[string]bool{
-	"delegate_to_agent": true,
-	"create_workflow":   true,
-}
-
-var generalMetaTools = map[string]bool{
-	"find_skill": true,
-}
-
-var subAgentMetaTools = map[string]bool{
+// allMetaTools is the source of truth for meta-tool registration.
+// The agent's tool definitions control which tools the LLM can actually call,
+// so this map is only used at the dispatch boundary to skip skill routing.
+var allMetaTools = map[string]bool{
+	"delegate_to_agent":    true,
+	"create_workflow":      true,
+	"find_skill":           true,
 	"meta_activate_groups": true,
 }
 
-func isExecutiveMetaTool(name string) bool {
-	return executiveMetaTools[name]
-}
+func isMetaTool(name string) bool { return allMetaTools[name] }
 
-func isGeneralMetaTool(name string) bool {
-	return generalMetaTools[name]
-}
+// MetaToolInput is the unified context passed to handleMetaTool.
+// Executive-only fields (OriginalMessage, ChannelMetadata, Attachments)
+// are zero-valued for non-executive agents and ignored by non-executive handlers.
+type MetaToolInput struct {
+	SessionID     string
+	CorrelationID string
+	Call          tools.ToolCall
 
-func isSubAgentMetaTool(name string) bool {
-	return subAgentMetaTools[name]
+	// Executive-only context
+	OriginalMessage string
+	ChannelMetadata *core.ChannelMetadata
+	Attachments     []*media.Attachment
 }
 
 // handleMetaTool executes a meta tool call internally without routing to a skill.
-func (a *Agent) handleMetaTool(ctx context.Context, sessionID string, tc tools.ToolCall) tools.ToolExecution {
-	switch tc.Function.Name {
+func (a *Agent) handleMetaTool(ctx context.Context, in MetaToolInput) tools.ToolExecution {
+	a.logger.Debug("handling meta-tool",
+		"tool", in.Call.Function.Name,
+		"correlation_id", in.CorrelationID)
 
+	switch in.Call.Function.Name {
+	// ── executive
+	case "delegate_to_agent":
+		return a.requestDelegation(ctx, in.CorrelationID, in.Call, in.ChannelMetadata, in.Attachments)
+	case "create_workflow":
+		return a.requestWorkflow(ctx, in.CorrelationID, in.Call, in.OriginalMessage, in.ChannelMetadata, in.Attachments)
+
+	// ── sub-agent
 	case "meta_activate_groups":
-		return a.handleActivateGroups(sessionID, tc)
+		return a.handleActivateGroups(in.SessionID, in.Call)
 
+		// ── memory
+	case "remember":
+		return a.handleRemember(ctx, in.SessionID, in.Call)
+
+	case "recall":
+		return a.handleRecall(ctx, in.SessionID, in.Call)
+
+		// ── general
+	case "find_skill":
+		var input tools.FindSkillInput
+		if err := json.Unmarshal([]byte(in.Call.Function.Arguments), &input); err != nil {
+			return tools.ExecErr(fmt.Errorf("invalid find_skill args: %w", err))
+		}
+		result, err := a.handleFindSkill(ctx, a, input.SkillName)
+		if err != nil {
+			return tools.ExecErr(err)
+		}
+		return tools.ExecOK(result)
 	default:
-		return tools.ExecErr(fmt.Errorf("unknown meta tool %q", tc.Function.Name))
+		return tools.ExecErr(fmt.Errorf("unknown meta-tool %q", in.Call.Function.Name))
 	}
 }
 

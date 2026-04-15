@@ -14,34 +14,6 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/workflow"
 )
 
-// These methods are used by executive agents to delegate and create workflows
-// They're called from the agent's execute() loop when LLM calls meta-tools
-
-// handleMetaTool routes meta-tool calls to appropriate handlers
-func (a *Agent) handleExecutiveMetaTool(
-	ctx context.Context,
-	correlationID string,
-	tc tools.ToolCall,
-	originalMessage string,
-	channelMetadata *core.ChannelMetadata,
-	attachments []*media.Attachment,
-) tools.ToolExecution {
-	a.logger.Debug("handling meta-tool",
-		"tool", tc.Function.Name,
-		"correlation_id", correlationID)
-
-	switch tc.Function.Name {
-	case "delegate_to_agent":
-		return a.requestDelegation(ctx, correlationID, tc, channelMetadata, attachments)
-
-	case "create_workflow":
-		return a.requestWorkflow(ctx, correlationID, tc, originalMessage, channelMetadata, attachments)
-
-	default:
-		return tools.ExecErr(fmt.Errorf("unknown meta-tool: %s", tc.Function.Name))
-	}
-}
-
 // requestDelegation delegates a task to another agent and waits for result
 func (a *Agent) requestDelegation(ctx context.Context, correlationID string,
 	tc tools.ToolCall, channelMetadata *core.ChannelMetadata,
