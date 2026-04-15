@@ -154,7 +154,7 @@ All jobs run in-process. On startup, catch-up logic runs any missed jobs.
 every 15 min   session detection — find idle conversations, trigger extraction
 daily 23:59    daily narrative rollup
 Sunday 00:00   weekly Praxis pattern extraction
-1st 00:00      monthly narrative archive
+1st 00:00      monthly archive
 Dec 31 23:59   yearly archive
 ```
 

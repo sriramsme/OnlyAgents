@@ -70,6 +70,5 @@ func GetSubAgentMetaTools() []ToolDef {
 			"", // no group — meta tools are not part of any skill group
 		),
 		recallTool(),
-		rememberTool(),
 	}
 }

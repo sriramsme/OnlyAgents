@@ -37,7 +37,7 @@ func (a *Agent) callLLMStream(
 
 	req := &llm.Request{
 		Messages: msgs,
-		Tools:    a.tools,
+		Tools:    a.ToolsForRequest(payload.Channel.SessionID),
 		Metadata: map[string]string{
 			"agent_id":       a.id,
 			"correlation_id": correlationID,

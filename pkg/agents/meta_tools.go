@@ -18,6 +18,8 @@ var allMetaTools = map[string]bool{
 	"create_workflow":      true,
 	"find_skill":           true,
 	"meta_activate_groups": true,
+	"recall":               true,
+	"remember":             true,
 }
 
 func isMetaTool(name string) bool { return allMetaTools[name] }

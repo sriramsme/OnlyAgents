@@ -45,6 +45,9 @@ func (a *Agent) runExecutionLoop(
 		return nil, nil, fmt.Errorf("execute: nil channel in payload (correlation_id: %s)", correlationID)
 	}
 
+	// reset tool groups since this is a new execution loop
+	a.ResetGroupSelection(payload.Channel.SessionID)
+
 	lock := a.turnLockFor(payload.Channel.SessionID)
 	lock.Lock()
 	defer lock.Unlock()
@@ -145,7 +148,7 @@ func (a *Agent) callLLM(
 
 	req := &llm.Request{
 		Messages:    msgs,
-		Tools:       a.tools,
+		Tools:       a.ToolsForRequest(payload.Channel.SessionID),
 		Temperature: a.llmOptions.Temperature,
 		Metadata: map[string]string{
 			"agent_id":       a.id,
