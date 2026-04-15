@@ -93,7 +93,7 @@ func (s *Summarizer) SummarizeSessions(ctx context.Context, from, to time.Time) 
 func (s *Summarizer) summarizeAndStoreSession(ctx context.Context, sess msgSession, prevSummary string) error {
 	userPrompt := buildSessionPrompt(sess, prevSummary)
 
-	raw, err := s.callLLM(ctx, sessionSystemPrompt, userPrompt)
+	raw, err := callLLM(ctx, s.llmClient, sessionSystemPrompt, userPrompt)
 	if err != nil {
 		return fmt.Errorf("session summarizer: llm: %w", err)
 	}
@@ -138,7 +138,7 @@ func (s *Summarizer) summarizeAndStoreSession(ctx context.Context, sess msgSessi
 		return fmt.Errorf("session summarizer: save episode: %w", err)
 	}
 
-	s.ingestIntoNexus(ctx, ep.ID, ext)
+	s.nexus.ingest(ctx, ep.ID, fromSessionExtraction(ext))
 
 	return nil
 }
@@ -190,6 +190,38 @@ func parseSessionJSON(raw string, v any) error {
 		return fmt.Errorf("parseSessionJSON: %w (raw: %.200s)", err, raw)
 	}
 	return nil
+}
+
+// fromSessionExtraction normalizes a sessionExtraction into NexusInput,
+// collapsing decisions and preferences into relations.
+func fromSessionExtraction(ext sessionExtraction) NexusInput {
+	relations := make([]extractedRelation, 0,
+		len(ext.Relations)+len(ext.Decisions)+len(ext.Preferences))
+
+	relations = append(relations, ext.Relations...)
+
+	for _, d := range ext.Decisions {
+		relations = append(relations, extractedRelation{
+			Subject:   d.Entity,
+			Predicate: "decided",
+			Object:    d.Decision,
+			StillTrue: true,
+		})
+	}
+
+	for _, p := range ext.Preferences {
+		relations = append(relations, extractedRelation{
+			Subject:   p.Who,
+			Predicate: "prefers",
+			Object:    p.Preference,
+			StillTrue: true,
+		})
+	}
+
+	return NexusInput{
+		Entities:  ext.Entities,
+		Relations: relations,
+	}
 }
 
 // sessionSystemPrompt instructs the LLM to extract structured memory from

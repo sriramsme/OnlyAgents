@@ -27,6 +27,7 @@ type Engine struct {
 	store    EngineStore
 	embedder embedder.Embedder
 	llm      llm.Client
+	nexus    *nexusResolver
 	cfg      engineConfig
 }
 
@@ -39,11 +40,12 @@ func defaultEngineConfig() engineConfig {
 	}
 }
 
-func newEngine(store EngineStore, emb embedder.Embedder, llm llm.Client) *Engine {
+func newEngine(store EngineStore, emb embedder.Embedder, llm llm.Client, nexus *nexusResolver) *Engine {
 	return &Engine{
 		store:    store,
 		embedder: emb,
 		llm:      llm,
 		cfg:      defaultEngineConfig(),
+		nexus:    nexus,
 	}
 }

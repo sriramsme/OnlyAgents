@@ -33,7 +33,7 @@ func (s *Summarizer) SummarizeMonth(ctx context.Context, year, month int) error 
 		logger.Log.Warn("summarizer: could not fetch prior monthly episode", "err", err)
 	}
 
-	raw, err := s.callLLM(ctx, monthlySystemPrompt, buildMonthlyPrompt(weeklies, prior, from, s.loc))
+	raw, err := callLLM(ctx, s.llmClient, monthlySystemPrompt, buildMonthlyPrompt(weeklies, prior, from, s.loc))
 	if err != nil {
 		return fmt.Errorf("summarizer: month llm: %w", err)
 	}

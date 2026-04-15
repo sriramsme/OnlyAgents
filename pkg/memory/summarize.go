@@ -50,11 +50,14 @@ type Summarizer struct {
 	llmClient llm.Client
 	loc       *time.Location
 	embedder  embedder.Embedder
+	nexus     *nexusResolver
 }
 
 // New creates a Summarizer. tz is an IANA timezone string (e.g. "America/New_York").
 // If tz is empty or invalid, UTC is used.
-func NewSummarizer(store SummarizerStore, llmClient llm.Client, embdeder embedder.Embedder, tz string) *Summarizer {
+func NewSummarizer(store SummarizerStore, llmClient llm.Client, embdeder embedder.Embedder,
+	nexus *nexusResolver, tz string,
+) *Summarizer {
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
 		loc = time.UTC
@@ -64,27 +67,12 @@ func NewSummarizer(store SummarizerStore, llmClient llm.Client, embdeder embedde
 		llmClient: llmClient,
 		loc:       loc,
 		embedder:  embdeder,
+		nexus:     nexus,
 	}
 }
 
 func (s *Summarizer) Loc() *time.Location {
 	return s.loc
-}
-
-// callLLM sends a single-turn chat to the LLM with an explicit system prompt.
-// system sets the role/behaviour; user contains the data to process.
-func (s *Summarizer) callLLM(ctx context.Context, system, user string) (string, error) {
-	resp, err := s.llmClient.Chat(ctx, &llm.Request{
-		Messages: []llm.Message{
-			llm.SystemMessage(system),
-			llm.UserMessage(user),
-		},
-		Metadata: map[string]string{"agent_id": "summarizer"},
-	})
-	if err != nil {
-		return "", err
-	}
-	return resp.Content, nil
 }
 
 // detectUnprocessedWindow returns the (from, to) time window containing

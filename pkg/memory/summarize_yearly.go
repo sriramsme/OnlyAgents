@@ -33,7 +33,7 @@ func (s *Summarizer) SummarizeYear(ctx context.Context, year int) error {
 		logger.Log.Warn("summarizer: could not fetch prior yearly episode", "err", err)
 	}
 
-	summary, err := s.callLLM(ctx, yearlySystemPrompt, buildYearlyPrompt(monthlies, prior, year))
+	summary, err := callLLM(ctx, s.llmClient, yearlySystemPrompt, buildYearlyPrompt(monthlies, prior, year))
 	if err != nil {
 		return fmt.Errorf("summarizer: year llm: %w", err)
 	}

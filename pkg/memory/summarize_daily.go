@@ -72,7 +72,7 @@ func (s *Summarizer) SummarizeDay(ctx context.Context, date time.Time) error {
 
 	userPrompt := buildDailyPrompt(input, prior, from, s.loc)
 
-	raw, err := s.callLLM(ctx, dailySystemPrompt, userPrompt)
+	raw, err := callLLM(ctx, s.llmClient, dailySystemPrompt, userPrompt)
 	if err != nil {
 		return fmt.Errorf("summarizer: day llm: %w", err)
 	}
@@ -150,7 +150,7 @@ Respond with plain prose only — no JSON, no bullet points.`
 	var b strings.Builder
 
 	for _, ep := range sessions {
-		mini, err := s.callLLM(ctx, chunkSystem, "Session:\n"+ep.Summary)
+		mini, err := callLLM(ctx, s.llmClient, chunkSystem, "Session:\n"+ep.Summary)
 		if err != nil {
 			return "", fmt.Errorf("chunk summarise session %s: %w",
 				ep.StartedAt.Format("3:04PM"), err)

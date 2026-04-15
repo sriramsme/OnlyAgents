@@ -8,6 +8,7 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 	"github.com/sriramsme/OnlyAgents/pkg/message"
 	"github.com/sriramsme/OnlyAgents/pkg/scheduler"
+	"github.com/sriramsme/OnlyAgents/pkg/tools"
 )
 
 type Config struct {
@@ -42,9 +43,11 @@ func NewManager(store Store, cfg Config, tz string) (*Manager, error) {
 		return nil, fmt.Errorf("new llm client: %w", err)
 	}
 
-	summarizer := NewSummarizer(store, llmClient, embedder, tz)
+	nResolver := newNexusResolver(store, llmClient)
 
-	engine := newEngine(store, embedder, llmClient)
+	summarizer := NewSummarizer(store, llmClient, embedder, nResolver, tz)
+
+	engine := newEngine(store, embedder, llmClient, nResolver)
 
 	return &Manager{
 		store:      store,
@@ -70,4 +73,12 @@ func (m *Manager) Engine() *Engine {
 // query is typically the user's current message — used for FTS fact search.
 func (mm *Manager) GetRelevantMemory(ctx context.Context, query string) (*Context, error) {
 	return mm.engine.Recall(ctx, query)
+}
+
+func (mm *Manager) Recall(ctx context.Context, query string) (*Context, error) {
+	return mm.engine.Recall(ctx, query)
+}
+
+func (mm *Manager) Remember(ctx context.Context, input tools.RememberInput) error {
+	return mm.engine.Remember(ctx, input)
 }

@@ -47,7 +47,7 @@ func (s *Summarizer) SummarizeWeek(ctx context.Context, weekEnd time.Time) error
 	}
 
 	// 1. Narrative weekly summary.
-	raw, err := s.callLLM(ctx, weeklySystemPrompt, buildWeeklyPrompt(input, prior, weekStart, s.loc))
+	raw, err := callLLM(ctx, s.llmClient, weeklySystemPrompt, buildWeeklyPrompt(input, prior, weekStart, s.loc))
 	if err != nil {
 		return fmt.Errorf("summarizer: week llm: %w", err)
 	}
@@ -89,7 +89,7 @@ func (s *Summarizer) extractPatterns(ctx context.Context, sessions []*Episode, w
 	}
 
 	prompt := buildPraxisPrompt(sessions, existing, weekStart, s.loc)
-	raw, err := s.callLLM(ctx, praxisSystemPrompt, prompt)
+	raw, err := callLLM(ctx, s.llmClient, praxisSystemPrompt, prompt)
 	if err != nil {
 		return fmt.Errorf("praxis: llm: %w", err)
 	}
@@ -178,7 +178,7 @@ Respond with plain prose only — no JSON, no bullet points.`
 
 	var b strings.Builder
 	for _, ep := range sessions {
-		mini, err := s.callLLM(ctx, chunkSystem, "Session:\n"+ep.Summary)
+		mini, err := callLLM(ctx, s.llmClient, chunkSystem, "Session:\n"+ep.Summary)
 		if err != nil {
 			return "", fmt.Errorf("chunk weekly session %s: %w",
 				ep.StartedAt.Format("Mon Jan 2 3:04PM"), err)
