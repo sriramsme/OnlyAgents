@@ -9,13 +9,13 @@ import (
 	"github.com/sriramsme/OnlyAgents/pkg/logger"
 )
 
-// Called by Manager.GetRelevantMemory.
-// query is the user's current message or a natural language description
-// of what context is needed.
-func (re *Engine) Recall(ctx context.Context, query string) (*Context, error) {
-	mc := &Context{}
+type sourceResult struct {
+	results []Result
+	err     error
+	source  string
+}
 
-	// Embed once, share across all sources.
+func (re *Engine) Recall(ctx context.Context, query string) (*Context, error) {
 	var queryVec []float32
 	if re.embedder != nil && query != "" {
 		if vec, err := re.embedder.Embed(ctx, query); err == nil {
@@ -23,29 +23,31 @@ func (re *Engine) Recall(ctx context.Context, query string) (*Context, error) {
 		}
 	}
 
-	// Run all sources, collect results.
-	// Each source is independent — one failure doesn't block others.
-	var allResults []Result
+	ch := make(chan sourceResult, len(re.sources))
 	for _, src := range re.sources {
-		results, err := src.Search(ctx, query, queryVec, re.cfg.MaxPerSource)
-		if err != nil {
-			logger.Log.Warn("recall: source search failed",
-				"source", src.Name(), "err", err)
-			continue
-		}
-		allResults = append(allResults, results...)
+		go func() {
+			results, err := src.Search(ctx, query, queryVec, re.cfg.MaxPerSource)
+			ch <- sourceResult{results: results, err: err, source: src.Name()}
+		}()
 	}
 
-	// Re-rank by score, apply total budget.
+	var allResults []Result
+	for range re.sources {
+		sr := <-ch
+		if sr.err != nil {
+			logger.Log.Warn("recall: source search failed", "source", sr.source, "err", sr.err)
+			continue
+		}
+		allResults = append(allResults, sr.results...)
+	}
+
 	sort.Slice(allResults, func(i, j int) bool {
 		return allResults[i].Score > allResults[j].Score
 	})
 	if len(allResults) > re.cfg.MaxTotal {
 		allResults = allResults[:re.cfg.MaxTotal]
 	}
-
-	mc.Results = allResults
-	return mc, nil
+	return &Context{Results: allResults}, nil
 }
 
 // RecallRecent returns recent episodes for the given scope (session, daily, weekly, monthly, yearly).
