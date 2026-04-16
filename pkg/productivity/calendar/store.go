@@ -14,6 +14,7 @@ type Store interface {
 	DeleteEvent(ctx context.Context, id string) error
 	ListEvents(ctx context.Context, from, to time.Time) ([]*CalendarEvent, error)
 	GetUpcomingEvents(ctx context.Context, limit int) ([]*CalendarEvent, error)
+	SearchEvents(ctx context.Context, query string, limit int) ([]*CalendarEvent, error)
 }
 
 // CalendarEvent is a native calendar entry.

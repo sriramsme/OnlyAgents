@@ -85,6 +85,10 @@ func (mm *Manager) GetRecentMemory(ctx context.Context, scope EpisodeScope, from
 	return mm.engine.RecallRecent(ctx, scope, from)
 }
 
+func (mm *Manager) AddSource(source Source) {
+	mm.engine.AddSource(source)
+}
+
 // Gets cached recent memory scoped by sessions (past 24 hours) for the LLM to use in the system prompt.
 // If the cache is expired, it will be refreshed. By default, the cache expires after 1 hour.
 // Returns the cached result or an error if it cannot be retrieved.

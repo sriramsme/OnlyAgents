@@ -78,6 +78,30 @@ func (d *DB) GetUpcomingEvents(ctx context.Context, limit int) ([]*calendar.Cale
 	return events, wrap(err, "get upcoming events")
 }
 
+func (d *DB) SearchEvents(ctx context.Context, query string, limit int) ([]*calendar.CalendarEvent, error) {
+	const q = `
+        SELECT * FROM calendar_events
+        WHERE title       LIKE '%' || ? || '%'
+           OR description LIKE '%' || ? || '%'
+           OR location    LIKE '%' || ? || '%'
+        ORDER BY ABS(strftime('%s', start_time) - strftime('%s', 'now')) ASC
+        LIMIT ?`
+
+	type row struct {
+		calendar.CalendarEvent
+	}
+	var rows []row
+	if err := d.db.SelectContext(ctx, &rows, q, query, query, query, limit); err != nil {
+		return nil, wrap(err, "search events")
+	}
+	events := make([]*calendar.CalendarEvent, len(rows))
+	for i := range rows {
+		e := rows[i].CalendarEvent
+		events[i] = &e
+	}
+	return events, nil
+}
+
 // ── NoteStore ─────────────────────────────────────────────────────────────────
 
 func (d *DB) CreateNote(ctx context.Context, note *notes.Note) error {
@@ -122,14 +146,24 @@ func (d *DB) ListNotes(ctx context.Context) ([]*notes.Note, error) {
 }
 
 func (d *DB) SearchNotes(ctx context.Context, query string) ([]*notes.Note, error) {
-	var notes []*notes.Note
-	err := d.db.SelectContext(ctx, &notes, `
-		SELECT n.* FROM notes n
-		INNER JOIN notes_fts ON n.rowid = notes_fts.rowid
-		WHERE notes_fts MATCH ?
-		ORDER BY rank
-	`, query)
-	return notes, wrap(err, "search notes")
+	const q = `
+        SELECT n.*
+        FROM notes n
+        JOIN notes_fts fts ON n.rowid = fts.rowid
+        WHERE notes_fts MATCH ?
+        ORDER BY n.pinned DESC, rank, n.updated_at DESC`
+
+	type row struct{ notes.Note }
+	var rows []row
+	if err := d.db.SelectContext(ctx, &rows, q, query); err != nil {
+		return nil, wrap(err, "search notes")
+	}
+	result := make([]*notes.Note, len(rows))
+	for i := range rows {
+		n := rows[i].Note
+		result[i] = &n
+	}
+	return result, nil
 }
 
 // ── ReminderStore ─────────────────────────────────────────────────────────────
@@ -318,14 +352,28 @@ func (d *DB) ListTasks(ctx context.Context, filter task.TaskFilter) ([]*task.Tas
 }
 
 func (d *DB) SearchTasks(ctx context.Context, query string) ([]*task.Task, error) {
-	var tasks []*task.Task
-	err := d.db.SelectContext(ctx, &tasks, `
-		SELECT t.* FROM tasks t
-		INNER JOIN tasks_fts ON t.rowid = tasks_fts.rowid
-		WHERE tasks_fts MATCH ?
-		ORDER BY rank
-	`, query)
-	return tasks, wrap(err, "search tasks")
+	const q = `
+        SELECT t.*
+        FROM tasks t
+        JOIN tasks_fts fts ON t.rowid = fts.rowid
+        WHERE tasks_fts MATCH ?
+          AND t.status NOT IN ('done', 'cancelled')
+        ORDER BY
+            CASE t.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+            t.due_at ASC NULLS LAST,
+            rank`
+
+	type row struct{ task.Task }
+	var rows []row
+	if err := d.db.SelectContext(ctx, &rows, q, query); err != nil {
+		return nil, wrap(err, "search tasks")
+	}
+	result := make([]*task.Task, len(rows))
+	for i := range rows {
+		t := rows[i].Task
+		result[i] = &t
+	}
+	return result, nil
 }
 
 func (d *DB) GetTasksDueOn(ctx context.Context, date time.Time) ([]*task.Task, error) {

@@ -24,5 +24,6 @@ type Storage interface {
 	memory.EpisodeStore
 	memory.NexusStore
 	memory.PraxisStore
+
 	Close() error
 }

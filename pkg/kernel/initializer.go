@@ -56,6 +56,13 @@ func (i memoryInitializer) Init(ctx context.Context, k *Kernel) error {
 	for _, job := range k.mem.Jobs() {
 		k.scheduler.Register(job)
 	}
+
+	// TODO: revisit this
+	// add relevant memory sources
+	// k.mem.AddSource(calendar.NewSource(k.store))
+	// k.mem.AddSource(notes.NewSource(k.store))
+	// k.mem.AddSource(task.NewSource(k.store))
+
 	return nil
 }
 
