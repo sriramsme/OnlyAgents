@@ -201,17 +201,22 @@ func (a *Agent) prepareExecution(
 		history = []llm.Message{}
 	}
 
-	// TODO: review this
-	memCtx, memErr := a.memManager.GetRelevantMemory(ctx, payload.Message)
-	if memErr != nil {
-		a.logger.Warn("failed to load memory context", "err", memErr)
+	recentActivity, err := a.memManager.GetRecentMemoryForLLM(ctx, payload.Channel.SessionID)
+	if err != nil {
+		a.logger.Warn("failed to load recent memory context", "err", err)
 	}
 
 	messages = make([]llm.Message, 0, len(history)+2)
-	messages = append(messages, llm.SystemMessage(a.systemPrompt))
-	if formatted := memCtx.Render(); formatted != "" {
-		messages = append(messages, llm.SystemMessage(formatted))
-	}
+	messages = append(messages, llm.SystemMessage(fmt.Sprintf(`
+		%s
+
+		--- MEMORY CONTEXT ---
+
+		Recent Activity:
+		%s
+		----------------------
+	`, a.systemPrompt, recentActivity)))
+
 	messages = append(messages, history...)
 
 	userMsg, err := buildUserMessage(payload.Message, payload.Attachments)

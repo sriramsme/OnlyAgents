@@ -1,8 +1,6 @@
 package memory
 
 import (
-	"time"
-
 	"github.com/sriramsme/OnlyAgents/pkg/embedder"
 	"github.com/sriramsme/OnlyAgents/pkg/llm"
 )
@@ -17,14 +15,13 @@ type EngineStore interface {
 
 // engineConfig controls retrieval budgets. Sensible defaults, all overridable.
 type engineConfig struct {
-	MaxEpisodes  int           // max session episodes to return
-	MaxFacts     int           // max Nexus facts to return
-	MaxPatterns  int           // max Praxis patterns to return
-	RecentWindow time.Duration // how far back "recent" episodes go for wake-up
+	MaxPerSource int
+	MaxTotal     int
 }
 
 type Engine struct {
 	store    EngineStore
+	sources  []Source
 	embedder embedder.Embedder
 	llm      llm.Client
 	nexus    *nexusResolver
@@ -33,19 +30,30 @@ type Engine struct {
 
 func defaultEngineConfig() engineConfig {
 	return engineConfig{
-		MaxEpisodes:  5,
-		MaxFacts:     20,
-		MaxPatterns:  10,
-		RecentWindow: 48 * time.Hour,
+		MaxPerSource: 10,
+		MaxTotal:     10,
 	}
 }
 
 func newEngine(store EngineStore, emb embedder.Embedder, llm llm.Client, nexus *nexusResolver) *Engine {
-	return &Engine{
-		store:    store,
+	e := &Engine{
 		embedder: emb,
 		llm:      llm,
 		cfg:      defaultEngineConfig(),
 		nexus:    nexus,
+		store:    store,
 	}
+
+	e.sources = []Source{
+		&episodeSource{store: store},
+		&nexusSource{store: store},
+		&praxisSource{store: store},
+	}
+
+	return e
+}
+
+// AddSource registers an external source — e.g. calendar, notes, tasks.
+func (e *Engine) AddSource(s Source) {
+	e.sources = append(e.sources, s)
 }
