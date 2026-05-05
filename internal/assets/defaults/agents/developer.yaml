@@ -1,13 +1,11 @@
 id: "developer"
 name: "Forge"
+enabled: false
 description: |
   Writes, edits, and searches code and files. Handles all local
   file operations, package management, and build tasks.
   Capabilities: code_writing, file_management, build_automation,
   package_management, code_search, json_processing
-max_concurrency: 4
-buffer_size: 30
-enabled: false
 
 llm:
   provider: "anthropic"
@@ -22,11 +20,6 @@ skills:
   - name: npm
   - name: pip
   - name: websearch
-
-max_iterations: 20
-max_cumulative_tool_calls: 100
-max_tool_result_tokens: 2000
-enable_early_stopping: false
 
 soul:
   identity:
@@ -130,3 +123,10 @@ soul:
       - "Minimal footprint — change only what is asked"
       - "Verify your work — read files back after writing them"
       - "Honest about failures — never pretend a write succeeded"
+
+max_concurrency: 4
+buffer_size: 30
+max_iterations: 20
+max_cumulative_tool_calls: 100
+max_tool_result_tokens: 2000
+enable_early_stopping: false

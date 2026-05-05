@@ -1,16 +1,13 @@
 id: "researcher"
 name: "Zuck"
+enabled: true
 description: |
   Does research and gathers information from online sources.
   Supports web search,fetching urls, summarizing text, and more.
-max_concurrency: 5
-buffer_size: 50
-enabled: true
 
 llm:
   provider: "openai" # anthropic, openai, gemini
   model: "gpt-5-nano" # model name
-  # Vault key path - will lookup from vault
   api_key_path: "openai/api_key" # or "${vault:openai/api_key}"
 
 skills:
@@ -18,40 +15,6 @@ skills:
     connector: duckduckgo
   - name: summarize
 
-# ============================================
-# EXECUTION LIMITS (Guard Rails)
-# ============================================
-# These limits prevent runaway loops, excessive costs, and performance issues.
-# Researcher agents need STRICT limits to prevent search spam.
-
-# Maximum LLM request/response cycles
-# Research typically completes in 5-10 iterations
-# If hitting this limit frequently, improve system prompt
-max_iterations: 10
-
-# Total tool calls across all iterations
-# 15 searches should be more than enough for most queries
-# Prevents search spam and controls costs
-max_cumulative_tool_calls: 15
-
-# Truncate individual tool results to this token count
-# Web search results can be huge - truncate to keep context manageable
-# 2000 tokens ≈ 500 words - enough for summaries
-max_tool_result_tokens: 2000
-
-# Enable early stopping detection
-# CRITICAL: Stops repeated searches with no new results
-# Example: Searching "State of Union 2026" 10 times won't help
-enable_early_stopping: true
-
-# Stop after this many similar tool calls
-# If agent searches same thing 3 times, it should give up
-# Lower = more aggressive, higher = more forgiving
-similar_call_threshold: 3
-
-# ============================================
-# SOUL (Identity, Behavior, Relationship)
-# ============================================
 soul:
   identity:
     role: |
@@ -125,11 +88,6 @@ soul:
         - "If you can't find it after 2-3 tries, say so"
 
     boundaries:
-      - "Don't write malware or harmful code"
-      - "Use only approved tools/skills"
-      - "Don't pretend to have experiences you don't have"
-      - "Don't search the same thing repeatedly"
-      - "Don't search each news outlet individually"
 
   # YOUR RELATIONSHIP WITH USER
   relationship:
@@ -145,3 +103,36 @@ soul:
       - "Action over perfection"
       - "Working code over theory"
       - "Efficiency over exhaustiveness"
+
+max_concurrency: 5
+buffer_size: 50
+# ============================================
+# EXECUTION LIMITS (Guard Rails)
+# ============================================
+# These limits prevent runaway loops, excessive costs, and performance issues.
+# Researcher agents need STRICT limits to prevent search spam.
+
+# Maximum LLM request/response cycles
+# Research typically completes in 5-10 iterations
+# If hitting this limit frequently, improve system prompt
+max_iterations: 10
+
+# Total tool calls across all iterations
+# 15 searches should be more than enough for most queries
+# Prevents search spam and controls costs
+max_cumulative_tool_calls: 15
+
+# Truncate individual tool results to this token count
+# Web search results can be huge - truncate to keep context manageable
+# 2000 tokens ≈ 500 words - enough for summaries
+max_tool_result_tokens: 2000
+
+# Enable early stopping detection
+# CRITICAL: Stops repeated searches with no new results
+# Example: Searching "State of Union 2026" 10 times won't help
+enable_early_stopping: true
+
+# Stop after this many similar tool calls
+# If agent searches same thing 3 times, it should give up
+# Lower = more aggressive, higher = more forgiving
+similar_call_threshold: 3

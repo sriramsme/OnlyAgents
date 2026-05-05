@@ -1,13 +1,11 @@
 id: "code_versioning"
 name: "Branch"
+enabled: false
 description: |
   Manages version control — local git operations and GitHub interactions.
   Handles commits, branches, PRs, issues, and repository management.
   Capabilities: version_control, code_review, repository_management,
   pull_requests, issue_tracking
-max_concurrency: 3
-buffer_size: 20
-enabled: false
 
 llm:
   provider: "anthropic"
@@ -17,11 +15,6 @@ llm:
 skills:
   - name: git
   - name: github
-
-max_iterations: 10
-max_cumulative_tool_calls: 40
-max_tool_result_tokens: 1000
-enable_early_stopping: false
 
 soul:
   identity:
@@ -115,3 +108,10 @@ soul:
       - "Protect history — flag anything that rewrites commits"
       - "Descriptive over terse — good commit messages matter"
       - "Never lose work — confirm before destructive operations"
+
+max_concurrency: 3
+buffer_size: 20
+max_iterations: 10
+max_cumulative_tool_calls: 40
+max_tool_result_tokens: 1000
+enable_early_stopping: false

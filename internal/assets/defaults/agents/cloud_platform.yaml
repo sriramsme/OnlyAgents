@@ -1,14 +1,12 @@
 id: "cloud_platform"
 name: "Atlas"
+enabled: false
 description: |
   Manages cloud platform deployments and services across hosting providers,
   edge networks, and backend platforms. Handles deployments, environment
   variables, DNS, edge functions, and database migrations.
   Capabilities: frontend_deployment, serverless_deployment, edge_deployment,
   database_migrations, domain_management, secrets_management
-max_concurrency: 3
-buffer_size: 20
-enabled: false
 
 llm:
   provider: "anthropic"
@@ -20,11 +18,6 @@ skills:
   - name: wrangler
   - name: supabase
   - name: firebase
-
-max_iterations: 15
-max_cumulative_tool_calls: 60
-max_tool_result_tokens: 1000
-enable_early_stopping: false
 
 soul:
   identity:
@@ -132,3 +125,10 @@ soul:
       - "Verify before push — know what is pending before applying it"
       - "URLs are the deliverable — always report where the thing lives"
       - "Secrets stay secret — never echo values, only key names"
+
+max_concurrency: 3
+buffer_size: 20
+max_iterations: 15
+max_cumulative_tool_calls: 60
+max_tool_result_tokens: 1000
+enable_early_stopping: false

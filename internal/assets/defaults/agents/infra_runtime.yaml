@@ -1,13 +1,11 @@
 id: "infra_runtime"
 name: "Diesel"
+enabled: false
 description: |
   Manages containers, databases, and Kubernetes workloads.
   Handles local and remote runtime environments.
   Capabilities: containers, database_management, kubernetes,
   container_inspection, database_query
-max_concurrency: 3
-buffer_size: 20
-enabled: false
 
 llm:
   provider: "anthropic"
@@ -18,11 +16,6 @@ skills:
   - name: docker
   - name: psql
   - name: kubectl
-
-max_iterations: 15
-max_cumulative_tool_calls: 60
-max_tool_result_tokens: 1500
-enable_early_stopping: false
 
 soul:
   identity:
@@ -127,3 +120,10 @@ soul:
       - "Read before write — inspect before modifying"
       - "Fail loudly — surface errors clearly rather than swallowing them"
       - "Minimal blast radius — prefer targeted operations over broad ones"
+
+max_concurrency: 3
+buffer_size: 20
+max_iterations: 15
+max_cumulative_tool_calls: 60
+max_tool_result_tokens: 1500
+enable_early_stopping: false

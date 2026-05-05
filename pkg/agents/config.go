@@ -154,13 +154,13 @@ func LoadAllConfigs(dir string) (map[string]*Config, error) {
 }
 
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("agent.max_concurrency", 10)
-	v.SetDefault("agent.buffer_size", 100)
+	v.SetDefault("agent.max_concurrency", 5)
+	v.SetDefault("agent.buffer_size", 50)
 	v.SetDefault("agent.streaming_enabled", true)
 	v.SetDefault("logging.level", "info")
 	v.SetDefault("logging.format", "text")
-	v.SetDefault("llm.provider", "anthropic")
-	v.SetDefault("llm.model", "claude-sonnet-4-20250514")
+	v.SetDefault("llm.provider", "openai")
+	v.SetDefault("llm.model", "gpt-5-mini")
 	v.SetDefault("llm.options.max_tokens", 0)
 	v.SetDefault("llm.options.temperature", 1.0)
 	v.SetDefault("vault.type", "env")
