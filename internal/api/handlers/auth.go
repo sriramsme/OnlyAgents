@@ -58,7 +58,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	h.auth.Logout(r)
-	http.SetCookie(w, auth.ClearSessionCookie())
+	http.SetCookie(w, auth.ClearSessionCookie(isSecureRequest(r)))
 
 	w.Header().Set("Content-Type", "application/json")
 	httpx.JSON(w, http.StatusOK, map[string]any{
@@ -102,7 +102,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Sessions invalidated — clear cookie on this device too
-	http.SetCookie(w, auth.ClearSessionCookie())
+	http.SetCookie(w, auth.ClearSessionCookie(isSecureRequest(r)))
 
 	w.Header().Set("Content-Type", "application/json")
 	httpx.JSON(w, http.StatusOK, map[string]any{

@@ -168,6 +168,8 @@ func (a *Auth) SessionCount() int {
 // ─────────────────────────────────────────
 
 func NewSessionCookie(token string, secure bool) *http.Cookie {
+	// #nosec G124 -- Secure is determined per request to support local HTTP dev
+	// while remaining secure behind TLS or trusted reverse proxies.
 	return &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    token,
@@ -179,12 +181,15 @@ func NewSessionCookie(token string, secure bool) *http.Cookie {
 	}
 }
 
-func ClearSessionCookie() *http.Cookie {
+func ClearSessionCookie(secure bool) *http.Cookie {
+	// #nosec G124 -- must mirror the original cookie attributes.
 	return &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	}
 }
